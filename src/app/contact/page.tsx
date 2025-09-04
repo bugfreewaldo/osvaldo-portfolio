@@ -10,6 +10,17 @@ declare global {
   }
 }
 
+type FormspreeOk = { ok: true } & Record<string, unknown>;
+type FormspreeErr = { error?: string } & Record<string, unknown>;
+
+function extractFormspreeError(body: unknown): string | null {
+  if (typeof body === "object" && body !== null && "error" in body) {
+    const err = (body as FormspreeErr).error;
+    return typeof err === "string" ? err : null;
+  }
+  return null;
+}
+
 export default function ContactPage() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +53,14 @@ export default function ContactPage() {
         form.reset();
         if (typeof window !== "undefined") window.hcaptcha?.reset();
       } else {
-        const body = await res.json().catch(() => ({} as any));
-        setError((body as any)?.error || "Something went wrong. Please try again.");
+        let body: unknown = null;
+        try {
+          body = (await res.json()) as FormspreeOk | FormspreeErr;
+        } catch {
+          // ignore JSON parse errors
+        }
+        const msg = extractFormspreeError(body) ?? "Something went wrong. Please try again.";
+        setError(msg);
         setStatus("error");
       }
     } catch {
