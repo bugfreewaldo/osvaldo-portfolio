@@ -3,6 +3,13 @@
 import { useState } from "react";
 import Script from "next/script";
 
+// Tell TypeScript that window.hcaptcha can exist
+declare global {
+  interface Window {
+    hcaptcha?: { reset: () => void };
+  }
+}
+
 export default function ContactPage() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +22,7 @@ export default function ContactPage() {
     const form = e.currentTarget;
     const data = new FormData(form);
 
-    // ✅ Require captcha token before submitting
+    // Require captcha token before submitting
     const token = data.get("h-captcha-response");
     if (!token) {
       setStatus("idle");
@@ -33,15 +40,13 @@ export default function ContactPage() {
       if (res.ok) {
         setStatus("sent");
         form.reset();
-        // Optional: reset the widget if available
-        // @ts-ignore
-        if (typeof window !== "undefined" && window.hcaptcha) {
-          // @ts-ignore
-          window.hcaptcha.reset();
+        // Safely reset the hCaptcha widget if present (no ts-ignore needed)
+        if (typeof window !== "undefined") {
+          window.hcaptcha?.reset();
         }
       } else {
-        const body = await res.json().catch(() => ({}));
-        setError(body?.error || "Something went wrong. Please try again.");
+        const body = await res.json().catch(() => ({} as any));
+        setError((body as any)?.error || "Something went wrong. Please try again.");
         setStatus("error");
       }
     } catch {
@@ -104,23 +109,10 @@ export default function ContactPage() {
         {/* Optional subject */}
         <input type="hidden" name="_subject" value="Portfolio Contact" />
 
-        {/* ✅ hCaptcha widget */}
-        <div
-          className="h-captcha mt-2"
-          data-sitekey="6f145462-4a76-4c5a-9de8-fb5c5d4e5cda"
-        />
+        {/* hCaptcha widget (use your real Site Key) */}
+        <div className="h-captcha mt-2" data-sitekey="YOUR_HCAPTCHA_SITE_KEY_HERE" />
 
         <button
           type="submit"
           disabled={status === "sending"}
-          className="w-full px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-60"
-        >
-          {status === "sending" ? "Sending…" : "Send message"}
-        </button>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-      </form>
-    </main>
-  );
-}
+          className="w-full px-4 py-2 rounded-xl bg-sla
