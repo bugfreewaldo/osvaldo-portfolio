@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Script from "next/script";
 
-// Tell TypeScript that window.hcaptcha can exist
+// Type window.hcaptcha so we don't need ts-ignore
 declare global {
   interface Window {
     hcaptcha?: { reset: () => void };
@@ -40,10 +40,7 @@ export default function ContactPage() {
       if (res.ok) {
         setStatus("sent");
         form.reset();
-        // Safely reset the hCaptcha widget if present (no ts-ignore needed)
-        if (typeof window !== "undefined") {
-          window.hcaptcha?.reset();
-        }
+        if (typeof window !== "undefined") window.hcaptcha?.reset();
       } else {
         const body = await res.json().catch(() => ({} as any));
         setError((body as any)?.error || "Something went wrong. Please try again.");
@@ -109,10 +106,21 @@ export default function ContactPage() {
         {/* Optional subject */}
         <input type="hidden" name="_subject" value="Portfolio Contact" />
 
-        {/* hCaptcha widget (use your real Site Key) */}
+        {/* hCaptcha widget */}
         <div className="h-captcha mt-2" data-sitekey="YOUR_HCAPTCHA_SITE_KEY_HERE" />
 
         <button
           type="submit"
           disabled={status === "sending"}
-          className="w-full px-4 py-2 rounded-xl bg-sla
+          className="w-full px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-60"
+        >
+          {status === "sending" ? "Sending…" : "Send message"}
+        </button>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <p className="mt-2 text-xs text-slate-500">Spam protection: honeypot + hCaptcha enabled.</p>
+      </form>
+    </main>
+  );
+}
