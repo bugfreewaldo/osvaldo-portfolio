@@ -6,25 +6,33 @@ const skillGroups = [
   { label: "Frontend", items: ["Next.js", "React", "TailwindCSS", "TypeScript"] },
 ];
 
-type Card = { slug: string; title: string; blurb: string; tags: string[] };
-const teaserProjects: Card[] = [
+const proof = [
   {
-    slug: "mila-neonatal-llm",
-    title: "MILA — Neonatal LLM Assistant",
-    blurb: "RAG over hospital docs; clinician-friendly updates.",
-    tags: ["LLM", "RAG", "Healthcare"],
+    area: "RAG & LLMs",
+    bullets: [
+      "RAG over hospital policies (LangChain) with JSON/tool calling",
+      "p95 latency ~900ms on Pinecone small index (replace with your real metric)",
+      "Role-based access + audit-friendly logs",
+    ],
+    link: { href: "/projects/mila-neonatal-llm", label: "MILA case study" },
   },
   {
-    slug: "ai-voice-agent",
-    title: "AI Voice Agent (Shining Image)",
-    blurb: "Answers calls, books jobs, hands off to humans.",
-    tags: ["Agents", "Voice", "Twilio"],
+    area: "Agents & Voice",
+    bullets: [
+      "Asterisk/FreePBX + Twilio SIP trunk; intent-routing to tools",
+      "Call summaries + CRM notes via server actions",
+      "Human handoff with transcript",
+    ],
+    link: { href: "/projects/ai-voice-agent", label: "Voice Agent project" },
   },
   {
-    slug: "stripe-qb-reconcile",
-    title: "Stripe → QuickBooks Reconcile",
-    blurb: "Aggregates fees per payout via automations; clean books.",
-    tags: ["Automation", "Stripe", "QuickBooks"],
+    area: "Automation & Ops",
+    bullets: [
+      "Stripe → QuickBooks payout reconciliation (Zapier)",
+      "Single expense per payout; fewer reconciliation errors",
+      "Hours saved monthly (replace with your real number)",
+    ],
+    link: { href: "/projects/stripe-qb-reconcile", label: "Automation project" },
   },
 ];
 
@@ -97,7 +105,11 @@ export default function Home() {
             <Link href="/projects" className="text-sm underline">See all</Link>
           </div>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6">
-            {teaserProjects.map((p) => (
+            {[
+              { slug: "mila-neonatal-llm", title: "MILA — Neonatal LLM Assistant", blurb: "RAG over hospital docs; clinician-friendly updates.", tags: ["LLM", "RAG", "Healthcare"] },
+              { slug: "ai-voice-agent", title: "AI Voice Agent (Shining Image)", blurb: "Answers calls, books jobs, handoff to humans.", tags: ["Agents", "Voice", "Twilio"] },
+              { slug: "stripe-qb-reconcile", title: "Stripe → QuickBooks Reconcile", blurb: "Aggregates fees per payout; clean books.", tags: ["Automation", "Stripe", "QuickBooks"] },
+            ].map((p) => (
               <Link
                 key={p.slug}
                 href={`/projects/${p.slug}`}
@@ -115,6 +127,34 @@ export default function Home() {
               </Link>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Proof of Skills */}
+      <section id="proof" className="py-12 border-t">
+        <div className="max-w-5xl mx-auto px-4">
+          <h2 className="text-2xl font-bold">Proof of Skills</h2>
+          <p className="text-slate-600 mt-1">Concrete examples and metrics. Replace the placeholders with your real numbers.</p>
+
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6">
+            {proof.map((b) => (
+              <div key={b.area} className="p-5 rounded-2xl ring-1 ring-slate-200">
+                <h3 className="font-semibold">{b.area}</h3>
+                <ul className="mt-3 space-y-2 text-sm list-disc pl-5">
+                  {b.bullets.map((it) => <li key={it}>{it}</li>)}
+                </ul>
+                <div className="mt-4">
+                  <a className="text-sm underline" href={b.link.href}>
+                    {b.link.label}
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-slate-500 mt-3">
+            Tip: make each bullet measurable (p95 latency, accuracy delta, hours saved, $ saved).
+          </p>
         </div>
       </section>
     </main>
