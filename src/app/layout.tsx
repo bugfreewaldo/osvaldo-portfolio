@@ -6,7 +6,7 @@ import Link from "next/link";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("http://localhost:3000"), // change to https://your-domain.com after deploy
+  metadataBase: new URL("https://osvaldorestrepo.dev"), // change to https://your-domain.com after deploy
   title: {
     default: "Osvaldo Restrepo — AI Engineer",
     template: "%s — Osvaldo Restrepo",

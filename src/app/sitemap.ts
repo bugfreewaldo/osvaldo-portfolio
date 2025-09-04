@@ -1,5 +1,5 @@
 export default function sitemap() {
-  const base = "http://localhost:3000"; // change to your real domain after deploy
+  const base = "https://osvaldorestrepo.dev"; // change to your real domain after deploy
 
   return [
     { url: `${base}/`, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
