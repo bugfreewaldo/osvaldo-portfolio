@@ -107,7 +107,7 @@ export default function ContactPage() {
         <input type="hidden" name="_subject" value="Portfolio Contact" />
 
         {/* hCaptcha widget */}
-        <div className="h-captcha mt-2" data-sitekey="YOUR_HCAPTCHA_SITE_KEY_HERE" />
+        <div className="h-captcha mt-2" data-sitekey="6f145462-4a76-4c5a-9de8-fb5c5d4e5cda" />
 
         <button
           type="submit"
