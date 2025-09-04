@@ -25,49 +25,61 @@ export default function ContactPage() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setStatus("sending");
-    setError(null);
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>): Promise<void> {
+  e.preventDefault();
+  setStatus("sending");
+  setError(null);
 
-    const form = e.currentTarget;
-    const data = new FormData(form);
+  const form = e.currentTarget;
+  const data = new FormData(form);
 
-    // Require captcha token before submitting
-    const token = data.get("h-captcha-response");
-    if (!token) {
-      setStatus("idle");
-      setError("Please complete the captcha.");
+  // Create a nicer subject line using the name field
+  const rawName = data.get("name");
+  const name =
+    typeof rawName === "string" && rawName.trim() ? rawName.trim() : "Website contact";
+  data.set("_subject", `Portfolio Contact — ${name}`);
+
+  // Require hCaptcha token before submitting
+  const token = data.get("h-captcha-response");
+  if (!token) {
+    setStatus("idle");
+    setError("Please complete the captcha.");
+    return;
+  }
+
+  try {
+    const res = await fetch("https://formspree.io/f/mzzakedj", {
+      method: "POST",
+      body: data,
+      headers: { Accept: "application/json" },
+    });
+
+    if (res.ok) {
+      setStatus("sent");
+      form.reset();
+      if (typeof window !== "undefined") window.hcaptcha?.reset();
       return;
     }
 
+    // Try to extract a helpful error message from Formspree
+    let message = "Something went wrong. Please try again.";
     try {
-      const res = await fetch("https://formspree.io/f/mzzakedj", {
-        method: "POST",
-        body: data,
-        headers: { Accept: "application/json" },
-      });
-
-      if (res.ok) {
-        setStatus("sent");
-        form.reset();
-        if (typeof window !== "undefined") window.hcaptcha?.reset();
-      } else {
-        let body: unknown = null;
-        try {
-          body = (await res.json()) as FormspreeOk | FormspreeErr;
-        } catch {
-          // ignore JSON parse errors
-        }
-        const msg = extractFormspreeError(body) ?? "Something went wrong. Please try again.";
-        setError(msg);
-        setStatus("error");
+      const body: unknown = await res.json();
+      if (typeof body === "object" && body && "error" in body) {
+        const err = (body as { error?: unknown }).error;
+        if (typeof err === "string" && err.trim()) message = err;
       }
     } catch {
-      setError("Network error. Please try again.");
-      setStatus("error");
+      /* ignore JSON parse errors */
     }
+    setError(message);
+    setStatus("error");
+  } catch {
+    setError("Network error. Please try again.");
+    setStatus("error");
   }
+}
+
 
   if (status === "sent") {
     return (
@@ -93,6 +105,19 @@ export default function ContactPage() {
       <p className="text-slate-600 mt-2">Send me a message. I’ll get an email instantly.</p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+
+        {/* Name */}
+        <label className="block">
+        <span className="text-sm font-medium">Your name</span>
+        <input
+            type="text"
+            name="name"
+            required
+            placeholder="Jane Doe"
+            className="mt-1 w-full rounded-xl ring-1 ring-slate-300 px-3 py-2"
+        />
+        </label>
+
         {/* Email */}
         <label className="block">
           <span className="text-sm font-medium">Your email</span>
