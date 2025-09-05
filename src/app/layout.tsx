@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Link from "next/link";
-import { Analytics } from "@vercel/analytics/next";
+import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://osvaldorestrepo.dev"), // change to https://your-domain.com after deploy
+  metadataBase: new URL("https://osvaldorestrepo.dev"),
   title: {
     default: "Osvaldo Restrepo — AI Engineer",
     template: "%s — Osvaldo Restrepo",
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
       "Projects and case studies in LLMs, RAG, agents, voice, and automation.",
     url: "/",
     siteName: "Osvaldo Restrepo",
-    images: ["/og.png"], // add this file in /public (see note below)
+    images: ["/og.png"],
     locale: "en_US",
     type: "website",
   },
@@ -32,16 +32,19 @@ export const metadata: Metadata = {
       "Projects and case studies in LLMs, RAG, agents, voice, and automation.",
     images: ["/og.png"],
   },
-  alternates: {
-    canonical: "/",
-  },
+  alternates: { canonical: "/" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <header className="border-b">
+      <body
+        className={
+          inter.className +
+          " bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100"
+        }
+      >
+        <header className="border-b dark:border-slate-800">
           <nav className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
             <Link href="/" className="font-semibold">Home</Link>
             <Link href="/projects">Projects</Link>
@@ -50,12 +53,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               href="/Osvaldo_Restrepo_Resume.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="ml-auto px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700"
+              className="ml-auto px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700
+                         dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
             >
               Download CV
             </a>
           </nav>
         </header>
+
         {children}
         <Analytics />
         <SpeedInsights />
