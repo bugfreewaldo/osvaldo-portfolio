@@ -10,16 +10,6 @@ declare global {
   }
 }
 
-type FormspreeOk = { ok: true } & Record<string, unknown>;
-type FormspreeErr = { error?: string } & Record<string, unknown>;
-
-function extractFormspreeError(body: unknown): string | null {
-  if (typeof body === "object" && body !== null && "error" in body) {
-    const err = (body as FormspreeErr).error;
-    return typeof err === "string" ? err : null;
-  }
-  return null;
-}
 
 export default function ContactPage() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");

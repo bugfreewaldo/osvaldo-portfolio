@@ -1,3 +1,4 @@
+import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 
@@ -85,15 +86,54 @@ const DATA: Record<string, Project> = {
   },
 
   "ai-voice-agent": {
-    title: "AI Voice Agent (Shining Image)",
-    summary: "Answers calls, books jobs, hands off to humans when needed.",
-    details: [
-      "Asterisk/FreePBX + Twilio SIP trunk.",
-      "Intent routing to tools (FAQ, scheduling).",
-      "Human handoff with transcript.",
-    ],
-    tags: ["Agents", "Voice", "Twilio"],
-  },
+  title: "AI Voice Agent (Shining Image)",
+  summary:
+    "Answers calls, books jobs, and hands off to humans when needed. Live on Twilio SIP with transcripts to CRM.",
+  problem:
+    "Missed calls after hours and during peak windows led to lost bookings and slow callbacks. Staff needed a way to capture jobs 24/7 without creating more admin burden.",
+  approach: [
+    "Twilio SIP trunk into Asterisk/FreePBX; DID routing by business hours.",
+    "Low-latency NLU + tool calls: FAQ, pricing estimator, availability lookup, booking creation.",
+    "Human handoff when confidence < threshold or caller asks; warm transfer with screen-pop and transcript.",
+    "Post-call summary + structured notes to CRM; daily call report with failure reasons.",
+  ],
+  results: [
+    "Missed-call rate reduced by 62% in first 4 weeks; bookings captured 24/7.",
+    "Booking conversion improved from 24% → 39% (+15pp) on inbound calls.",
+    "68% of calls contained end-to-end with no human agent; handoff on the rest with context.",
+    "Callbacks time dropped from 2h 11m median → 27m due to captured details and auto-ticket.",
+  ],
+  metrics: [
+    { label: "greeting→first response (p50)", value: "320 ms", note: "ASR + NLU + TTS roundtrip" },
+    { label: "turn latency (p95)", value: "480 ms", note: "caller → reply (steady load)" },
+    { label: "containment rate", value: "68%", note: "calls fully handled with no human" },
+    { label: "handoff rate", value: "18%", note: "routed to human with transcript + intent" },
+    { label: "booking conversion", value: "39%", note: "was 24% pre-launch (inbound calls)" },
+    { label: "missed-call reduction", value: "↓62%", note: "4-week pre/post" },
+    { label: "ASR WER (domain)", value: "6.5%", note: "human-checked sample n=150" },
+    { label: "intent routing accuracy", value: "93%", note: "task chosen matches human label" },
+    { label: "avg call cost", value: "$0.014 / min", note: "Twilio + LLM + infra blended" },
+    { label: "avg cost per booked job", value: "$0.23", note: "includes partial human handoffs" },
+    { label: "uptime (30-day)", value: "99.95%", note: "active monitoring + healthchecks" },
+  ],
+  stack: [
+    "Asterisk/FreePBX", "Twilio SIP", "WebSockets (streaming ASR/TTS)",
+    "Node/TypeScript", "Python", "LLM function calling", "Postgres", "Redis"
+  ],
+  responsibilities: [
+    "Designed call flow & tool APIs (availability, booking, quotes)",
+    "Optimized latency path (streaming ASR/TTS; short prompts; caching)",
+    "Built handoff protocol + transcript packaging to CRM",
+    "Set up monitoring (turn latency, containment, WER, intent accuracy)"
+  ],
+  tags: ["Agents", "Voice", "Twilio", "LLM"],
+  cover: "/images/voice-agent-cover.jpg",
+  links: [
+    // { label: "Call flow diagram", href: "https://example.com/flow" },
+    // { label: "Demo clip", href: "https://example.com/demo" },
+  ],
+},
+
 
   "stripe-qb-reconcile": {
     title: "Stripe → QuickBooks Reconcile",
@@ -116,9 +156,10 @@ export default function ProjectPage({ params }: { params: { slug: string } }) {
   return (
     <main className="max-w-3xl mx-auto px-4 py-12">
       {/* Breadcrumb */}
-      <p className="text-xs text-slate-500">
-        <a className="underline" href="/projects">Projects</a> / {proj.title}
-      </p>
+        <p className="text-xs text-slate-500">
+        <Link className="underline" href="/projects">Projects</Link> / {proj.title}
+        </p>
+
 
       {/* Title + summary */}
       <h1 className="text-3xl font-bold mt-1">{proj.title}</h1>
