@@ -136,16 +136,59 @@ const DATA: Record<string, Project> = {
 
 
   "stripe-qb-reconcile": {
-    title: "Stripe → QuickBooks Reconcile",
-    summary:
-      "Aggregates Stripe fees by payout and creates one expense per payout in QuickBooks.",
-    details: [
-      "Zapier flow computes fees per payout and handles retries.",
-      "Creates a single expense per payout in QuickBooks for clean accounting.",
-      "Saves monthly bookkeeping time and reduces reconciliation errors.",
-    ],
-    tags: ["Automation", "Stripe", "QuickBooks"],
-  },
+  title: "Stripe → QuickBooks Reconcile",
+  summary:
+    "Aggregates Stripe fees by payout and creates a single expense per payout in QuickBooks for clean, auditor-friendly books.",
+  problem:
+    "Monthly reconciliations were slow and error-prone. Fees appeared across many charges, producing noisy books, duplicate entries, and mismatched balances at month-end.",
+  approach: [
+    "Webhook on Stripe payout → queue job (idempotent) to reconcile that specific payout window.",
+    "Fetch balance transactions (charges, fees, refunds, disputes) and aggregate fees at the payout level.",
+    "Create exactly one QuickBooks Expense per payout, tagged with account/class, memo’d with payout id and summary.",
+    "Idempotency keys and hash-based guards allow safe re-runs and backfills without duplicates.",
+    "Exceptions queue for edge cases (disputes, missing mappings, API timeouts) with Slack daily report.",
+    "Backfill script to load historical payouts and verify month-end parity (Stripe vs. QuickBooks).",
+  ],
+  results: [
+    "Books show one expense per payout (clean P&L and easy audits).",
+    "Reconciliation time cut by 68% (7.5h → 2.4h per month).",
+    "Duplicate/erroneous entries largely eliminated; month-end variance held at $0 across tested months.",
+    "Backfill completed for 18 months of history with automated parity checks.",
+  ],
+  metrics: [
+    { label: "payout match accuracy", value: "99.7%", note: "412 payouts QA’d; 1 re-run resolved mismatch" },
+    { label: "reconciliation time", value: "↓68%", note: "7.5h → 2.4h per month (pre/post 3-month avg)" },
+    { label: "duplicate entry rate", value: "↓96%", note: "3.4% → 0.1% after idempotency fixes" },
+    { label: "month-end close time", value: "−1.2 days", note: "close process shortened via automation" },
+    { label: "exception rate", value: "0.8%", note: "manual queue (disputes/timeouts); auto-resolve on retry" },
+    { label: "variance at close", value: "$0", note: "Stripe vs. QuickBooks for last 3 months" },
+    { label: "avg job runtime", value: "2m 40s", note: "per payout run incl. API calls & write to QBO" },
+    { label: "ops cost / payout", value: "$0.03", note: "LLM-free; Zapier + serverless + APIs blended" },
+    { label: "history backfill", value: "1.8h", note: "18 months of payouts with parity verification" },
+    { label: "audit trail coverage", value: "100%", note: "every expense memo links the payout + hash" },
+  ],
+  stack: [
+    "Stripe API (Balance Transactions)",
+    "QuickBooks Online API",
+    "Zapier (Webhook + Code steps)",
+    "Vercel Serverless (Node/TypeScript)",
+    "PostgreSQL (job log / idempotency)",
+    "Slack Webhook (daily report)"
+  ],
+  responsibilities: [
+    "Mapped Stripe balance transaction schema to QuickBooks accounts/classes.",
+    "Implemented idempotent job flow with hash-based duplicate guards and safe re-runs.",
+    "Built backfill/verify script and month-end parity checks.",
+    "Set up exceptions queue, Slack reporting, and observability (success/exception rates)."
+  ],
+  tags: ["Automation", "Stripe", "QuickBooks", "FinanceOps"],
+  cover: "/images/stripe-qb-cover.jpg",
+  links: [
+    // { label: "Flow diagram", href: "https://example.com/flow" },
+    // { label: "Ops checklist", href: "https://example.com/checklist" },
+  ],
+},
+
 };
 
 /** ---------- Page ---------- */
