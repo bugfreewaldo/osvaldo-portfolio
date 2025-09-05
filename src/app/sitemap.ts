@@ -1,9 +1,10 @@
 export default function sitemap() {
-  const base = "https://osvaldorestrepo.dev"; // change to your real domain after deploy
+  const base = "https://osvaldorestrepo.dev"; // new domain - beautiful :)
 
   return [
     { url: `${base}/`, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
     { url: `${base}/projects`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
+    { url: `${base}/about`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.4 },
     { url: `${base}/contact`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.3 },
 
     // Project detail pages

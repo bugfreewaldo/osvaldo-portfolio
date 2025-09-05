@@ -46,19 +46,21 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       >
         <header className="border-b dark:border-slate-800">
           <nav className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
-            <Link href="/" className="font-semibold">Home</Link>
-            <Link href="/projects">Projects</Link>
-            <Link href="/contact">Contact</Link>
-            <a
-              href="/Osvaldo_Restrepo_Resume.pdf"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-auto px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700
-                         dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-            >
-              Download CV
-            </a>
-          </nav>
+  <Link href="/" className="font-semibold">Home</Link>
+  <Link href="/projects">Projects</Link>
+  <Link href="/about">About</Link> {/* ← added */}
+  <Link href="/contact">Contact</Link>
+  <a
+    href="/Osvaldo_Restrepo_Resume.pdf"
+    target="_blank"
+    rel="noopener noreferrer"
+    className="ml-auto px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700
+               dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+  >
+    Download CV
+  </a>
+</nav>
+
         </header>
 
         {children}
