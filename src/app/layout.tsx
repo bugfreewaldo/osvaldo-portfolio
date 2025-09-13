@@ -48,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <nav className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
   <Link href="/" className="font-semibold">Home</Link>
   <Link href="/projects">Projects</Link>
+  <Link href="/demo">Demo</Link>
   <Link href="/about">About</Link> {/* ← added */}
   <Link href="/contact">Contact</Link>
   <Link href="/process">Process</Link>
