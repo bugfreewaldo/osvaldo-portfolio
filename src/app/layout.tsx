@@ -50,6 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   <Link href="/projects">Projects</Link>
   <Link href="/about">About</Link> {/* ← added */}
   <Link href="/contact">Contact</Link>
+  <Link href="/process">Process</Link>
   <a
     href="/Osvaldo_Restrepo_Resume.pdf"
     target="_blank"

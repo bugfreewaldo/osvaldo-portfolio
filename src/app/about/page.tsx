@@ -1,3 +1,4 @@
+import Testimonials from "../components/Testimonials";
 export const metadata = { title: "About & Education" };
 
 // ---------- Education ----------
@@ -167,6 +168,8 @@ export default function AboutPage() {
           Tip: list only items relevant to AI/engineering or that signal rigor (cloud, data, security).
         </p>
       </section>
+      <Testimonials />
+
     </main>
   );
 }
