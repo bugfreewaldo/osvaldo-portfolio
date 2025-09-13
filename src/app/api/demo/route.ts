@@ -12,8 +12,15 @@ const bucket = new Map<string, { count: number; reset: number }>();
 function getIP(req: NextRequest): string {
   const xff = req.headers.get("x-forwarded-for");
   if (xff) return xff.split(",")[0].trim();
-  // fallback
   return req.headers.get("x-real-ip") ?? "anon";
+}
+
+type DemoPayload = { q: string };
+
+function isDemoPayload(x: unknown): x is DemoPayload {
+  if (typeof x !== "object" || x === null) return false;
+  const rec = x as Record<string, unknown>;
+  return typeof rec.q === "string";
 }
 
 export async function POST(req: NextRequest) {
@@ -44,9 +51,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: unknown;
+  let bodyUnknown: unknown;
   try {
-    body = await req.json();
+    bodyUnknown = await req.json();
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON body." }), {
       status: 400,
@@ -54,11 +61,14 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const q =
-    body && typeof (body as any).q === "string"
-      ? ((body as any).q as string).trim()
-      : "";
+  if (!isDemoPayload(bodyUnknown)) {
+    return new Response(JSON.stringify({ error: "Missing 'q' field." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
+  const q = bodyUnknown.q.trim();
   if (!q) {
     return new Response(JSON.stringify({ error: "Missing 'q' field." }), {
       status: 400,
