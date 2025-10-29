@@ -134,7 +134,7 @@ export default function Home() {
       <section id="proof" className="py-12 border-t">
         <div className="max-w-5xl mx-auto px-4">
           <h2 className="text-2xl font-bold">Proof of Skills</h2>
-          <p className="text-slate-600 mt-1">Concrete examples and metrics. Replace the placeholders with your real numbers.</p>
+          <p className="text-slate-600 mt-1">Concrete examples and metrics.</p>
 
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 mt-6">
             {proof.map((b) => (
@@ -151,10 +151,6 @@ export default function Home() {
               </div>
             ))}
           </div>
-
-          <p className="text-xs text-slate-500 mt-3">
-            Tip: make each bullet measurable (p95 latency, accuracy delta, hours saved, $ saved).
-          </p>
         </div>
       </section>
     </main>

@@ -96,6 +96,7 @@ const DATA: Record<string, Project> = {
     "Low-latency NLU + tool calls: FAQ, pricing estimator, availability lookup, booking creation.",
     "Human handoff when confidence < threshold or caller asks; warm transfer with screen-pop and transcript.",
     "Post-call summary + structured notes to CRM; daily call report with failure reasons.",
+    "Elevenlabs + OpenAI for realistic voice generation"
   ],
   results: [
     "Missed-call rate reduced by 62% in first 4 weeks; bookings captured 24/7.",
@@ -127,10 +128,10 @@ const DATA: Record<string, Project> = {
     "Set up monitoring (turn latency, containment, WER, intent accuracy)"
   ],
   tags: ["Agents", "Voice", "Twilio", "LLM"],
-  cover: "/images/voice-agent-cover.jpg",
+  cover: "/images/voice-agent-cover.png",
   links: [
-    // { label: "Call flow diagram", href: "https://example.com/flow" },
-    // { label: "Demo clip", href: "https://example.com/demo" },
+    // existing links...
+  { label: "📞 Call the live demo", href: "tel:+17372774602" },
   ],
 },
 

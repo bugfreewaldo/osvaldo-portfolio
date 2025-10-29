@@ -10,7 +10,6 @@ declare global {
   }
 }
 
-
 export default function ContactPage() {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
