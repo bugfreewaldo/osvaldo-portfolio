@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Link from "next/link";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import Header from "./components/Header";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -44,26 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           " bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100"
         }
       >
-        <header className="border-b dark:border-slate-800">
-          <nav className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-6">
-  <Link href="/" className="font-semibold">Home</Link>
-  <Link href="/projects">Projects</Link>
-  <Link href="/demo">Demo</Link>
-  <Link href="/about">About</Link> {/* ← added */}
-  <Link href="/contact">Contact</Link>
-  <Link href="/process">Process</Link>
-  <a
-    href="/Osvaldo_Restrepo_Resume.pdf"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="ml-auto px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-700
-               dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
-  >
-    Download CV
-  </a>
-</nav>
-
-        </header>
+        <Header />
 
         {children}
         <Analytics />
