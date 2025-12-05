@@ -229,7 +229,7 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
             >
-              <span className="text-slate-900 dark:text-white">Hey, I'm </span>
+              <span className="text-slate-900 dark:text-white">Hey, I&apos;m </span>
               <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
                 Waldo
               </span>
@@ -509,10 +509,10 @@ export default function Home() {
           transition={{ duration: 0.6 }}
         >
           <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
-            Let's Build Something
+            Let&apos;s Build Something
           </h2>
           <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-            Looking for an AI engineer who ships production systems? Let's talk.
+            Looking for an AI engineer who ships production systems? Let&apos;s talk.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
@@ -540,7 +540,7 @@ export default function Home() {
           <p>© {new Date().getFullYear()} Osvaldo Restrepo</p>
           <p className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse" />
-            Built with AI, obviously. An AI engineer not using AI? That'd be weird.
+            Built with AI, obviously. An AI engineer not using AI? That&apos;d be weird.
           </p>
         </div>
       </footer>

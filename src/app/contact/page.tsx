@@ -138,7 +138,7 @@ export default function ContactPage() {
               Message Sent!
             </h1>
             <p className="text-slate-600 dark:text-slate-400 mt-3 text-lg">
-              Thanks for reaching out. I'll get back to you as soon as possible.
+              Thanks for reaching out. I&apos;ll get back to you as soon as possible.
             </p>
 
             <motion.button
@@ -186,7 +186,7 @@ export default function ContactPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
           >
-            <span className="text-slate-900 dark:text-white">Let's </span>
+            <span className="text-slate-900 dark:text-white">Let&apos;s </span>
             <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
               Connect
             </span>
@@ -199,7 +199,7 @@ export default function ContactPage() {
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             Have a project in mind? Want to discuss AI solutions for your business?
-            Drop me a message and I'll get back to you promptly.
+            Drop me a message and I&apos;ll get back to you promptly.
           </motion.p>
         </div>
       </section>

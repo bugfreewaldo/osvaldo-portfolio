@@ -4,7 +4,14 @@
       "Bash(npm run dev:*)",
       "Bash(npm install)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nrefactor: complete portfolio redesign with AI theme\n\n- Redesign home page with AI engineer branding and rotating text carousel\n- Add new Header component with mobile menu and gradient styling\n- Update Contact page with glassmorphism design and contact methods sidebar\n- Revamp Process page with friendly NO-BS messaging and AI transparency section\n- Update About and Projects pages to match new theme\n- Add profile picture and custom favicon/icons\n- Remove demo page and API route\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit -m \"$(cat <<''EOF''\nrefactor: complete portfolio redesign with AI theme\n\n- Redesign home page with AI engineer branding and rotating text carousel\n- Add new Header component with mobile menu and gradient styling\n- Update Contact page with glassmorphism design and contact methods sidebar\n- Revamp Process page with friendly NO-BS messaging and AI transparency section\n- Update About and Projects pages to match new theme\n- Add profile picture and custom favicon/icons\n- Remove demo page and API route\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)",
+      "Bash(vercel --version:*)",
+      "Bash(npx vercel:*)",
+      "Bash(vercel:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run build:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: escape apostrophes for ESLint react/no-unescaped-entities\n\n- Fix unescaped apostrophes in contact, page, process, projects pages\n- Remove unused Rocket import from process page\n- Remove unused technicalSkills variable from about page\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []

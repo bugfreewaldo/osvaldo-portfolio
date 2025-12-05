@@ -171,15 +171,6 @@ const education = [
   },
 ];
 
-// ---------- Technical Skills ----------
-const technicalSkills = {
-  languages: ["JavaScript", "TypeScript", "Python", "SQL", "HTML/CSS", "PHP"],
-  frameworks: ["React", "Next.js", "NestJS", "Flask", "LangChain"],
-  ai: ["GPT-4/Claude", "Twilio", "ElevenLabs", "Pinecone", "Weaviate"],
-  infrastructure: ["AWS", "Azure", "Docker", "GitHub Actions", "Zapier"],
-  methodologies: ["Agile", "Scrum", "CI/CD", "TDD"],
-};
-
 const skills = [
   { icon: Bot, label: "LLMs & RAG", items: ["GPT-4/Claude", "LangChain", "Pinecone", "Weaviate", "Embeddings"] },
   { icon: Code, label: "Full-Stack", items: ["TypeScript", "React", "Next.js", "NestJS", "Python", "Flask"] },

@@ -181,7 +181,7 @@ export default function ProjectsPage() {
             Have a project in mind?
           </h2>
           <p className="mt-3 text-slate-600 dark:text-slate-400">
-            Let's discuss how AI can solve your specific challenges.
+            Let&apos;s discuss how AI can solve your specific challenges.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             <Link

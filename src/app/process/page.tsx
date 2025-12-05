@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import {
-  Target, Rocket, Shield, TrendingUp, ArrowRight,
+  Target, Shield, TrendingUp, ArrowRight,
   CheckCircle, XCircle, Zap, MessageSquare, Clock,
   Search, Code, BarChart3, Settings, Bot, Brain
 } from "lucide-react";
@@ -155,7 +155,7 @@ export default function ProcessPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
           >
-            Here's what working with me actually looks like.
+            Here&apos;s what working with me actually looks like.
             No corporate process theater. No death by meetings.
             Just building things that work.
           </motion.p>
@@ -172,7 +172,7 @@ export default function ProcessPage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            What You Get When I'm Your AI Partner
+            What You Get When I&apos;m Your AI Partner
           </motion.h2>
 
           <div className="grid sm:grid-cols-2 gap-6">
@@ -217,7 +217,7 @@ export default function ProcessPage() {
             >
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <XCircle className="w-6 h-6 text-red-500" />
-                What I Don't Do
+                What I Don&apos;t Do
               </h3>
               <ul className="space-y-3">
                 {noBs.map((item, i) => (
@@ -281,7 +281,7 @@ export default function ProcessPage() {
               The Process (Keep It Simple)
             </h2>
             <p className="mt-3 text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-              Four phases. Clear goals. No mystery. You always know where we are and what's next.
+              Four phases. Clear goals. No mystery. You always know where we are and what&apos;s next.
             </p>
           </motion.div>
 
@@ -357,12 +357,12 @@ export default function ProcessPage() {
                 </h3>
                 <p className="text-slate-600 dark:text-slate-400 mt-2">
                   <strong>First working demo:</strong> 1-2 weeks. <strong>Production-ready:</strong> 4-8 weeks,
-                  depending on complexity. I'll give you an honest estimate upfront, and I'll tell you immediately
+                  depending on complexity. I&apos;ll give you an honest estimate upfront, and I&apos;ll tell you immediately
                   if anything changes.
                 </p>
                 <p className="text-sm text-slate-500 mt-3">
-                  Every project is different. Sometimes it's faster. Sometimes we discover complexity.
-                  Either way, you'll never be surprised.
+                  Every project is different. Sometimes it&apos;s faster. Sometimes we discover complexity.
+                  Either way, you&apos;ll never be surprised.
                 </p>
               </div>
             </div>
@@ -389,12 +389,12 @@ export default function ProcessPage() {
                   Yes, I Use AI to Build. And So Should You.
                 </h3>
                 <p className="text-slate-600 dark:text-slate-400 mt-3">
-                  Let's be real: I'm an AI engineer. Of course I use AI in my workflow.
-                  Copilot, Claude, GPT — they're in my toolkit every day. It would be absurd not to.
+                  Let&apos;s be real: I&apos;m an AI engineer. Of course I use AI in my workflow.
+                  Copilot, Claude, GPT — they&apos;re in my toolkit every day. It would be absurd not to.
                 </p>
                 <p className="text-slate-600 dark:text-slate-400 mt-3">
                   <strong className="text-slate-900 dark:text-white">What this means for you:</strong> You get someone who actually knows how to leverage these tools
-                  to move faster without sacrificing quality. I don't blindly copy-paste AI output —
+                  to move faster without sacrificing quality. I don&apos;t blindly copy-paste AI output —
                   I review, test, and take full responsibility for every line of code that ships.
                 </p>
                 <div className="mt-6 grid sm:grid-cols-2 gap-4">
@@ -423,13 +423,13 @@ export default function ProcessPage() {
                     <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="font-medium text-slate-900 dark:text-white text-sm">Full Accountability</p>
-                      <p className="text-sm text-slate-500">AI wrote it? Doesn't matter. I ship it, I own it.</p>
+                      <p className="text-sm text-slate-500">AI wrote it? Doesn&apos;t matter. I ship it, I own it.</p>
                     </div>
                   </div>
                 </div>
                 <p className="text-sm text-slate-500 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
-                  If you want someone who pretends AI doesn't exist, I'm not your guy.
-                  But if you want someone who knows how to use it <em>properly</em> to get you results faster — let's talk.
+                  If you want someone who pretends AI doesn&apos;t exist, I&apos;m not your guy.
+                  But if you want someone who knows how to use it <em>properly</em> to get you results faster — let&apos;s talk.
                 </p>
               </div>
             </div>
@@ -450,14 +450,14 @@ export default function ProcessPage() {
             Ready to Build Something Real?
           </h2>
           <p className="mt-3 text-slate-600 dark:text-slate-400">
-            Let's talk about what you're trying to solve. No commitment, no pitch deck required.
+            Let&apos;s talk about what you&apos;re trying to solve. No commitment, no pitch deck required.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
               href="/contact"
               className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
             >
-              Let's Talk
+              Let&apos;s Talk
               <ArrowRight className="w-4 h-4" />
             </Link>
             <Link
