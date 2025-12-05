@@ -11,7 +11,9 @@
       "Bash(vercel:*)",
       "Bash(git commit:*)",
       "Bash(npm run build:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nfix: escape apostrophes for ESLint react/no-unescaped-entities\n\n- Fix unescaped apostrophes in contact, page, process, projects pages\n- Remove unused Rocket import from process page\n- Remove unused technicalSkills variable from about page\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: escape apostrophes for ESLint react/no-unescaped-entities\n\n- Fix unescaped apostrophes in contact, page, process, projects pages\n- Remove unused Rocket import from process page\n- Remove unused technicalSkills variable from about page\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm install:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nchore: upgrade Next.js to 16.0.7\n\nFix Vercel deployment blocking due to CVE-2025-66478\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
