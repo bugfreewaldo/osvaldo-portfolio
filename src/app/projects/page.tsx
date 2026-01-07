@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, ExternalLink, Sparkle, Droplets } from "lucide-react";
+import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Droplets, Car } from "lucide-react";
 
 export default function ProjectsPage() {
   return (
@@ -56,64 +56,51 @@ export default function ProjectsPage() {
       <section className="relative px-4 pb-16">
         <div className="max-w-6xl mx-auto">
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project, i) => {
-              const isExternal = 'external' in project && project.external;
-              const CardWrapper = isExternal ? 'a' : Link;
-              const cardProps = isExternal
-                ? { href: project.external, target: "_blank", rel: "noopener noreferrer" }
-                : { href: `/projects/${project.slug}` };
-
-              return (
-                <motion.div
-                  key={project.slug}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: 0.05 * i }}
+            {projects.map((project, i) => (
+              <motion.div
+                key={project.slug}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.05 * i }}
+              >
+                <Link
+                  href={`/projects/${project.slug}`}
+                  className="group block h-full"
                 >
-                  <CardWrapper
-                    {...cardProps}
-                    className="group block h-full"
-                  >
-                    <div className="relative h-full p-6 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10">
-                      {/* Header */}
-                      <div className="flex items-start gap-3 mb-4">
-                        <div className={`p-2.5 rounded-xl bg-gradient-to-br ${project.gradient} shrink-0`}>
-                          <project.icon className="w-5 h-5 text-white" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <h2 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
-                              {project.title}
-                            </h2>
-                            {isExternal && (
-                              <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
-                            )}
-                          </div>
-                          <p className="text-sm text-slate-500">{project.subtitle}</p>
-                        </div>
+                  <div className="relative h-full p-6 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10">
+                    {/* Header */}
+                    <div className="flex items-start gap-3 mb-4">
+                      <div className={`p-2.5 rounded-xl bg-gradient-to-br ${project.gradient} shrink-0`}>
+                        <project.icon className="w-5 h-5 text-white" />
                       </div>
-
-                      {/* Description */}
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 line-clamp-3">
-                        {project.description}
-                      </p>
-
-                      {/* Stack */}
-                      <div className="flex flex-wrap gap-1.5 mt-auto">
-                        {project.stack.map((tech) => (
-                          <span
-                            key={tech}
-                            className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                          >
-                            {tech}
-                          </span>
-                        ))}
+                      <div className="min-w-0">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                          {project.title}
+                        </h2>
+                        <p className="text-sm text-slate-500">{project.subtitle}</p>
                       </div>
                     </div>
-                  </CardWrapper>
-                </motion.div>
-              );
-            })}
+
+                    {/* Description */}
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 line-clamp-3">
+                      {project.description}
+                    </p>
+
+                    {/* Stack */}
+                    <div className="flex flex-wrap gap-1.5 mt-auto">
+                      {project.stack.map((tech) => (
+                        <span
+                          key={tech}
+                          className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                        >
+                          {tech}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            ))}
           </div>
         </div>
       </section>
@@ -267,5 +254,16 @@ const projects = [
     gradient: "from-cyan-500 to-teal-500",
     stack: ["Next.js", "TypeScript", "Prisma", "PostgreSQL", "Stripe"],
     external: "https://shining-image.vercel.app",
+  },
+  {
+    slug: "autospa-bqt",
+    title: "AutoSpa BQT",
+    subtitle: "Mobile Car Detailing Platform",
+    description:
+      "Full booking, invoicing, and scheduling system for AutoSpa—a mobile business that brings luxury car cleaning directly to your home.",
+    icon: Car,
+    gradient: "from-red-500 to-rose-500",
+    stack: ["Next.js", "TypeScript", "Prisma", "PostgreSQL", "Stripe", "Vercel"],
+    external: "https://autospabqt.com",
   },
 ];
