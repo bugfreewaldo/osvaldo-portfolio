@@ -28,7 +28,7 @@ function RotatingText() {
   }, []);
 
   return (
-    <div className="relative h-8 overflow-hidden">
+    <div className="relative h-14 sm:h-8 overflow-hidden">
       <AnimatePresence mode="wait">
         <motion.span
           key={currentIndex}
@@ -214,10 +214,10 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-sm mb-6">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm mb-6">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
                 Available for projects
               </div>
@@ -323,14 +323,25 @@ export default function Home() {
               {/* Rotating gradient border */}
               <div className="relative p-1 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500">
                 <div className="p-1 rounded-full bg-white dark:bg-slate-950">
-                  <Image
-                    src="/images/waldoprofilepic.png"
-                    alt="Waldo - AI Engineer"
-                    width={280}
-                    height={280}
-                    className="rounded-full object-cover w-48 h-48 sm:w-64 sm:h-64 lg:w-72 lg:h-72"
-                    priority
-                  />
+                  <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 lg:w-72 lg:h-72">
+                    {/* Tech background pattern */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 opacity-60">
+                      {/* Animated grid pattern */}
+                      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
+                      {/* Radial glow */}
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
+                      {/* Subtle animated pulse */}
+                      <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-cyan-500/5 rounded-full blur-xl animate-pulse" />
+                    </div>
+                    <Image
+                      src="/images/waldoprofilepic.png"
+                      alt="Waldo - AI Engineer"
+                      width={280}
+                      height={280}
+                      className="relative z-10 rounded-full object-cover w-full h-full"
+                      priority
+                    />
+                  </div>
                 </div>
               </div>
 

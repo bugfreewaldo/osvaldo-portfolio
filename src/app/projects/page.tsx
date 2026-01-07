@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { motion } from "framer-motion";
-import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap } from "lucide-react";
+import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, ExternalLink, Sparkle, Droplets } from "lucide-react";
 
 export default function ProjectsPage() {
   return (
@@ -56,7 +55,7 @@ export default function ProjectsPage() {
       {/* Projects Grid */}
       <section className="relative px-4 pb-16">
         <div className="max-w-6xl mx-auto">
-          <div className="grid gap-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project, i) => {
               const isExternal = 'external' in project && project.external;
               const CardWrapper = isExternal ? 'a' : Link;
@@ -65,103 +64,54 @@ export default function ProjectsPage() {
                 : { href: `/projects/${project.slug}` };
 
               return (
-              <motion.div
-                key={project.slug}
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.1 * i }}
-              >
-                <CardWrapper
-                  {...cardProps}
-                  className="group block"
+                <motion.div
+                  key={project.slug}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.05 * i }}
                 >
-                  <div className="relative overflow-hidden rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10">
-                    <div className="grid md:grid-cols-2 gap-0">
-                      {/* Image */}
-                      <div className="relative h-64 md:h-80 overflow-hidden">
-                        {project.cover ? (
-                          <Image
-                            src={project.cover}
-                            alt={project.title}
-                            fill
-                            className="object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-cyan-500/20 flex items-center justify-center">
-                            <project.icon className="w-16 h-16 text-indigo-500/50" />
+                  <CardWrapper
+                    {...cardProps}
+                    className="group block h-full"
+                  >
+                    <div className="relative h-full p-6 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10">
+                      {/* Header */}
+                      <div className="flex items-start gap-3 mb-4">
+                        <div className={`p-2.5 rounded-xl bg-gradient-to-br ${project.gradient} shrink-0`}>
+                          <project.icon className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h2 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                              {project.title}
+                            </h2>
+                            {isExternal && (
+                              <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
+                            )}
                           </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:via-transparent md:to-white/80 dark:md:to-slate-900/80" />
-
-                        {/* Mobile title overlay */}
-                        <div className="absolute bottom-4 left-4 right-4 md:hidden">
-                          <h2 className="text-xl font-bold text-white">
-                            {project.title}
-                          </h2>
+                          <p className="text-sm text-slate-500">{project.subtitle}</p>
                         </div>
                       </div>
 
-                      {/* Content */}
-                      <div className="p-6 md:p-8 flex flex-col justify-center">
-                        {/* Desktop title */}
-                        <div className="hidden md:flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className={`p-2 rounded-xl bg-gradient-to-br ${project.gradient}`}>
-                              <project.icon className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                              <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                {project.title}
-                              </h2>
-                              <p className="text-sm text-slate-500">{project.subtitle}</p>
-                            </div>
-                          </div>
-                        </div>
+                      {/* Description */}
+                      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 line-clamp-3">
+                        {project.description}
+                      </p>
 
-                        {/* Mobile subtitle */}
-                        <p className="text-sm text-slate-500 mb-3 md:hidden">{project.subtitle}</p>
-
-                        <p className="text-slate-600 dark:text-slate-400 mb-4">
-                          {project.description}
-                        </p>
-
-                        {/* Metrics */}
-                        <div className="flex flex-wrap gap-3 mb-4">
-                          {project.metrics.map((metric) => (
-                            <div
-                              key={metric.label}
-                              className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800"
-                            >
-                              <span className="text-xs text-slate-500">{metric.label}: </span>
-                              <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
-                                {metric.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Tags */}
-                        <div className="flex flex-wrap gap-2 mb-4">
-                          {project.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="text-xs px-2 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* CTA */}
-                        <div className="flex items-center gap-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 group-hover:gap-3 transition-all">
-                          {isExternal ? "Visit site" : "View case study"}
-                          <ArrowRight className="w-4 h-4" />
-                        </div>
+                      {/* Stack */}
+                      <div className="flex flex-wrap gap-1.5 mt-auto">
+                        {project.stack.map((tech) => (
+                          <span
+                            key={tech}
+                            className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                          >
+                            {tech}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                </CardWrapper>
-              </motion.div>
+                  </CardWrapper>
+                </motion.div>
               );
             })}
           </div>
@@ -206,15 +156,9 @@ const projects = [
     subtitle: "Neonatal LLM Assistant",
     description:
       "RAG-powered assistant helping NICU clinicians draft parent-facing updates aligned with hospital policies. Reduced drafting time by 42% with zero hallucinations in sent messages.",
-    cover: "/images/mila-cover.jpg",
     icon: Brain,
     gradient: "from-purple-500 to-indigo-500",
-    tags: ["LLM", "RAG", "Healthcare", "LangChain"],
-    metrics: [
-      { label: "Latency p95", value: "820ms" },
-      { label: "Draft time", value: "↓42%" },
-      { label: "Accuracy@3", value: "95%" },
-    ],
+    stack: ["Python", "LangChain", "Pinecone", "FastAPI", "OpenAI"],
   },
   {
     slug: "ai-voice-agent",
@@ -222,15 +166,9 @@ const projects = [
     subtitle: "Shining Image",
     description:
       "24/7 AI phone agent handling inbound calls, booking jobs, and handing off to humans when needed. Live on Twilio SIP with real-time transcripts to CRM.",
-    cover: "/images/voice-agent-cover.png",
     icon: Phone,
     gradient: "from-indigo-500 to-cyan-500",
-    tags: ["Agents", "Voice", "Twilio", "Real-time"],
-    metrics: [
-      { label: "Containment", value: "68%" },
-      { label: "Conversion", value: "+15pp" },
-      { label: "Latency p50", value: "320ms" },
-    ],
+    stack: ["Python", "Twilio", "Whisper", "GPT-4", "WebSockets"],
   },
   {
     slug: "stripe-qb-reconcile",
@@ -238,31 +176,19 @@ const projects = [
     subtitle: "Stripe → QuickBooks",
     description:
       "Automated financial reconciliation that aggregates Stripe fees by payout and creates clean QuickBooks entries. Cut monthly reconciliation time by 68%.",
-    cover: null,
     icon: CreditCard,
     gradient: "from-emerald-500 to-teal-500",
-    tags: ["Automation", "Stripe", "QuickBooks", "FinOps"],
-    metrics: [
-      { label: "Accuracy", value: "99.7%" },
-      { label: "Time saved", value: "↓68%" },
-      { label: "Variance", value: "$0" },
-    ],
+    stack: ["Node.js", "Stripe API", "QuickBooks API", "PostgreSQL"],
   },
   {
     slug: "9vectors",
     title: "9Vectors.ai",
     subtitle: "Strategic Assessment Platform",
     description:
-      "AI-powered strategic assessment platform helping enterprises make data-driven decisions. As Technical Co-Founder for Edwin Miller, built the core AI infrastructure powering organizational intelligence at scale.",
-    cover: null,
+      "AI-powered strategic assessment platform helping enterprises make data-driven decisions. As Technical Co-Founder, built the core AI infrastructure powering organizational intelligence at scale.",
     icon: Target,
     gradient: "from-rose-500 to-orange-500",
-    tags: ["AI Platform", "Enterprise", "Co-Founder", "Strategy"],
-    metrics: [
-      { label: "Valuation", value: "$150M+" },
-      { label: "Role", value: "Tech Co-Founder" },
-      { label: "Scale", value: "Enterprise" },
-    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "AWS"],
     external: "https://9vectors.ai",
   },
   {
@@ -271,15 +197,9 @@ const projects = [
     subtitle: "AI-Powered Analytics",
     description:
       "Advanced measurement and analytics platform leveraging AI to transform raw data into actionable business insights. Built for organizations seeking precision in performance tracking.",
-    cover: null,
     icon: BarChart3,
     gradient: "from-blue-500 to-indigo-500",
-    tags: ["Analytics", "AI", "Measurement", "SaaS"],
-    metrics: [
-      { label: "Type", value: "SaaS" },
-      { label: "Focus", value: "Analytics" },
-      { label: "Stack", value: "AI/ML" },
-    ],
+    stack: ["React", "Python", "TensorFlow", "BigQuery", "GCP"],
     external: "https://measurement13.ai",
   },
   {
@@ -288,15 +208,9 @@ const projects = [
     subtitle: "Business Transformation Platform",
     description:
       "Comprehensive business transformation platform that captures, analyzes, and optimizes organizational processes using AI. Enables companies to visualize and improve their operational efficiency.",
-    cover: null,
     icon: Camera,
     gradient: "from-violet-500 to-purple-500",
-    tags: ["Enterprise", "Transformation", "AI", "Operations"],
-    metrics: [
-      { label: "Type", value: "Platform" },
-      { label: "Focus", value: "Transformation" },
-      { label: "Target", value: "Enterprise" },
-    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
     external: "https://snapshot9.ai",
   },
   {
@@ -305,15 +219,9 @@ const projects = [
     subtitle: "Business Intelligence Platform",
     description:
       "AI-driven business intelligence platform that turns complex data into clear, actionable insights. Designed to help leadership teams make faster, smarter decisions with confidence.",
-    cover: null,
     icon: Lightbulb,
     gradient: "from-slate-500 to-zinc-600",
-    tags: ["Business Intelligence", "AI", "Analytics", "Decision Support"],
-    metrics: [
-      { label: "Type", value: "BI Platform" },
-      { label: "Focus", value: "Intelligence" },
-      { label: "Users", value: "Leadership" },
-    ],
+    stack: ["React", "Node.js", "OpenAI", "MongoDB", "AWS"],
     external: "https://thegreymatter.ai",
   },
   {
@@ -322,15 +230,9 @@ const projects = [
     subtitle: "AI Financial Agent",
     description:
       "Your personal AI financial agent that helps you take control of your money. Manage budgets, track debts, set savings goals, and get personalized advice to kill debt faster and build wealth.",
-    cover: null,
     icon: Wallet,
     gradient: "from-green-500 to-emerald-500",
-    tags: ["AI Agent", "FinTech", "Personal Finance", "Automation"],
-    metrics: [
-      { label: "Type", value: "AI Agent" },
-      { label: "Focus", value: "Finance" },
-      { label: "Users", value: "Consumer" },
-    ],
+    stack: ["Next.js", "OpenAI", "Plaid", "PostgreSQL", "Vercel"],
     external: "https://budgetcopilot.app",
   },
   {
@@ -339,15 +241,31 @@ const projects = [
     subtitle: "Free Coding School",
     description:
       "A hands-on, free coding school helping teens and kids learn programming step by step. Built live with no fluff—focused on practical skills that prepare young developers for real-world opportunities.",
-    cover: null,
     icon: GraduationCap,
     gradient: "from-amber-500 to-yellow-500",
-    tags: ["Education", "Free", "Kids & Teens", "Coding"],
-    metrics: [
-      { label: "Cost", value: "Free" },
-      { label: "Audience", value: "Teens & Kids" },
-      { label: "Style", value: "Hands-on" },
-    ],
+    stack: ["Next.js", "TypeScript", "Tailwind", "Vercel"],
     external: "https://waldoscodelab.com",
+  },
+  {
+    slug: "clearchoiceboquete",
+    title: "Clear Choice Boquete",
+    subtitle: "Booking Engine & Website",
+    description:
+      "Full-stack website and booking engine for Clear Choice Window Cleaning. Customers can browse services, check availability, and book appointments seamlessly.",
+    icon: Droplets,
+    gradient: "from-sky-500 to-blue-500",
+    stack: ["Next.js", "TypeScript", "Tailwind", "PostgreSQL", "Vercel"],
+    external: "https://clearchoiceboquete.com",
+  },
+  {
+    slug: "shining-image-platform",
+    title: "Shining Image Platform",
+    subtitle: "Business Operations Suite",
+    description:
+      "Complete business operations platform with booking, invoicing, and scheduling for Shining Image of Texas. Streamlines customer management and automates business workflows.",
+    icon: Sparkle,
+    gradient: "from-cyan-500 to-teal-500",
+    stack: ["Next.js", "TypeScript", "Prisma", "PostgreSQL", "Stripe"],
+    external: "https://shining-image.vercel.app",
   },
 ];
