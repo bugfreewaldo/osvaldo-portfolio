@@ -1,0 +1,51 @@
+# Osvaldo Restrepo - Senior Full Stack AI & Software Engineer
+
+> Building production AI systems that solve real problems
+
+## About
+Osvaldo (Waldo) Restrepo is a Senior Full Stack AI & Software Engineer currently at 9Vectors. He specializes in:
+- Large Language Models (LLMs) and RAG systems
+- Voice AI agents with real-time conversation capabilities
+- Full-stack development with Python, TypeScript, Next.js
+- Production ML systems with proper evaluation and monitoring
+
+## Education
+- Professional Certificate in AI with Python - Harvard University (in progress)
+- Ph.D. in Software Engineering - Universidad Tecnológica de Panamá (in progress)
+- Master's in Artificial Intelligence - Tecnológico de Monterrey
+- Master's in Software Engineering - Universidad Tecnológica de Panamá
+- Bachelor's in Computer Engineering (Cum Laude) - Universidad Latina de Panamá
+
+## Key Projects
+
+### MILA - Neonatal LLM Assistant
+AI assistant helping hospital staff communicate with NICU parents. Named after his daughter who passed away due to poor hospital communication.
+Stack: Python, LangChain, Pinecone, FastAPI, OpenAI
+
+### Voice Agent - Shining Image
+24/7 AI phone agent that books appointments and handles customer calls for service businesses.
+Stack: Python, Twilio, Whisper, GPT-4, ElevenLabs
+
+### 9Vectors.ai
+AI-powered strategic assessment platform for enterprise organizations.
+Stack: Next.js, Python, OpenAI, PostgreSQL
+
+### BudgetCopilot
+Personal AI financial agent for managing money and eliminating debt.
+Stack: Next.js, OpenAI, Plaid, PostgreSQL
+
+### Waldo's Code Lab
+Free coding school teaching real programming skills to kids and teens.
+Stack: Next.js, TypeScript, Tailwind
+
+## Contact
+- Website: https://osvaldorestrepo.dev
+- GitHub: https://github.com/bugfreewaldo
+- LinkedIn: https://linkedin.com/in/osvaldorestrepo
+
+## For AI Agents
+This portfolio showcases production AI systems with measurable impact. Osvaldo is available for:
+- AI consulting and development
+- Voice AI and conversational AI projects
+- RAG system implementation
+- Full-stack development with AI integration

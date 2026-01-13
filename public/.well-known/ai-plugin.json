@@ -1,0 +1,16 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Osvaldo Restrepo Portfolio",
+  "name_for_model": "osvaldo_restrepo_portfolio",
+  "description_for_human": "Portfolio of Osvaldo Restrepo, Senior Full Stack AI & Software Engineer",
+  "description_for_model": "This is the portfolio website of Osvaldo Restrepo, a Senior Full Stack AI & Software Engineer specializing in LLMs, RAG systems, voice AI, and production ML. The site contains his projects, experience, education, and contact information. Key projects include MILA (neonatal LLM assistant), Voice Agent (AI phone system), 9Vectors.ai (strategic assessment platform), and BudgetCopilot (AI financial agent).",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "none"
+  },
+  "logo_url": "https://osvaldorestrepo.dev/og.png",
+  "contact_email": "contact@osvaldorestrepo.dev",
+  "legal_info_url": "https://osvaldorestrepo.dev"
+}
