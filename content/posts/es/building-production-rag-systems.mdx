@@ -1,0 +1,296 @@
+---
+title: "Construyendo Sistemas RAG en Producción: Lecciones de IA en Salud"
+description: "Guía práctica para construir sistemas de Generación Aumentada por Recuperación confiables para producción, con ejemplos reales de la construcción de MILA, un asistente LLM neonatal."
+date: 2024-01-15
+updated: 2024-01-20
+published: true
+category: "Ingeniería de IA"
+tags: ["RAG", "LangChain", "Pinecone", "IA en Salud", "LLM", "HIPAA"]
+author: "Osvaldo Restrepo"
+translationOf: "building-production-rag-systems"
+tldr: "Los sistemas RAG en producción necesitan tres cosas: recuperación confiable con fragmentación adecuada, evaluación robusta (retrieval@k, verificaciones de factualidad), y barreras de seguridad para dominios sensibles como la salud."
+faqs:
+  - question: "¿Qué es RAG y por qué usarlo?"
+    answer: "RAG (Generación Aumentada por Recuperación) combina recuperación de documentos con generación LLM. Reduce las alucinaciones al fundamentar las respuestas en documentos fuente reales, haciéndolo esencial para aplicaciones donde la precisión es crítica."
+  - question: "¿Cómo se evalúa la calidad de un sistema RAG?"
+    answer: "Usa métricas como retrieval@k (¿se recuperaron los documentos correctos?), fidelidad de respuesta (¿la respuesta está fundamentada en las fuentes?), y corrección de extremo a extremo. Construye suites de regresión para detectar degradación de calidad."
+  - question: "¿Qué modelo de embeddings debo usar?"
+    answer: "Para contenido general en inglés, text-embedding-3-small ofrece buena calidad a bajo costo. Para contenido específico de dominio (médico, legal), considera ajuste fino o modelos especializados."
+  - question: "¿Es posible construir sistemas RAG compatibles con HIPAA?"
+    answer: "Sí, pero requiere cifrado en reposo y en tránsito, registro de auditoría completo, Acuerdos de Asociado Comercial con todos los proveedores, controles de acceso basados en roles, y principios de datos mínimos necesarios."
+relatedPosts: []
+---
+
+Cuando construí MILA, un asistente LLM neonatal para comunicación hospitalaria, aprendí que RAG en producción es fundamentalmente diferente de RAG en demos. Esta guía comparte esas lecciones.
+
+## La Verificación de Realidad en Producción
+
+La mayoría de los tutoriales de RAG te muestran cómo embeder documentos y consultarlos. Eso te lleva al 60% del camino. El otro 40% es lo que mantiene el sistema confiable en producción.
+
+<Callout type="tip" title="Perspectiva Clave">
+Los sistemas RAG fallan silenciosamente. A diferencia de los crashes, las fallas de recuperación solo producen respuestas incorrectas que suenan plausibles. Necesitas evaluación incorporada desde el día uno.
+</Callout>
+
+## Preparación de Documentos
+
+### Estrategia de Fragmentación
+
+El tamaño del fragmento importa más de lo que piensas. Para las políticas hospitalarias de MILA:
+
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,
+    chunk_overlap=50,
+    separators=["\n\n", "\n", ". ", " "]
+)
+```
+
+<Callout type="warning" title="Error Común">
+No uses fragmentación de tamaño fijo para documentos estructurados. Los documentos de políticas tienen secciones que deben mantenerse juntas. Usa fragmentación semántica cuando sea posible.
+</Callout>
+
+### Los Metadatos Son Esenciales
+
+Cada fragmento necesita metadatos para filtrado y citación:
+
+```python
+{
+    "source": "politica_alimentacion_v2.pdf",
+    "section": "Guías de Lactancia",
+    "page": 12,
+    "last_updated": "2024-01-10",
+    "applicable_units": ["UCIN", "UCIP"]
+}
+```
+
+## Pipeline de Recuperación
+
+### Búsqueda Híbrida
+
+La búsqueda puramente vectorial pierde coincidencias exactas. La búsqueda puramente por palabras clave pierde similitud semántica. Usa ambas:
+
+```python
+from pinecone import Pinecone
+
+# Búsqueda vectorial
+vector_results = index.query(
+    vector=query_embedding,
+    top_k=10,
+    include_metadata=True
+)
+
+# Impulso por palabras clave para términos médicos
+keyword_boost = boost_results_containing(
+    results=vector_results,
+    terms=extract_medical_terms(query)
+)
+```
+
+## Marco de Evaluación
+
+Aquí es donde la mayoría de los equipos toman atajos. No lo hagas.
+
+### Calidad de Recuperación
+
+```python
+def evaluate_retrieval(queries: list[Query], k: int = 5):
+    """Mide si los documentos relevantes aparecen en los top-k resultados."""
+    results = []
+    for query in queries:
+        retrieved = retriever.get_relevant_docs(query.text, k=k)
+        retrieved_ids = {doc.id for doc in retrieved}
+        relevant_ids = set(query.relevant_doc_ids)
+
+        recall_at_k = len(retrieved_ids & relevant_ids) / len(relevant_ids)
+        results.append(recall_at_k)
+
+    return sum(results) / len(results)
+```
+
+### Fidelidad de Respuesta
+
+Verifica si las respuestas están fundamentadas en los documentos recuperados:
+
+```python
+def check_faithfulness(answer: str, sources: list[str]) -> float:
+    """Usa LLM para verificar que las afirmaciones están respaldadas por las fuentes."""
+    prompt = f"""
+    Respuesta: {answer}
+    Fuentes: {sources}
+
+    Para cada afirmación en la respuesta, ¿está respaldada por las fuentes?
+    Devuelve una puntuación de 0-1.
+    """
+    return llm_evaluate(prompt)
+```
+
+## Barreras de Seguridad en Producción
+
+### Humano en el Bucle
+
+Para MILA, ningún mensaje va a los padres sin aprobación del médico:
+
+```python
+class MessageWorkflow:
+    async def generate_draft(self, context: dict) -> Draft:
+        draft = await self.rag_chain.invoke(context)
+        draft.status = "pending_review"
+        return draft
+
+    async def approve(self, draft_id: str, clinician_id: str):
+        # Registrar aprobación para pista de auditoría
+        await self.audit_log.record(draft_id, clinician_id, "approved")
+        return await self.send_to_family(draft_id)
+```
+
+### Detección de Incertidumbre
+
+Cuando la confianza de recuperación es baja, dilo:
+
+```python
+if max(retrieval_scores) < CONFIDENCE_THRESHOLD:
+    return {
+        "response": "No tengo suficiente información para responder esto con precisión.",
+        "suggested_action": "Por favor consulte la base de datos de políticas directamente o pregunte a un supervisor.",
+        "retrieval_scores": retrieval_scores
+    }
+```
+
+## Cumplimiento HIPAA para RAG en Salud
+
+Construir sistemas de IA que manejan Información de Salud Protegida (PHI) requiere adherencia estricta a las regulaciones HIPAA. Esto no es opcional. Es ley federal.
+
+### Los Esenciales de la Regla de Seguridad HIPAA
+
+<Callout type="danger" title="Crítico">
+Cualquier sistema RAG que procese PHI debe implementar salvaguardas administrativas, físicas y técnicas. Las violaciones pueden resultar en multas de hasta $1.5 millones por incidente.
+</Callout>
+
+Para MILA, implementamos estas salvaguardas técnicas:
+
+```python
+class HIPAACompliantRAG:
+    def __init__(self):
+        self.encryption = AES256Encryption()
+        self.audit_logger = HIPAAAuditLog()
+        self.access_control = RoleBasedAccessControl()
+
+    async def query(self, user: User, query: str) -> Response:
+        # 1. Verificar autorización del usuario
+        if not self.access_control.can_access_phi(user):
+            self.audit_logger.log_unauthorized_attempt(user, query)
+            raise UnauthorizedAccessError()
+
+        # 2. Registrar todo acceso a PHI (requerido por HIPAA)
+        access_id = self.audit_logger.log_phi_access(
+            user_id=user.id,
+            purpose="patient_communication",
+            timestamp=datetime.utcnow()
+        )
+
+        # 3. Procesar con cifrado en tránsito
+        response = await self._process_query(query)
+
+        # 4. Registrar generación de respuesta
+        self.audit_logger.log_response_generated(access_id, response.id)
+
+        return response
+```
+
+### Requisitos de Manejo de Datos
+
+PHI en tu base de datos vectorial requiere manejo especial:
+
+1. **Cifrado en reposo** - Todos los embeddings y metadatos deben estar cifrados
+2. **Cifrado en tránsito** - TLS 1.2+ para todas las llamadas API
+3. **Registro de acceso** - Cada consulta que toque PHI debe registrarse con ID de usuario, timestamp y propósito
+4. **Mínimo necesario** - Solo recuperar el PHI mínimo necesario para la tarea
+
+```python
+# MAL: Almacenar PHI crudo en metadatos
+chunk_metadata = {
+    "patient_name": "Juan Pérez",  # Nunca hagas esto
+    "mrn": "12345678"
+}
+
+# BIEN: Referencias desidentificadas con controles de acceso
+chunk_metadata = {
+    "document_id": "encrypted_ref_abc123",
+    "content_type": "care_protocol",
+    "phi_level": "restricted",
+    "requires_authorization": True
+}
+```
+
+### Acuerdos de Asociado Comercial
+
+<Callout type="warning" title="Requisito Legal">
+Cada proveedor en tu pipeline RAG (proveedor LLM, base de datos vectorial, host cloud) debe firmar un Acuerdo de Asociado Comercial (BAA) antes de procesar PHI.
+</Callout>
+
+Para la infraestructura de MILA:
+- **OpenAI** - Acuerdo enterprise con BAA
+- **Pinecone** - Nivel elegible para HIPAA con BAA
+- **AWS** - BAA cubriendo todos los servicios usados
+
+### Requisitos de Pista de Auditoría
+
+HIPAA requiere que rastrees quién accedió a qué PHI y cuándo. Esto no es solo logging, es documentación legal:
+
+```python
+class HIPAAAuditLog:
+    def log_phi_access(
+        self,
+        user_id: str,
+        purpose: str,
+        timestamp: datetime,
+        patient_ids: list[str] | None = None
+    ) -> str:
+        """
+        Crea registro de auditoría inmutable para acceso a PHI.
+        Retención: mínimo 6 años según requisitos HIPAA.
+        """
+        record = AuditRecord(
+            id=generate_uuid(),
+            user_id=user_id,
+            action="PHI_ACCESS",
+            purpose=purpose,
+            timestamp=timestamp,
+            patient_ids=hash_patient_ids(patient_ids),  # Almacenar hasheados
+            ip_address=get_client_ip(),
+            user_agent=get_user_agent()
+        )
+
+        # Escribir a almacén de auditoría inmutable
+        self.audit_store.append(record)
+
+        return record.id
+```
+
+## Monitoreo en Producción
+
+Rastrea estas métricas diariamente:
+
+1. **Latencia de recuperación** - p50 y p95
+2. **Tasa de recuperación vacía** - consultas sin documentos relevantes
+3. **Señales de feedback de usuarios** - ediciones, rechazos, regeneraciones
+4. **Costo por consulta** - tokens de embedding + LLM
+
+## Conclusión
+
+RAG en producción requiere más que buena recuperación. Necesita:
+
+- Preparación de documentos reflexiva con metadatos
+- Búsqueda híbrida para robustez
+- Evaluación continua con pruebas de regresión
+- Barreras de seguridad apropiadas para tu dominio
+- Monitoreo que detecte fallas silenciosas
+- **Cumplimiento HIPAA** para aplicaciones de salud (cifrado, pistas de auditoría, BAAs)
+
+La diferencia entre una demo y producción es confianza. Construye sistemas que la merezcan.
+
+---
+
+*¿Tienes preguntas sobre sistemas RAG? [Contáctame](/contact) o revisa mi [proyecto MILA](/projects/mila-neonatal-llm) para más detalles.*

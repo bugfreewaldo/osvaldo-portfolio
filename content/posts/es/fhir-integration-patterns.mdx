@@ -1,0 +1,213 @@
+---
+title: "Patrones de Integración HL7 FHIR: Guía para Desarrolladores"
+description: "Patrones prácticos para integrar con sistemas de salud usando FHIR. Cubre autenticación, mapeo de recursos, datos masivos, y lecciones de integraciones reales con EHR."
+date: 2025-11-25
+updated: 2025-12-02
+published: true
+category: "Tecnología en Salud"
+tags: ["FHIR", "HL7", "Salud", "API", "Interoperabilidad"]
+author: "Osvaldo Restrepo"
+translationOf: "fhir-integration-patterns"
+tldr: "FHIR es el estándar moderno para intercambio de datos de salud. Usa SMART on FHIR para auth, entiende las referencias de recursos, maneja datos parciales con gracia, y prueba contra sandboxes reales de EHR, no solo cumplimiento de spec."
+faqs:
+  - question: "¿Qué es HL7 FHIR?"
+    answer: "FHIR (Fast Healthcare Interoperability Resources) es un estándar para intercambiar datos de salud electrónicamente. Usa APIs web modernas (REST, JSON) a diferencia de estándares más antiguos como HL7v2 que usan formatos de mensaje personalizados."
+  - question: "¿Cómo funciona la autenticación SMART on FHIR?"
+    answer: "SMART on FHIR es OAuth 2.0 adaptado para salud. Las apps solicitan scopes específicos (ej., patient/*.read), los usuarios autorizan acceso, y se emiten tokens con permisos limitados y expiración."
+  - question: "¿Por qué diferentes EHRs implementan FHIR de manera diferente?"
+    answer: "FHIR permite extensiones y elementos opcionales. Cada EHR (Epic, Cerner, etc.) hace diferentes elecciones sobre qué soportar. Siempre prueba contra el sandbox de tu EHR objetivo, no solo validadores genéricos de FHIR."
+  - question: "¿Qué es FHIR Bulk Data?"
+    answer: "Bulk Data Access es una especificación FHIR para exportar grandes conjuntos de datos asincrónicamente. En lugar de solicitudes página por página, solicitas un trabajo de exportación y descargas archivos ndjson cuando están listos. Esencial para analytics y salud poblacional."
+relatedPosts: ["building-production-rag-systems", "healthcare-software-ux"]
+---
+
+La interoperabilidad en salud ha mejorado dramáticamente con FHIR. Pero la especificación es compleja, las implementaciones varían, y las integraciones del mundo real tienen trampas que la documentación no menciona.
+
+He integrado con Epic, Cerner, y varios EHRs más pequeños. Cada uno fue diferente a pesar de nominalmente soportar el mismo estándar. Este post cubre lo que aprendí de la manera difícil.
+
+## FHIR en Español Sencillo
+
+Antes de FHIR, el intercambio de datos de salud era una pesadilla. Los mensajes HL7v2 lucían así:
+
+```
+MSH|^~\&|HIS|MedCenter|LIS|MedCenter|20060307110114||ORM^O01|...
+PID|||12001||Jones^John^^^Mr.||19670824|M|||123 Main St.^^Anywhere ...
+```
+
+Parsear esto requería conocimiento especializado y mucho manejo de casos límite. Cada sistema implementaba el estándar ligeramente diferente.
+
+FHIR modernizó esto con APIs REST y JSON. Un paciente luce así:
+
+```json
+{
+  "resourceType": "Patient",
+  "id": "123",
+  "name": [{"family": "García", "given": ["Juan"]}],
+  "birthDate": "1967-08-24"
+}
+```
+
+Mucho mejor. Pero "mucho mejor que HL7v2" es un listón bajo. FHIR todavía tiene mucha complejidad.
+
+## Recursos: Los Bloques de Construcción
+
+FHIR modela datos de salud como recursos: Patient, Observation, Condition, MedicationRequest, Encounter, y muchos otros. Los recursos se referencian entre sí. Una Observation referencia al Patient al que pertenece. Un MedicationRequest referencia el Encounter donde se ordenó.
+
+Los recursos comunes con los que trabajarás:
+
+| Recurso | Qué Contiene | Uso Típico |
+|---------|--------------|------------|
+| Patient | Demografía, identificadores | Identidad central |
+| Observation | Labs, signos vitales, evaluaciones | Datos clínicos |
+| Condition | Diagnósticos, problemas | Lista de problemas |
+| MedicationRequest | Prescripciones | Órdenes de medicamentos |
+| Encounter | Visitas, admisiones | Episodio de atención |
+| DocumentReference | Documentos clínicos | Notas, reportes |
+| DiagnosticReport | Paneles de laboratorio, resultados de imágenes | Resultados agrupados |
+
+La primera sorpresa para la mayoría de los desarrolladores: Patient no contiene datos clínicos. Un recurso Patient tiene demografía. Los datos clínicos viven en Observations, Conditions, y otros recursos que *referencian* al Patient.
+
+Esto significa que no puedes simplemente obtener un paciente y tener todo. Necesitas obtener el paciente, luego buscar sus observations, sus conditions, sus medicamentos. Cada uno es una llamada API separada (aunque puedes agruparlas).
+
+## Autenticación: SMART on FHIR
+
+SMART on FHIR es OAuth 2.0 adaptado para salud. Si has implementado OAuth antes, la mayoría te será familiar. Pero hay peculiaridades específicas de salud.
+
+### El Flujo
+
+1. Tu app descubre los endpoints de autorización del EHR (desde una URL well-known)
+2. Rediriges al usuario para autenticar y autorizar tu app
+3. El usuario inicia sesión en el EHR, otorga permisos
+4. Recibes un código de autorización
+5. Intercambias el código por un access token
+6. Usas el token para llamar APIs FHIR
+
+OAuth estándar hasta ahora. Las partes específicas de salud:
+
+**Los scopes son granulares.** En lugar de "leer datos del usuario," solicitas "patient/Observation.read" (leer observations para el paciente actual) o "patient/*.read" (leer todo para el paciente actual). Deberías solicitar los permisos mínimos necesarios.
+
+**El contexto del paciente se pasa con el token.** Cuando un médico lanza tu app desde el EHR mientras ve a un paciente, recibes un ID de paciente junto con tu access token. Esto te dice a qué paciente estás autorizado a acceder.
+
+**La expiración del token importa.** Los tokens de salud a menudo tienen tiempos de vida cortos (60 minutos es común). Para procesamiento en segundo plano, necesitas refresh tokens y el scope "offline_access".
+
+<Callout type="tip" title="Diseño de Scopes">
+Empieza con scopes de solo lectura. El acceso de escritura requiere más escrutinio de los equipos de revisión de apps del EHR y de los clientes. Si no necesitas escribir, no lo pidas.
+</Callout>
+
+## La Spec vs. La Realidad
+
+Aquí es donde la teoría se encuentra con la práctica. La spec FHIR es extensa, pero permite enorme flexibilidad. Lo que significa que diferentes EHRs la implementan diferente.
+
+### Cada Campo Es Opcional (Básicamente)
+
+Un recurso Patient *puede* tener fecha de nacimiento, teléfono, dirección, múltiples identificadores, múltiples nombres. Pero la mayoría de estos son opcionales en la spec.
+
+En la práctica, esto significa que obtendrás pacientes sin teléfonos, sin direcciones, a veces sin fechas de nacimiento. Tu código debe manejar datos faltantes con gracia. Nunca asumas que un campo existe solo porque debería.
+
+Aprendí esto de la manera difícil. Construimos una funcionalidad que dependía de teléfonos de pacientes para notificaciones. Funcionó genial en pruebas. En producción, el 30% de los pacientes no tenía teléfono en el EHR. Nuestro sistema de notificación "confiable" estaba fallando silenciosamente para un tercio de los usuarios.
+
+Ahora cada acceso a campo es defensivo. Si no está ahí, manéjalo. No crashes, no pantallas en blanco, no mensajes malformados.
+
+### Los Nombres Son Complicados
+
+Un paciente FHIR puede tener múltiples nombres (legal, apodo, de soltera, etc.). Cada nombre puede tener múltiples nombres dados (primero, segundo). Los nombres pueden tener prefijos, sufijos, períodos de validez.
+
+```json
+"name": [
+  {
+    "use": "official",
+    "family": "García",
+    "given": ["Juan", "Roberto"]
+  },
+  {
+    "use": "nickname",
+    "text": "Juanito"
+  }
+]
+```
+
+Tu código necesita elegir el nombre correcto. Típicamente prefiero el uso "official" si está presente, recurro al primer nombre en la lista, y uso "text" si los componentes estructurados faltan.
+
+### Los Valores Tienen Múltiples Tipos
+
+El valor de una Observation puede ser una cantidad (número con unidades), una cadena, un concepto codificable (valor codificado), un booleano, una razón, y más. La spec lo llama "value[x]" donde x es el tipo.
+
+```json
+// Numérico
+"valueQuantity": {"value": 95, "unit": "mg/dL"}
+
+// Codificado
+"valueCodeableConcept": {"coding": [{"code": "positive", "display": "Positivo"}]}
+
+// Cadena
+"valueString": "El paciente reporta mejoría"
+
+// Componente (como presión arterial)
+"component": [
+  {"code": {...}, "valueQuantity": {"value": 120, "unit": "mmHg"}},
+  {"code": {...}, "valueQuantity": {"value": 80, "unit": "mmHg"}}
+]
+```
+
+Tu código necesita manejar todos estos casos.
+
+## Probando Contra EHRs Reales
+
+El validador FHIR te dirá si tus solicitudes cumplen con la spec. No te dirá si funcionarán con Epic o Cerner.
+
+<Callout type="warning" title="Spec vs. Realidad">
+La spec FHIR permite muchos elementos opcionales. Epic, Cerner, y otros EHRs implementan diferentes subconjuntos. Siempre prueba contra el sandbox de tu EHR objetivo, no solo validadores genéricos.
+</Callout>
+
+### Obtén Acceso al Sandbox Temprano
+
+Epic, Cerner, y otros EHRs importantes tienen programas para desarrolladores con ambientes sandbox. Regístrate temprano. El proceso de aprobación puede tomar días o semanas.
+
+Cada sandbox tiene pacientes de prueba con cantidades variables de datos. Encuentra pacientes que representen tus casos límite: pacientes con muchas observations, pacientes con datos mínimos, pacientes con formatos de nombre inusuales.
+
+## Bulk Data: Cuando Página por Página No Alcanza
+
+Para analytics y salud poblacional, obtener una página a la vez es muy lento. Un hospital con 100,000 pacientes y millones de observations tomaría una eternidad.
+
+FHIR Bulk Data Access resuelve esto. Solicitas un trabajo de exportación, el servidor lo procesa asincrónicamente, y descargas archivos NDJSON cuando están listos.
+
+El flujo:
+1. POST o GET a /$export con tus parámetros
+2. Recibe un 202 Accepted con un header Content-Location apuntando a una URL de estado
+3. Consulta la URL de estado hasta obtener 200 (completo) en lugar de 202 (procesando)
+4. Descarga los archivos NDJSON de las URLs en la respuesta
+
+Para exportaciones grandes, esto puede tomar horas. Tu código necesita manejar consultas, reintentos, timeouts, y fallas parciales con gracia.
+
+## Errores Comunes
+
+**Asumir que los datos existen.** Los campos son opcionales. Las referencias pueden estar rotas. Los códigos pueden estar en sistemas que no reconoces.
+
+**Ignorar los sistemas de codificación.** Un código de diagnóstico puede ser ICD-10, ICD-9, SNOMED, o un código local. Tu código necesita verificar el sistema, no solo el valor del código.
+
+**Expiración de token en operaciones largas.** Si estás haciendo exportación de datos masivos o procesamiento de datos grandes, tu token puede expirar a mitad de operación. Implementa refresh de token.
+
+**Límites de velocidad.** Los EHRs tienen límites de velocidad. A menudo no están claramente documentados. Implementa backoff exponencial.
+
+<Callout type="danger" title="Manejo de PHI">
+Los recursos FHIR contienen Información de Salud Protegida. Registra solo IDs (no recursos completos), cifra en reposo, audita acceso, y asegura que tu cliente HTTP no cachee respuestas con datos de pacientes.
+</Callout>
+
+## La Lista de Verificación de Integración
+
+Antes de ir a producción con una integración FHIR:
+
+- [ ] Probado contra sandbox real de EHR (no solo validadores)
+- [ ] Maneja campos faltantes/opcionales en toda la app
+- [ ] Refresh de token implementado para operaciones largas
+- [ ] Manejo de límite de velocidad con backoff
+- [ ] Logging incluye IDs de solicitud pero no PHI
+- [ ] Mensajes de error son útiles sin exponer internos
+- [ ] Exportación de datos masivos funciona para volúmenes esperados
+- [ ] Documentadas las diferencias entre EHRs objetivo
+
+FHIR ha hecho posible la integración de salud de maneras que no lo era antes. Pero no confundas "posible" con "fácil." El estándar es complejo, las implementaciones varían, y los datos de salud son desordenados. Construye defensivamente, prueba exhaustivamente, y espera sorpresas.
+
+---
+
+*¿Construyendo una integración FHIR? [Contáctame](/contact) para discutir tus requisitos de interoperabilidad.*

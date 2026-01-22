@@ -1,0 +1,159 @@
+---
+title: "Diseñando para Médicos: Lecciones de UX de Software de Salud"
+description: "Lo que aprendí diseñando MILA y otras aplicaciones de salud. Los médicos tienen 15 segundos entre pacientes, así que diseña para esa realidad."
+date: 2026-01-05
+updated: 2026-01-12
+published: true
+category: "Diseño de Producto"
+tags: ["Salud", "UX", "Diseño de Producto", "MILA", "Flujos de Trabajo Clínicos"]
+author: "Osvaldo Restrepo"
+translationOf: "healthcare-software-ux"
+tldr: "El UX en salud se trata de respetar el tiempo del médico. Diseña para interrupciones, nunca requieras mouse cuando las teclas funcionan, muestra solo lo que importa para la decisión actual, y prueba con médicos reales, no proxies."
+faqs:
+  - question: "¿Por qué el software de salud a menudo está mal diseñado?"
+    answer: "Está construido para satisfacer a comités de compra (administradores), no a usuarios finales (médicos). Las funcionalidades que se ven bien en RFPs a menudo crean fricción en el flujo de trabajo. Los médicos raramente eligen sus herramientas."
+  - question: "¿Cómo diseñas para flujos de trabajo interrumpidos?"
+    answer: "Asume que cada tarea será interrumpida. Auto-guarda constantemente, haz la recuperación de estado instantánea, diseña para cambio rápido de contexto. Un médico podría volver a una nota a medio completar horas después."
+  - question: "¿El software de salud debería usar modo oscuro?"
+    answer: "Depende del ambiente. Habitaciones brillantes (la mayoría de clínicas) necesitan interfaces claras. Configuraciones con poca luz (radiología, turnos nocturnos) se benefician del modo oscuro. Mejor: da a los usuarios control y recuerda su preferencia por dispositivo."
+  - question: "¿Qué tan importante es móvil para software clínico?"
+    answer: "Crítico para algunos flujos (rondas, junto a la cama), irrelevante para otros (documentación detallada). Diseña móvil para referencia rápida e input simple; tareas complejas necesitan teclados completos."
+relatedPosts: ["building-production-rag-systems"]
+---
+
+Después de construir MILA, un asistente LLM neonatal, y trabajar en varias aplicaciones clínicas, he aprendido que el UX en salud no es solo "UX regular pero cuidadoso." Es un contexto de diseño fundamentalmente diferente, y tuve que desaprender mucho de lo que pensé que sabía sobre buen diseño.
+
+La primera vez que vi a un hospitalista usar software que había ayudado a construir, estaba horrorizado. No por bugs, sino por lo *equivocadas* que estaban mis suposiciones sobre cómo interactuarían con él.
+
+## La Realidad Clínica Que La Mayoría de Diseñadores No Ven
+
+Un hospitalista ve 15-20 pacientes por día. Entre pacientes, tienen tal vez 15 minutos para documentación si tienen suerte. Durante esos 15 minutos, son interrumpidos por alertas de buscapersonas, enfermeras con preguntas, familiares queriendo actualizaciones, y otros médicos necesitando consultas.
+
+Tu software compite por segundos, no minutos.
+
+No entendí completamente esto hasta que pasé una semana siguiendo a médicos. Vi a una doctora interrumpida *once veces* mientras escribía una sola nota de progreso. Once. Y tenía que retomar exactamente donde lo dejó cada vez, o empezar de nuevo.
+
+<Callout type="tip" title="Principio de Diseño">
+Si toma más de 3 clicks o 10 segundos, los médicos encontrarán un workaround. Esos workarounds a menudo involucran notas adhesivas, lo que derrota el propósito de tu software por completo. He visto UCIs con notas adhesivas cubriendo monitores de computadora porque el sistema oficial era muy lento.
+</Callout>
+
+## Lección 1: Diseña para Interrupciones
+
+El trabajo clínico es inherentemente interrumpible. Una enfermera hace una pregunta. Se llama una respuesta rápida. Un familiar llega inesperadamente. El paciente de la habitación 4 de repente está inestable.
+
+Cada funcionalidad que diseño ahora asume que será interrumpida a mitad de tarea.
+
+### Auto-guarda Todo, Siempre
+
+Esto parece obvio, pero no puedo decirte cuántas aplicaciones clínicas requieren un botón de guardar manual. ¡En 2025! Una doctora escribe una nota, la llaman para una emergencia, vuelve una hora después, y todo lo que escribió se fue.
+
+Implementamos auto-guardado agresivo con feedback visible. Cada tecla dispara un guardado con debounce. Los usuarios ven un pequeño indicador mostrando "Guardado" o "Guardando..." todo el tiempo. Suena menor, pero los médicos empezaron a confiar en el sistema porque podían ver que estaba protegiendo su trabajo.
+
+### Recuperación de Estado Que Realmente Funciona
+
+Más allá de solo guardar texto, almacenamos todo: posición del cursor, ubicación del scroll, qué secciones estaban expandidas, qué había en la caja de búsqueda. Cuando un médico vuelve a una tarea a medio terminar, debería verse exactamente como lo dejó.
+
+## Lección 2: Diseño Keyboard-First
+
+Los médicos a menudo usan estaciones de trabajo compartidas con ratones subóptimos. El ratón podría estar pegajoso, posicionado incómodamente, o simplemente faltando. Un buen usuario de teclado es 3x más rápido que un usuario de ratón para entrada de datos, y los médicos lo saben.
+
+Aprendí esta lección vergonzosamente tarde. Teníamos una hermosa interfaz con funcionalidad intuitiva de drag-and-drop. Los médicos la odiaron. Querían mantener sus manos en el teclado y nunca alcanzar el ratón.
+
+### Cada Acción Tiene un Atajo
+
+Ahora diseñamos atajos de teclado antes de diseñar la UI. Cada acción significativa debería poder hacerse sin tocar un ratón. Guardar, enviar, navegar secciones, buscar pacientes, abrir plantillas comunes. Si tienes que hacer click con el ratón, ya has fallado a un subconjunto de tus usuarios.
+
+### Minimiza los Modales
+
+Los modales son un anti-patrón de UX en configuraciones clínicas. Cada modal requiere que el usuario se detenga, lea, tome una decisión, y haga click. Eso son cuatro pasos cognitivos para lo que podría ser una confirmación simple.
+
+En lugar de "¿Estás seguro de que quieres marcar esto como revisado?" con botones Sí/No, mostramos una confirmación inline con opción de deshacer. Un click marca como revisado. Si fue un error, un click más lo deshace. El happy path es una acción, no tres.
+
+## Lección 3: Densidad de Información Bien Hecha
+
+Aquí es donde el UX de salud difiere más del UX de consumo. El consejo estándar es "simplifica, reduce, muestra menos." En contextos clínicos, eso a menudo está mal.
+
+Los médicos necesitan displays de información densos. Están entrenados para escanear grandes cantidades de datos rápidamente y extraer lo que importa. Un panel de resultados de laboratorio con seis números visibles es mejor que seis clicks para ver cada número individualmente.
+
+Pero denso no significa desordenado. El desafío es mostrar mucha información de una manera que soporte comprensión rápida.
+
+### Revelación Progresiva con Intención
+
+Usamos revelación progresiva, pero reflexivamente. La vista resumen muestra todo lo que un médico necesita para una decisión rápida. Expandir muestra todo lo que podrían necesitar para un análisis más profundo.
+
+La clave es entender qué significa "decisión rápida" clínicamente. Para un resultado de laboratorio, la decisión rápida es: ¿este valor es anormal y requiere acción? Así que mostramos el valor, indicamos visualmente si está fuera de rango, y mostramos la tendencia. Todo lo demás (rangos de referencia, tipo de muestra, médico que ordenó) está disponible pero no es primario.
+
+### Codificación de Colores Que Funciona Clínicamente
+
+Usamos un patrón de semáforo pero con semántica clínica:
+
+- **Fondos rojos**: Esto necesita atención *ahora*. Valores críticos, alertas de emergencia.
+- **Ámbar/amarillo**: Esto es notable. Anormal pero no crítico, items pendientes.
+- **Neutral (gris/blanco)**: Esto es normal o esperado. No se necesita acción.
+- **Azul**: Esto es informacional. Actualizaciones de estado, items FYI.
+
+La perspectiva crítica: nunca confiamos solo en el color. El ocho por ciento de los hombres tiene alguna forma de daltonismo rojo-verde. Cada elemento codificado por color también tiene un ícono, patrón, o etiqueta de texto.
+
+<Callout type="warning" title="Daltonismo">
+El 8% de los hombres tiene daltonismo rojo-verde. Nunca confíes solo en el color. Nuestros diseños iniciales fallaron las pruebas de accesibilidad mal. Ahora usamos íconos, patrones, y etiquetas de texto junto con la codificación de colores.
+</Callout>
+
+## Lección 4: Prevención de Errores Sobre Manejo de Errores
+
+En salud, los errores tienen consecuencias. Una dosis de medicamento incorrecta no es solo un bug; es daño al paciente. El diseño debería prevenir errores, no solo detectarlos después del hecho.
+
+### Defaults Inteligentes Basados en Contexto
+
+Pre-poblamos campos con defaults clínicamente sensatos basados en contexto. Para un paciente anciano con dolor, predeterminamos a acetaminofén a dosis más baja con límites diarios máximos apropiados. El médico puede cambiar cualquier cosa, pero el punto de partida es seguro.
+
+### Hard Stops vs. Soft Warnings
+
+No todas las alertas son iguales. Distinguimos entre:
+
+**Hard stops**: No puede proceder. Interacción droga-droga con alto riesgo de mortalidad. El sistema no permitirá esta orden sin remover uno de los medicamentos.
+
+**Soft warnings**: Puede proceder con documentación. Interacción droga-droga con monitoreo requerido. El sistema requiere que reconozcas la advertencia y selecciones una razón para override.
+
+**Información**: Solo FYI. No se requiere acción, pero podrías querer saber esto.
+
+La proporción importa. Si el 90% de las alertas son ignorables, los médicos aprenden a ignorar todas las alertas. La fatiga de alertas es real y peligrosa.
+
+## Lección 5: Prueba con Médicos Reales
+
+La lección más importante, y la que tuve que aprender dolorosamente: tus suposiciones están mal. Prueba con médicos reales en ambientes clínicos reales.
+
+### Mis Suposiciones vs. La Realidad
+
+| Mi Suposición | Realidad |
+|---------------|----------|
+| Los médicos quieren dashboards comprehensivos | Quieren UN número que les diga qué hacer después |
+| El modo oscuro siempre es mejor | Las habitaciones con luz fluorescente hacen el modo oscuro difícil de leer |
+| Mobile-first es esencial | La documentación pasa en desktop; móvil es para búsquedas rápidas |
+| El input de voz es el futuro | El ruido de fondo hace el voz poco confiable |
+| Las sugerencias de IA deberían ser prominentes | Los médicos quieren que la IA pre-llene, no sugiera. Ellos editarán |
+
+Esa última me sorprendió más. Pensé que los médicos querrían recomendaciones de IA resaltadas para aceptar o rechazar. Resulta que encuentran eso condescendiente. Lo que realmente quieren es que la IA haga el trabajo tedioso, como pre-llenar notas con información relevante del chart, y luego se quite del camino para que puedan editarlo a su voz.
+
+## Lecciones Específicas de MILA
+
+Construir un asistente LLM para comunicación neonatal me enseñó lecciones aún más específicas:
+
+**El tono importa enormemente.** Los mensajes a padres sobre su recién nacido requieren empatía específica que las salidas genéricas de LLM carecen. "La bilirrubina de su bebé está elevada" necesita comunicarse muy diferente a padres preocupados que a otro médico. Hicimos fine-tuning con cientos de comunicaciones reales (anonimizadas) a padres para obtener el tono correcto.
+
+**La aprobación del médico no es negociable.** Cada mensaje generado por IA es revisado antes de enviar. Pero el proceso de revisión necesita ser un click, no un workflow. Mostramos el mensaje sugerido con un botón "Aprobar y Enviar". Las ediciones son fáciles; la aprobación es instantánea.
+
+**El contexto es todo.** El mismo resultado de laboratorio significa cosas diferentes a 2 días de edad vs. 2 semanas de edad. Construimos resumen consciente del contexto que considera edad gestacional, complicaciones de nacimiento, y plan de tratamiento actual.
+
+## La Verdad Poco Glamorosa Sobre UX en Salud
+
+El buen UX en salud no es llamativo. No gana premios de diseño. No es el tipo de cosa que pones en un portfolio para impresionar a otros diseñadores.
+
+El buen UX en salud es invisible. Es el médico que termina sus notas 20 minutos antes y llega a casa a cenar con sus hijos. Es la enfermera que detecta un valor crítico porque la alerta realmente significa algo. Es el padre que recibe actualizaciones oportunas y empáticas sobre su bebé.
+
+Sabes que lo hiciste bien cuando los médicos no se quejan. Ese es el listón. No deleite. No sorpresa. Solo: esto no se mete en mi camino.
+
+Después de años trabajando en este espacio, he llegado a apreciar esa restricción. Las apps de consumo pueden apuntar al deleite. Las apps de salud deberían apuntar a la confianza. Y la confianza se gana a través de confiabilidad, velocidad, y respeto por el tiempo y experiencia del usuario.
+
+---
+
+*¿Construyendo software de salud? [Hablemos](/contact) sobre diseñar para flujos de trabajo clínicos. Ya cometí la mayoría de los errores, así que tú no tienes que hacerlo.*

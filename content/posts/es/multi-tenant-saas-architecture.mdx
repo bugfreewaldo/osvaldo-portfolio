@@ -1,0 +1,118 @@
+---
+title: "Diseñando Aplicaciones SaaS Multi-tenant: Patrones de Arquitectura"
+description: "Cómo construir aplicaciones SaaS que sirven múltiples clientes desde infraestructura compartida mientras mantienen aislamiento, seguridad y rendimiento."
+date: 2025-12-05
+updated: 2025-12-12
+published: true
+category: "Ingeniería Backend"
+tags: ["SaaS", "Arquitectura", "PostgreSQL", "Seguridad", "Multi-tenancy"]
+author: "Osvaldo Restrepo"
+translationOf: "multi-tenant-saas-architecture"
+tldr: "Multi-tenancy es un espectro desde todo compartido hasta todo aislado. La mayoría del SaaS B2B debería usar aplicación compartida + base de datos por tenant o esquema por tenant. Row-level security funciona para tenants pequeños; recursos dedicados para enterprise."
+faqs:
+  - question: "¿Qué es multi-tenancy en SaaS?"
+    answer: "Multi-tenancy significa que múltiples clientes (tenants) comparten la misma infraestructura de aplicación mientras sus datos permanecen aislados. Permite eficiencia de costos a través de recursos compartidos mientras mantiene límites de seguridad."
+  - question: "¿Debo usar una base de datos por tenant o base de datos compartida?"
+    answer: "Depende de tu escala y clientes. Base de datos compartida con row-level security es más simple y barata para muchos tenants pequeños. Base de datos por tenant provee aislamiento más fuerte para clientes enterprise con requisitos de cumplimiento."
+  - question: "¿Cómo prevenir fugas de datos entre tenants?"
+    answer: "Defensa en profundidad: contexto de tenant en cada solicitud, políticas de seguridad a nivel de fila en la base de datos, middleware de aplicación que impone filtrado por tenant, y tests automatizados que verifican aislamiento."
+  - question: "¿Cómo manejas diferentes niveles de precios?"
+    answer: "Feature flags vinculados al nivel de suscripción del tenant, rate limiting por nivel, y cuotas de recursos impuestas en múltiples capas (API gateway, aplicación, base de datos)."
+relatedPosts: ["event-driven-data-pipelines"]
+---
+
+Construir SaaS que sirve cientos de clientes desde infraestructura compartida requiere decisiones de arquitectura cuidadosas. Equivócate en el aislamiento, y tienes brechas de datos. Equivócate en el escalado, y tienes pesadillas de rendimiento.
+
+Aprendí esto construyendo una plataforma que empezó con diez clientes y creció a cientos. La arquitectura que funcionaba con diez estaba crujiendo con cincuenta y rompiéndose con cien. Tuvimos que re-arquitectar bajo presión, lo cual es exactamente tan doloroso como suena.
+
+Este post es lo que desearía haber entendido antes de empezar.
+
+## El Espectro de Multi-tenancy
+
+Multi-tenancy no es un solo patrón. Es un espectro de niveles de aislamiento, cada uno con diferentes trade-offs.
+
+En un extremo: todo compartido. Una base de datos, un esquema, los datos de todos los tenants mezclados, distinguidos solo por una columna tenant_id. Barato de operar, aterrador si te equivocas en una consulta.
+
+En el otro extremo: todo dedicado. Cada tenant tiene su propia base de datos, su propia instancia de aplicación, su propio todo. Aislamiento sólido como roca, caro de operar, difícil de mantener a escala.
+
+La mayoría de los sistemas del mundo real viven en algún lugar en el medio.
+
+<Callout type="tip" title="Mi Elección Default">
+Para SaaS B2B con tamaños de cliente mixtos: capa de aplicación compartida + esquema por tenant en PostgreSQL. Tenants pequeños comparten esquemas con row-level security; tenants enterprise obtienen esquemas o bases de datos dedicadas.
+</Callout>
+
+## Contexto de Tenant: El Fundamento
+
+Cada solicitud debe llevar contexto de tenant. Esto suena obvio, pero equivocarse es cómo ocurren las fugas de datos.
+
+He visto sistemas donde el filtrado por tenant ocurría "la mayoría del tiempo." Los desarrolladores recordaban agregar WHERE tenant_id = ? a la mayoría de las consultas. Pero no todas. Y las consultas que olvidaron fueron las que terminaron exponiendo los datos del Cliente A al Cliente B.
+
+La solución no es mejor revisión de código. Es hacer el filtrado por tenant automático e imposible de eludir.
+
+### Haciéndolo Automático
+
+El patrón que uso: extraer el contexto de tenant de cada solicitud en la capa de middleware, almacenarlo en contexto de ámbito de solicitud, y hacer que la capa de base de datos filtre automáticamente por tenant.
+
+Esto significa que los desarrolladores pueden escribir consultas simples sin pensar en filtrado por tenant. El sistema lo maneja. Si alguien olvida especificar un tenant, la consulta falla en lugar de devolver datos de todos los tenants.
+
+Con Row-Level Security (RLS) de PostgreSQL, puedes imponer esto a nivel de base de datos. Incluso si el código de la aplicación tiene un bug, la base de datos no devolverá datos de otros tenants.
+
+### La Regla Crítica
+
+No debería haber ninguna ruta de código, en ningún lugar del sistema, que consulte datos sin contexto de tenant. Ninguna. No para herramientas de admin, no para debugging, no para "solo este reporte."
+
+El momento que creas un bypass, has creado una vulnerabilidad.
+
+## Eligiendo Tu Nivel de Aislamiento
+
+### Row-Level Security: El Punto de Partida
+
+Para la mayoría de productos SaaS, empieza con row-level security en una base de datos compartida. Cada tabla tiene una columna tenant_id. Cada consulta filtra por ella.
+
+PostgreSQL RLS impone esto a nivel de base de datos. Defines políticas que automáticamente agregan filtros de tenant a cada consulta. Incluso si tu código de aplicación olvida filtrar, la base de datos no devolverá datos de otros tenants.
+
+### Esquema por Tenant: Cuando Necesitas Más
+
+Para tenants medianos que necesitan aislamiento más fuerte, esquema por tenant es un buen punto medio. Cada tenant obtiene su propio esquema PostgreSQL dentro de una base de datos compartida.
+
+Beneficios:
+- Aislamiento más limpio que row-level security
+- Más fácil de razonar (los datos del tenant están en el esquema del tenant)
+- Puede aplicar límites de recursos a nivel de esquema
+- Exportaciones de datos más simples (dump del esquema completo)
+
+### Base de Datos por Tenant: La Opción Enterprise
+
+Para clientes enterprise, a veces necesitas aislamiento completo de base de datos. Pueden requerirlo por cumplimiento. Pueden querer la opción de migrar a self-hosted. Pueden simplemente tener suficiente escala para que tenga sentido.
+
+## El Problema del Vecino Ruidoso
+
+Infraestructura compartida significa que el comportamiento de un tenant afecta a otros. Una consulta pesada del Cliente A puede ralentizar la experiencia del Cliente B.
+
+### Aislamiento de Recursos
+
+Para aislamiento a nivel de base de datos, uso timeouts de sentencias y límites de conexiones por tenant. Ningún tenant individual puede monopolizar recursos de base de datos.
+
+Para aislamiento a nivel de aplicación, uso procesamiento basado en colas para operaciones pesadas. Importaciones masivas, generación de reportes, exportaciones de datos. Estos corren en workers en segundo plano con rate limits por tenant.
+
+<Callout type="danger" title="Ejecuta Esto en CI">
+Las pruebas de aislamiento de tenant deben correr en cada despliegue. Un solo filtro olvidado en un endpoint nuevo puede exponer todos los datos de tenant. Automatiza esto. Nunca confíes en testing manual para propiedades de seguridad.
+</Callout>
+
+## La Honesta Complejidad
+
+La arquitectura multi-tenant es genuinamente compleja. Estás construyendo un sistema que sirve muchos clientes desde infraestructura compartida mientras previenes que cualquier cliente individual afecte a otros o vea datos de otros.
+
+Cada decisión involucra trade-offs:
+- Más aislamiento = más costo y complejidad operacional
+- Más compartición = más riesgo y más casos límite
+- Arquitectura simple ahora = escalado más difícil después
+- Arquitectura compleja ahora = shipping más lento ahora
+
+El balance correcto depende de tu etapa, tus clientes, y tu equipo. Lo que funciona para un startup de 10 personas sirviendo SMBs es diferente de lo que funciona para una empresa de software enterprise con requisitos de cumplimiento.
+
+Empieza más simple de lo que crees que necesitas. Agrega aislamiento cuando tengas razones concretas, no hipotéticas. Y prueba tu aislamiento agresivamente, porque la única vez que te equivocas, realmente importa.
+
+---
+
+*¿Construyendo una plataforma multi-tenant? [Discutamos](/contact) tus requisitos de arquitectura.*

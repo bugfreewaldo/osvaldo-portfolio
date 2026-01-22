@@ -1,0 +1,216 @@
+---
+title: "Pipelines de Datos en Tiempo Real con Arquitectura Orientada a Eventos"
+description: "Construyendo pipelines de datos escalables y tolerantes a fallos usando patrones orientados a eventos. Cubre Kafka, event sourcing y lecciones de sistemas fintech de alto rendimiento."
+date: 2025-08-12
+updated: 2025-08-20
+published: true
+category: "Ingeniería Backend"
+tags: ["Kafka", "Event-Driven", "Ingeniería de Datos", "Python", "Fintech"]
+author: "Osvaldo Restrepo"
+translationOf: "event-driven-data-pipelines"
+tldr: "La arquitectura orientada a eventos desacopla productores de consumidores, permitiendo escalado independiente y tolerancia a fallos. Usa Kafka para alto rendimiento, consumidores idempotentes para confiabilidad, y registros de esquemas para cumplimiento de contratos."
+faqs:
+  - question: "¿Qué es la arquitectura orientada a eventos?"
+    answer: "Un patrón de diseño donde los componentes del sistema se comunican a través de eventos (mensajes) en lugar de llamadas directas. Los productores emiten eventos sin saber quién los consume, permitiendo acoplamiento débil y escalado independiente."
+  - question: "¿Cuándo debo usar Kafka vs. una cola de mensajes como RabbitMQ?"
+    answer: "Kafka destaca en streams de eventos de alto rendimiento y persistentes donde los consumidores pueden reproducir el historial. RabbitMQ es mejor para colas de tareas con enrutamiento complejo y cuando el orden de mensajes por consumidor importa más que el orden global."
+  - question: "¿Cómo manejas las fallas en sistemas orientados a eventos?"
+    answer: "Diseña consumidores idempotentes (el mismo mensaje procesado dos veces = mismo resultado), implementa colas de mensajes muertos para mensajes envenenados, usa rebalanceo de grupos de consumidores para tolerancia a fallos, y monitorea el lag del consumidor."
+  - question: "¿Qué es event sourcing?"
+    answer: "Almacenar todos los cambios como una secuencia de eventos en lugar de solo el estado actual. Permite pistas de auditoría, consultas temporales, y reconstruir el estado desde cero. Poderoso pero añade complejidad, así que úsalo selectivamente."
+relatedPosts: []
+---
+
+Después de construir pipelines de datos que procesan millones de transacciones financieras diariamente, he aprendido que la arquitectura orientada a eventos es menos sobre tecnología y más sobre pensar en eventos.
+
+Me tomó un tiempo entender esto. Mi primer sistema "orientado a eventos" era realmente solo APIs REST con una cola de mensajes en el medio. Tenía toda la complejidad de sistemas distribuidos sin ninguno de los beneficios. Los servicios seguían estrechamente acoplados, solo que asincrónicamente.
+
+El cambio de mentalidad vino cuando dejé de pensar en servicios llamándose unos a otros y empecé a pensar en servicios reaccionando a hechos sobre el mundo.
+
+## El Problema con Request-Response
+
+Las arquitecturas tradicionales de request-response crean acoplamiento fuerte. El Servicio A llama al Servicio B, que llama al Servicio C. Todos tienen que estar activos. Todos tienen que responder rápido. Un servicio lento se convierte en el servicio lento de todos.
+
+Aprendí esto en un proyecto fintech donde el servicio de pagos llamaba al servicio de detección de fraude, que llamaba al servicio de scoring de riesgo, todo sincrónicamente. Durante carga pico, el servicio de riesgo se volvió lento. Eso hizo que el servicio de fraude diera timeout. Eso hizo que el servicio de pagos fallara. Los clientes no podían pagar. Los ingresos se detuvieron.
+
+El "arreglo" fue timeouts más largos. Lo que significó pagos más lentos para todos, todo el tiempo, para acomodar ralentizaciones ocasionales en un servicio interno.
+
+Fue entonces cuando empecé a mirar seriamente los enfoques orientados a eventos.
+
+## Pensando en Eventos
+
+El cambio de modelo mental: en lugar de "el servicio A le dice al servicio B que haga algo," piensa "el servicio A anuncia que algo sucedió, y las partes interesadas reaccionan."
+
+Un pedido no se coloca llamando al servicio de inventario. Un pedido se coloca, y ese hecho se anuncia. El servicio de inventario se entera y reacciona. El servicio de envíos se entera y reacciona. El servicio de analytics se entera y reacciona. Ninguno sabe del otro. Solo saben de eventos.
+
+<Callout type="tip" title="La Perspectiva Clave">
+Los eventos son hechos sobre el pasado. "PedidoCreado" es un hecho. No puedes des-crear un pedido. Puedes cancelarlo, pero la creación sucedió. Esta inmutabilidad es poderosa para construir sistemas confiables.
+</Callout>
+
+Este desacoplamiento significa:
+- Los servicios pueden desplegarse independientemente
+- Los servicios pueden escalar independientemente
+- Los servicios pueden fallar independientemente (y recuperarse)
+- Nuevos consumidores pueden agregarse sin modificar productores
+
+Ese último punto está subestimado. Cuando el equipo de marketing quiso enviar emails de bienvenida en el registro, no tuvimos que modificar el servicio de registro. Solo agregamos un nuevo consumidor del evento "UsuarioCreado".
+
+## Diseño de Eventos: Haciéndolo Bien
+
+### Eventos como Hechos Inmutables
+
+El principio más importante: los eventos representan cosas que sucedieron. Son hechos, no solicitudes.
+
+Esto significa:
+- "PedidoCreado" no "CrearPedido"
+- "PagoProcesado" no "ProcesarPago"
+- "UsuarioRegistrado" no "RegistrarUsuario"
+
+La distinción importa. Una solicitud puede ser rechazada o ignorada. Un hecho es un hecho. El evento ya sucedió; los consumidores están enterándose de él.
+
+### ¿Qué Va en un Evento?
+
+Luché con esto al principio. ¿Debería un evento contener solo IDs (y forzar a los consumidores a buscar detalles) o datos completos (y arriesgar información desactualizada)?
+
+Mi regla actual: incluir todo lo que un consumidor necesita para procesamiento básico, más IDs para búsqueda si necesitan más.
+
+Para un evento PedidoCreado:
+- Incluir: ID de pedido, ID de cliente, monto total, moneda, cantidad de items
+- No incluir: detalles completos de items, dirección de envío del cliente, método de pago
+- Razón: la mayoría de los consumidores se preocupan por "se colocó un pedido de $X." Pocos necesitan detalles a nivel de item.
+
+Si un consumidor necesita detalles de items, puede buscarlos. Pero no fuerces a cada consumidor a hacer esa búsqueda solo para registrar "pedido #123 fue colocado."
+
+### La Evolución de Esquemas No Es Opcional
+
+Los eventos son contratos. Una vez que publicas un esquema de evento, los consumidores dependen de él. Cambiar esquemas descuidadamente rompe consumidores.
+
+Las reglas que sigo:
+- Agregar campos opcionales libremente (los consumidores ignoran lo que no entienden)
+- Nunca eliminar campos requeridos
+- Nunca cambiar tipos de campos
+- Nunca renombrar campos
+
+Si necesitas hacer un cambio que rompe compatibilidad, crea un nuevo tipo de evento. Publica tanto el viejo como el nuevo durante un período de migración. Depreca el viejo después de que todos los consumidores migren.
+
+<Callout type="warning" title="Cambios que Rompen">
+Nunca elimines campos requeridos ni cambies tipos de campos. Agrega nuevos campos opcionales con defaults. Si debes romper compatibilidad, crea un nuevo tipo de evento (PedidoCreadoV2) y ejecuta ambos en paralelo durante la migración.
+</Callout>
+
+## Patrones de Kafka Que Funcionan
+
+Kafka es mi default para streaming de eventos. No siempre es la elección correcta, pero cuando necesitas alto rendimiento y durabilidad, es difícil de superar.
+
+### Estrategia de Particionamiento
+
+Kafka particiona eventos para paralelismo. Todos los eventos con la misma clave van a la misma partición, manteniendo el orden dentro de esa clave.
+
+Para eventos de pedidos, particiono por ID de pedido. Todos los eventos para el pedido #123 (creado, pagado, enviado, entregado) aterrizan en la misma partición, garantizando orden.
+
+El error que cometí al principio: particionar por ID de cliente. Esto significaba que todos los eventos de un cliente estaban ordenados, pero un cliente de alto volumen podía crear una partición caliente, sobrecargando un consumidor mientras otros estaban ociosos.
+
+Ahora pienso cuidadosamente sobre patrones de acceso. Si los consumidores consultan principalmente por pedido, particiona por pedido. Si consultan por cliente, particiona por cliente. No hay una respuesta universalmente correcta.
+
+### Consumidores Idempotentes
+
+Las redes fallan. Los consumidores crashean. Los mensajes se reenvían. Tu consumidor procesará el mismo mensaje dos veces. Planea para ello.
+
+Idempotencia significa: procesar el mismo mensaje dos veces produce el mismo resultado que procesarlo una vez.
+
+Para escrituras a base de datos, esto usualmente significa verificar si el trabajo ya está hecho:
+
+```
+if not already_processed(event_id):
+    do_the_work()
+    mark_as_processed(event_id)
+```
+
+Para llamadas a APIs externas (¡cobrar una tarjeta de crédito!), esto es más complicado. Podrías necesitar usar una clave de idempotencia con el servicio externo, o implementar tu propio patrón de verificar-antes-de-llamar.
+
+Almaceno IDs de eventos procesados en Redis con un TTL. Antes de procesar cualquier evento, verifico Redis. Después de procesamiento exitoso, registro el ID del evento. Simple, rápido, y maneja el 99% de los casos.
+
+### Colas de Mensajes Muertos
+
+Algunos mensajes son venenosos. Causan errores sin importar cuántas veces reintentes. Tal vez los datos están malformados. Tal vez hay un bug en tu código que no puede manejar este caso límite. Tal vez una dependencia externa está permanentemente rota para esta entrada específica.
+
+Sin una cola de mensajes muertos, los mensajes venenosos bloquean el procesamiento. El consumidor sigue reintentando, fallando, y nunca avanza.
+
+Con una cola de mensajes muertos, los mensajes venenosos van a un topic separado después de N reintentos. Un humano (o proceso automatizado) investiga. Mientras tanto, el procesamiento continúa.
+
+La clave: captura *por qué* el mensaje falló. No solo descargues el mensaje; incluye el error, el conteo de reintentos, y cuándo falló. Esta información es invaluable para debugging.
+
+## Event Sourcing: Poder y Dolor
+
+Event sourcing lleva la mentalidad orientada a eventos más lejos: en lugar de almacenar el estado actual, almacena los eventos que llevaron al estado actual. El estado actual se deriva reproduciendo eventos.
+
+### Cuándo Es Brillante
+
+Para mi trabajo fintech, event sourcing fue esencial. Los reguladores querían saber cada cambio en cada saldo de cuenta. No solo "el saldo es $100" sino "empezó en $0, depósito +$150, retiro -$30, cargo -$20, saldo es $100."
+
+Con event sourcing, esta pista de auditoría está incorporada. Los eventos *son* la fuente de verdad. Puedo responder "¿cuál era el saldo a las 3:42 PM del martes?" reproduciendo eventos hasta ese punto.
+
+También es genial para debugging. Cuando algo sale mal, puedo reproducir la secuencia exacta de eventos que llevaron al estado malo. Sin adivinar sobre "qué pasó."
+
+### Cuándo Es Doloroso
+
+Event sourcing añade complejidad. Reconstruir estado de eventos es lento para entidades con historias largas. Necesitas snapshots. Los snapshots necesitan mantenerse sincronizados con el stream de eventos.
+
+La evolución de esquemas es más difícil. Los eventos viejos no desaparecen. Ese evento de hace tres años con el esquema viejo todavía necesita poder reproducirse.
+
+Y las consultas son diferentes. No puedes simplemente "SELECT * FROM pedidos WHERE estado = 'enviado'". Tienes que mantener modelos de lectura (proyecciones) construidos de eventos.
+
+Para la mayoría de sistemas, no recomiendo event sourcing como default. Úsalo para dominios donde la pista de auditoría es valiosa (transacciones financieras, industrias con mucho cumplimiento, edición colaborativa). Para una app CRUD básica, es excesivo.
+
+## Monitoreo: El Lag del Consumidor Es Todo
+
+La métrica más importante en un sistema orientado a eventos es el lag del consumidor: ¿qué tan atrás está cada consumidor de los últimos eventos?
+
+Lag pequeño (segundos): operación normal.
+Lag creciente: los consumidores no pueden mantener el ritmo de los productores.
+Lag grande (horas): algo está muy mal.
+
+Alerto sobre el lag, no solo sobre errores. Un consumidor podría estar "trabajando" (sin errores) pero quedándose más atrás porque está lento. Los usuarios no notarán hasta que el lag sea lo suficientemente malo como para ver datos desactualizados. Para entonces, estarás en modo de recuperación por horas.
+
+<Callout type="danger" title="Monitorea el Lag del Consumidor">
+El lag del consumidor es tu sistema de alerta temprana. Si el lag crece, los consumidores no pueden mantener el ritmo. Alerta antes de que el lag exceda tu SLA (ej., "eventos procesados dentro de 5 minutos"). Esta es la métrica más importante para sistemas orientados a eventos.
+</Callout>
+
+## Lecciones Aprendidas de la Manera Difícil
+
+### Empieza con Eventos, No Comandos
+
+"PedidoCreado" (hecho) es mejor que "CrearPedido" (comando). Los eventos son verdades inmutables. Si te encuentras nombrando eventos como comandos, podrías estar pensándolo mal.
+
+### Diseña para Reproducción
+
+Los consumidores deberían manejar reproducir el topic completo. Esto permite recuperación (después de un fix de bug, reproduce para reprocesar), debugging (reproduce en un ambiente de prueba), y onboarding de nuevos consumidores (reproduce eventos históricos para poblar estado inicial).
+
+Si tu consumidor asume que solo ve cada evento una vez, vas a pasarla mal.
+
+### El Registro de Esquemas No Es Opcional
+
+Sin un registro de esquemas, un despliegue malo puede corromper tu stream de eventos completo. Usa Avro o Protobuf con un registro. Impone verificaciones de compatibilidad en el despliegue.
+
+Una vez vi a un equipo desplegar un cambio que cambió un campo de string a integer. Los consumidores no podían parsear eventos viejos. Los nuevos consumidores no podían leer datos históricos. La recuperación requirió manipulación manual de esquemas. No seas ese equipo.
+
+### Los Grupos de Consumidores Necesitan Monitoreo
+
+Un consumidor silencioso quedándose atrás puede causar horas de procesamiento retrasado antes de que alguien lo note. Los usuarios ven datos desactualizados, pero no hay errores.
+
+Monitorea el lag del grupo de consumidores para cada consumidor. Alerta antes de que los usuarios noten. Esta es la métrica que te dice que algo está mal antes de que sea obvio.
+
+## La Conclusión
+
+La arquitectura orientada a eventos no es solo un patrón técnico. Es una forma de pensar sobre sistemas distribuidos que enfatiza el acoplamiento débil, la tolerancia a fallos, y la escalabilidad independiente.
+
+La tecnología (Kafka, RabbitMQ, lo que sea) importa menos que la mentalidad:
+- Los servicios anuncian hechos, no ordenan acciones
+- Los consumidores son responsables de su propio estado
+- Los eventos son inmutables y representan el pasado
+- Todo está diseñado para falla y reproducción
+
+Toma tiempo internalizar este pensamiento. Pero una vez que lo haces, empiezas a ver las arquitecturas request-response como el acoplamiento frágil que son, y los eventos como la forma más natural para que los sistemas distribuidos se comuniquen.
+
+---
+
+*¿Construyendo un pipeline de datos en tiempo real? [Discutamos](/contact) tu arquitectura.*

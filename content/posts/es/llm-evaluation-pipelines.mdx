@@ -1,0 +1,146 @@
+---
+title: "Construyendo Pipelines de Evaluación para Aplicaciones LLM"
+description: "Cómo probar sistemáticamente aplicaciones LLM antes de que fallen en producción. Cubre testing automatizado, evaluación humana, detección de regresiones, e integración CI/CD."
+date: 2025-11-08
+updated: 2025-11-15
+published: true
+category: "Ingeniería de IA"
+tags: ["LLM", "Testing", "Evaluación", "CI/CD", "MLOps"]
+author: "Osvaldo Restrepo"
+translationOf: "llm-evaluation-pipelines"
+tldr: "La evaluación de LLM requiere tres capas: métricas automatizadas para feedback rápido, LLM-as-judge para evaluación matizada, y evaluación humana para verdad fundamental. Construye pruebas de regresión que detecten degradación de calidad antes que los usuarios."
+faqs:
+  - question: "¿Cómo pruebas aplicaciones LLM?"
+    answer: "Usa un enfoque de tres capas: métricas automatizadas (coincidencia exacta, ROUGE, validación de formato), LLM-as-judge para evaluación semántica, y revisión humana periódica para calibración de verdad fundamental."
+  - question: "¿Qué es la evaluación LLM-as-judge?"
+    answer: "Usar un LLM separado para evaluar las salidas de tu aplicación. El modelo juez puntúa respuestas en criterios como relevancia, precisión y utilidad. Es más rápido que evaluación humana pero requiere diseño cuidadoso de prompts."
+  - question: "¿Cómo detectas regresiones en LLMs?"
+    answer: "Mantén un dataset dorado de pares entrada-salida. Ejecuta evaluaciones en cada cambio de modelo, actualización de prompt, o upgrade de dependencia. Configura alertas para caídas de puntaje más allá de umbrales aceptables."
+  - question: "¿Deberían estar las pruebas de LLM en CI/CD?"
+    answer: "Sí, pero selectivamente. Ejecuta verificaciones automatizadas rápidas en cada PR. Ejecuta evaluaciones comprehensivas nocturnamente o en branches de release. Las evaluaciones humanas costosas pueden ser mensuales o por release mayor."
+relatedPosts: ["building-production-rag-systems", "fine-tuning-llms-domain-specific"]
+---
+
+Aquí está algo divertido sobre aplicaciones LLM: fallan silenciosamente.
+
+A diferencia de un bug tradicional que crashea tu app y te despierta a las 3 AM, una regresión de calidad en LLM simplemente... produce respuestas incorrectas que se ven plausibles. Tus usuarios notan. Tus métricas eventualmente notan. Tú, felizmente inconsciente, probablemente estás actualizando tu LinkedIn sobre lo suave que fue el lanzamiento.
+
+Pregúntame cómo lo sé.
+
+## La Llamada de Atención
+
+La primera aplicación LLM que desplegué fue a producción con cero evaluación automatizada. La probé manualmente, parecía funcionar, y la desplegué. Estaba orgulloso de mí mismo por moverme rápido.
+
+Tres semanas después, alguien finalmente se quejó de que las respuestas se habían vuelto "raras." Investigué y descubrí que un ajuste de prompt que había hecho dos semanas antes había roto sutilmente alrededor del 15% de las respuestas. No catastróficamente. Solo... suficientemente mal como para que los usuarios notaran pero siguieran usándolo, asumiendo que estaban haciendo algo mal.
+
+Quince por ciento de nuestros usuarios habían estado recibiendo servicio degradado por dos semanas, y no tenía idea. No había alerta, no había dashboard mostrando métricas de calidad, nada. La única señal eran quejas de usuarios, y la mayoría de usuarios no se quejan. Simplemente se van.
+
+Esa fue la última vez que desplegué una app LLM sin infraestructura de evaluación.
+
+## El Enfoque de Tres Capas
+
+Después de quemarme suficientes veces, desarrollé lo que llamo el marco "Confía, Pero Verifica, Pero También Verifica Que Verificaste." Déjame simplificar:
+
+**Capa 1: Métricas Automatizadas** (ejecutar en cada commit)
+Verificaciones rápidas y tontas que detectan fallas obvias.
+
+**Capa 2: LLM-as-Judge** (ejecutar diariamente y en revisiones de PR)
+Suficientemente bueno para evaluación matizada la mayoría del tiempo.
+
+**Capa 3: Evaluación Humana** (ejecutar mensualmente o en releases mayores)
+La verdad costosa que mantiene todo calibrado.
+
+Cada capa detecta diferentes problemas a diferentes costos. Salta una, y algo se escapará.
+
+## Capa 1: Verificaciones Rápidas y Tontas
+
+Estas no te dirán si las respuestas de tu LLM son *buenas*, pero definitivamente te dirán cuando algo está obviamente roto.
+
+### Validación de Formato
+
+¿El JSON es realmente JSON? Te sorprendería con qué frecuencia esto detecta problemas reales.
+
+Una vez tuve un ajuste de prompt que causó que el 15% de las respuestas incluyera un preámbulo amigable antes del JSON. "¡Claro! Aquí están tus datos:" seguido del JSON real. Muy útil. Completamente rompió el parser.
+
+Las verificaciones automatizadas de formato habrían detectado esto en segundos. En cambio, lo detecté por un mensaje de Slack a las 11 PM preguntando por qué la integración estaba fallando.
+
+### Verificaciones de Sanidad
+
+Cosas que nunca deberían pasar:
+
+- La respuesta es sospechosamente corta (menos de 10 caracteres)
+- La respuesta es sospechosamente larga (más de 10,000 caracteres)
+- La respuesta contiene datos de prueba ("test@example.com" apareciendo en salida de producción es mala señal)
+- La respuesta contiene disculpas excesivas (un modelo confundido a menudo se disculpa repetidamente)
+
+## Capa 2: LLM-as-Judge
+
+Aquí es donde se pone interesante. Usas un LLM (esperemos que más inteligente) para juzgar si tu LLM (esperemos que listo para producción) está haciendo un buen trabajo.
+
+Sí, son LLMs hasta el fondo. Bienvenido a 2025.
+
+### Por Qué Funciona (Y Cuándo No)
+
+LLM-as-judge funciona sorprendentemente bien cuando el prompt de evaluación es específico. "Califica esta respuesta del 1-10" es inútil. Obtendrás un montón de 7s y 8s que no te dicen nada.
+
+"¿Esta respuesta resume con precisión los puntos principales sin agregar información que no está en la fuente?" es útil. Ahora el juez tiene una tarea clara.
+
+El enfoque falla cuando:
+- Los criterios de evaluación son subjetivos ("¿esta respuesta es suficientemente amigable?")
+- El modelo juez tiene los mismos puntos ciegos que el modelo siendo juzgado
+- La tarea requiere experiencia de dominio que el modelo juez no tiene
+
+<Callout type="tip" title="Perspectiva Clave">
+LLM-as-judge funciona mejor para criterios *objetivos* que puedes articular claramente. Precisión factual, adherencia al formato, inclusión de información requerida. Para cualidades subjetivas, todavía necesitas humanos.
+</Callout>
+
+## Capa 3: Evaluación Humana
+
+En algún punto, necesitas humanos reales mirando salidas reales. Lo sé, lo sé, no escala. Pero nada más te dice si tu resumidor médico "suena como un doctor" o "suena como un estudiante de medicina que vio mucho House."
+
+### Hazlo Estructurado
+
+No solo preguntes "¿esto está bien?" Obtendrás respuestas inconsistentes que son imposibles de agregar.
+
+Uso rúbricas con preguntas específicas:
+- ¿Esta respuesta contiene errores factuales? (Sí/No, con callouts específicos)
+- ¿Falta información importante? (Lista lo que falta)
+- ¿Confiarías en esta salida lo suficiente para usarla? (Sí/No)
+- Feedback de texto libre para cualquier otra cosa
+
+Esa penúltima pregunta es la real. Todo lo demás es detalle para ayudar a entender *por qué* algo no es confiable.
+
+<Callout type="warning" title="Las Guías de Anotación Importan">
+Sin guías claras, los anotadores discrepan 30-40% del tiempo. Tiramos un lote completo de anotación una vez porque nuestra rúbrica era ambigua. Escribe rúbricas. Da ejemplos. Prueba con dos anotadores antes de escalar.
+</Callout>
+
+## La Suite de Pruebas de Regresión
+
+Aquí es donde ocurre la magia. Por "magia" quiero decir "automatización paranoica que te salva de ti mismo."
+
+### Construyendo un Dataset Dorado
+
+Empieza a coleccionar ejemplos donde sabes cómo lucen las buenas salidas. Cada vez que verificas manualmente una respuesta, guárdala. Cada vez que un usuario da feedback positivo, guárdalo. Cada vez que un experto de dominio dice "sí, esto es correcto," guárdalo.
+
+Con el tiempo, construyes un dataset dorado de pares entrada-salida. Esto se convierte en tu suite de pruebas de regresión.
+
+La perspectiva clave: configuré un umbral. Si la precisión cae más del 5% en el dataset dorado, el PR no puede mergearse. Esto suena estricto, pero ha prevenido que varias "mejoras menores de prompt" hundan la calidad de producción.
+
+## La Conclusión
+
+Si estás construyendo con LLMs y no estás ejecutando evaluaciones en cada cambio, estás volando a ciegas. No digo esto para ser dramático. Lo digo porque me he estrellado contra la montaña.
+
+Construye las tres capas:
+1. Verificaciones automatizadas para fallas obvias
+2. LLM-as-judge para calidad matizada
+3. Evaluación humana para verdad fundamental
+
+Ejecútalas automáticamente. Alerta sobre regresiones. Y por el amor de todo lo sagrado, no te saltes el testing solo porque el PR "solo cambia una palabra en el prompt."
+
+Esos son los que te atrapan. Los cambios pequeños que parecen inofensivos. Los "arreglos rápidos" que rompen algo sutil.
+
+Confía en tu pipeline de evaluación. No confíes en tu intuición sobre qué es seguro cambiar.
+
+---
+
+*¿Construyendo una aplicación LLM y aterrorizado de fallas silenciosas? [Hablemos](/contact). He desarrollado opiniones muy fuertes sobre esto.*

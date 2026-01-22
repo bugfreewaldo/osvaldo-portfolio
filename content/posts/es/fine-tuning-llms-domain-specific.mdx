@@ -1,0 +1,134 @@
+---
+title: "Fine-tuning de LLMs para Tareas Específicas de Dominio: Guía Práctica"
+description: "Cuándo hacer fine-tuning vs. prompt engineering, cómo preparar datos de entrenamiento, y lecciones aprendidas de fine-tuning de modelos para dominios de salud y legal."
+date: 2025-10-15
+updated: 2025-10-22
+published: true
+category: "Ingeniería de IA"
+tags: ["LLM", "Fine-tuning", "OpenAI", "IA en Salud", "NLP"]
+author: "Osvaldo Restrepo"
+translationOf: "fine-tuning-llms-domain-specific"
+tldr: "El fine-tuning vale la pena cuando necesitas formatos de salida consistentes, terminología específica de dominio, o comportamiento que el prompt engineering no puede lograr confiablemente. Empieza con 50-100 ejemplos de alta calidad, no miles de mediocres."
+faqs:
+  - question: "¿Cuándo debo hacer fine-tuning en lugar de usar prompt engineering?"
+    answer: "Haz fine-tuning cuando necesites formatos de salida consistentes, jerga específica de dominio, o cuando el few-shot prompting excede los límites de contexto. El prompt engineering es más rápido de iterar pero menos confiable para salidas complejas y estructuradas."
+  - question: "¿Cuántos datos de entrenamiento necesito para fine-tuning?"
+    answer: "La calidad supera a la cantidad. 50-100 ejemplos de alta calidad y diversos a menudo superan a miles de inconsistentes. Empieza pequeño, evalúa, y agrega datos estratégicamente basándote en modos de falla."
+  - question: "¿Cómo evalúo un modelo con fine-tuning?"
+    answer: "Usa conjuntos de prueba held-out con expertos de dominio para revisión cualitativa. Mide métricas específicas de tarea (precisión, F1 para clasificación; ROUGE, preferencia humana para generación). Siempre compara contra el modelo base con prompts optimizados."
+  - question: "¿Cuáles son los costos del fine-tuning?"
+    answer: "Los costos de entrenamiento son únicos y relativamente baratos ($5-50 para datasets pequeños). Los costos de inferencia para modelos con fine-tuning son más altos que los modelos base. Considera el tiempo de preparación de datos, que a menudo es la inversión más grande."
+relatedPosts: ["building-production-rag-systems"]
+---
+
+Voy a ser honesto contigo: resistí el fine-tuning por demasiado tiempo.
+
+Cada vez que alguien lo sugería, contraatacaba con "¿pero has probado mejor prompting?" Y mira, el prompting es genial. Soy un gran fan. Pero hay un momento en cada proyecto LLM donde estás escribiendo un system prompt de 2000 tokens con 15 ejemplos, y empiezas a preguntarte si tal vez, solo tal vez, hay una mejor manera.
+
+Spoiler: la hay. A veces.
+
+## Por Qué Finalmente Cedí
+
+El punto de quiebre vino en un proyecto de documentación clínica. Necesitábamos que el modelo generara notas SOAP (Subjective, Objective, Assessment, Plan) de conversaciones transcritas doctor-paciente. Suena sencillo, ¿verdad?
+
+Solo con prompting, obtuvimos notas que eran... finas. Técnicamente correctas. Pero cada médico que las revisó dijo lo mismo: "Esto no suena como si un doctor lo hubiera escrito."
+
+El modelo usaba frases como "el paciente reporta experimentar malestar" en lugar de "pt c/o dolor." Escribía "medición de presión arterial" en lugar de "TA." Estas son diferencias pequeñas, pero se acumulaban en algo que se sentía extraño para la gente que tenía que usarlo.
+
+Pasé tres semanas elaborando prompts cada vez más elaborados. Agregué ejemplos. Agregué instrucciones explícitas sobre abreviaciones médicas. Agregué más ejemplos. Los prompts se hicieron cada vez más largos, y los resultados mejoraron marginalmente pero nunca quedaron del todo bien.
+
+Luego hice fine-tuning con 80 notas SOAP reales de nuestra clínica asociada. La diferencia fue inmediata y obvia. El modelo no solo entendía qué escribir. Entendía *cómo* escriben los médicos.
+
+## Cuándo el Fine-tuning Realmente Tiene Sentido
+
+Aquí está mi opinión honesta después de construir varias apps LLM en producción: el fine-tuning no es ni la solución mágica ni el desastre sobrecomplicado que diferentes bandos en Twitter te harían creer. Es solo una herramienta. Una sorprendentemente accesible.
+
+<Callout type="tip" title="Mi Marco de Decisión">
+**Haz fine-tuning cuando:**
+- El formato de salida debe ser altamente consistente (esquemas JSON, códigos médicos)
+- La terminología del dominio es especializada y frecuente
+- Los ejemplos few-shot exceden los límites de ventana de contexto
+- Necesitas comportamiento que los prompts no pueden producir confiablemente
+
+**Quédate con prompting cuando:**
+- Los requisitos cambian frecuentemente
+- Tienes datos de entrenamiento limitados
+- La tarea es mayormente razonamiento, no formato
+- El rendimiento del modelo base ya es aceptable
+</Callout>
+
+La pregunta real no es "¿debería hacer fine-tuning?" Es "¿este problema es sobre *qué* decir o *cómo* decirlo?" El fine-tuning destaca en el "cómo": formato consistente, estilo, terminología. Para razonamiento complejo, el modelo base usualmente es más inteligente que cualquier cosa que harías con fine-tuning.
+
+## Preparación de Datos: El Trabajo Real
+
+No voy a endulzar esto: la llamada a la API de fine-tuning en sí es la parte fácil. Literalmente unas pocas líneas de código. El trabajo *real* es preparar datos de entrenamiento que no apesten. Y déjame decirte, la mayoría de los datos de entrenamiento apestan.
+
+### Mi Lección Costosa en Calidad vs. Cantidad
+
+Mi primer intento de fine-tuning usó 2,000 ejemplos que junté de varias fuentes. Documentos internos, datasets públicos, generaciones sintéticas. Pensé que más datos = mejor modelo, ¿verdad?
+
+El resultado fue un modelo que era confiadamente inconsistente. Había aprendido todos los patrones contradictorios en mis datos desordenados. A veces usaba abreviaciones, a veces no. A veces incluía identificadores de pacientes, a veces no. Era un reflejo de la incoherencia de mis datos.
+
+Mi segundo intento usó 80 ejemplos cuidadosamente curados. Cada uno revisado por un experto de dominio. Formato consistente. Terminología consistente. Ejemplos claros tanto de buenas salidas como de rechazos apropiados.
+
+Diferencia de noche y día. El modelo entrenado en 80 buenos ejemplos destruyó absolutamente al entrenado en 2,000 mediocres.
+
+### La Diversidad Supera al Volumen
+
+Aquí está algo que me sorprendió: para una tarea de resumen de notas clínicas, 80 ejemplos diversos cubriendo diferentes especialidades (cardiología, oncología, pediatría), tipos de notas (notas de progreso, resúmenes de alta), y casos límite (datos incompletos, pacientes complejos) superaron masivamente a 500 ejemplos de un solo departamento.
+
+El modelo que entrenó en datos homogéneos básicamente aprendió a escribir notas de cardiología. Para todo. ¿Un paciente pediátrico? Estilo de nota de cardiología. ¿Un seguimiento de cirugía? Lo adivinaste.
+
+Moriré en esta colina: la diversidad importa más que el volumen.
+
+## Lecciones Específicas de Dominio
+
+### Salud: La Terminología Es Todo
+
+La terminología médica es brutal. "IM" debe *siempre* expandirse a "infarto de miocardio," no a veces "ataque cardíaco" porque el modelo se sintió casual ese día. "SOB" es "shortness of breath" (dificultad respiratoria), no... la otra cosa.
+
+Un cardiólogo me dijo que nuestra solución inicial basada en prompting "sonaba como un estudiante de medicina que aprendió de Grey's Anatomy." Duro pero justo. Después del fine-tuning con notas clínicas formateadas apropiadamente, el mismo cardiólogo dijo que "realmente suena como un residente ahora." ¡Progreso!
+
+### Legal: El Formato No Es Negociable
+
+Los abogados son particulares sobre todo, pero especialmente sobre citas. Una cita que es 90% correcta es 100% incorrecta.
+
+Antes del fine-tuning, nuestra herramienta de resumen legal producía citas en tres o cuatro formatos diferentes. Después del fine-tuning: consistente cada vez. Los abogados estaban encantados.
+
+## La Realidad Económica
+
+Permíteme desglosar lo que costó un proyecto reciente:
+
+| Item | Costo |
+|------|-------|
+| Entrenamiento (3 epochs) | $12.40 |
+| Ejecuciones de validación | $3.20 |
+| Preparación de datos (8 horas) | ~$400 (asumiendo $50/hr) |
+| **Total** | **~$415** |
+
+¿Notas algo? Los costos de API son casi un error de redondeo. El costo *real* es tu tiempo preparando datos.
+
+Esto tiene dos implicaciones:
+
+Primero, no optimices por costos de API. La diferencia entre ejecutar un trabajo de entrenamiento y cinco es tal vez $50. La diferencia entre buenos datos y malos datos es si el proyecto tiene éxito o falla.
+
+Segundo, invierte en herramientas y procesos que hagan la preparación de datos más rápida.
+
+## La Conclusión
+
+El fine-tuning funciona cuando:
+
+1. Realmente has probado buen prompting primero
+2. Tienes datos de entrenamiento de alta calidad y diversos
+3. Puedes medir el éxito objetivamente
+4. La tarea se beneficia de patrones aprendidos sobre razonamiento
+
+Empieza con 50-100 ejemplos excelentes. Mide todo. Agrega datos basándote en lo que realmente está fallando, no en vibes.
+
+Y oye, si el prompting funciona suficientemente bien? Eso también está bien. Nadie está dando premios por usar la técnica más fancy. Están dando cheques por enviar cosas que funcionan.
+
+El objetivo no es hacer fine-tuning. El objetivo es resolver el problema. El fine-tuning es solo una manera de llegar ahí.
+
+---
+
+*¿Trabajando en una aplicación LLM específica de dominio? [Hablemos](/contact). Probablemente ya cometí el error que estás a punto de cometer.*

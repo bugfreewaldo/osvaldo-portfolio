@@ -1,0 +1,150 @@
+---
+title: "Toma de Decisiones Técnicas Bajo Incertidumbre"
+description: "Un marco para tomar decisiones técnicas cuando no tienes toda la información. Cubre reversibilidad, documentos de decisión, y saber cuándo comprometerse."
+date: 2025-10-28
+updated: 2025-11-05
+published: true
+category: "Liderazgo de Ingeniería"
+tags: ["Toma de Decisiones", "Arquitectura", "Liderazgo", "Gestión de Ingeniería"]
+author: "Osvaldo Restrepo"
+translationOf: "technical-decision-making"
+tldr: "La mayoría de las decisiones técnicas son reversibles, así que tómalas rápido. Para decisiones irreversibles, escribe un documento de decisión, reúne input, pero pon un deadline. La información perfecta nunca llega. Decide y aprende."
+faqs:
+  - question: "¿Cómo tomas decisiones técnicas sin toda la información?"
+    answer: "Clasifica decisiones por reversibilidad. Las decisiones reversibles (elección de librerías, diseño de API) deberían tomarse rápido ya que puedes cambiar de rumbo. Las decisiones irreversibles (elección de base de datos, arquitectura mayor) merecen más análisis, pero aún necesitan deadlines."
+  - question: "¿Qué es un documento de decisión (ADR)?"
+    answer: "Un Architecture Decision Record captura el contexto, opciones consideradas, decisión tomada, y razonamiento. Crea memoria institucional y permite que futuros desarrolladores entiendan por qué se hicieron ciertas elecciones."
+  - question: "¿Cómo manejas el desacuerdo en decisiones técnicas?"
+    answer: "Busca entender las preocupaciones subyacentes, no solo las posiciones. A menudo los desacuerdos provienen de diferentes suposiciones sobre requisitos o restricciones. Hazlas explícitas, luego decide. 'Disagree and commit' es válido."
+  - question: "¿Cuándo deberías revisitar una decisión técnica?"
+    answer: "Cuando las suposiciones que impulsaron la decisión cambian significativamente: nueva escala, nuevos requisitos, o nueva información sobre costos/riesgos. No revisites solo porque existe algo mejor; considera los costos de migración."
+relatedPosts: ["phd-to-industry"]
+---
+
+Todo equipo de ingeniería enfrenta decisiones con información incompleta. Espera demasiado, y estás paralizado. Decide muy rápido, y acumulas arrepentimiento. El desafío no es tomar decisiones perfectas. Es tomar decisiones suficientemente buenas a la velocidad correcta.
+
+Solía pensar que el buen liderazgo técnico significaba tomar la decisión *correcta*. Ahora pienso que significa tomar *una* decisión, rápido cuando es apropiado, reflexivamente cuando se requiere, y aprender de los resultados de cualquier manera.
+
+## El Patrón de Parálisis
+
+Temprano en mi carrera, vi a un equipo pasar seis semanas debatiendo qué cola de mensajes usar. Investigaron extensivamente. Construyeron prototipos. Tuvieron reuniones sobre reuniones. Y luego los requisitos cambiaron, y la mitad de su análisis se volvió irrelevante.
+
+Mientras tanto, nada se envió.
+
+Ese equipo no estaba siendo cuidadoso. Estaba atascado. El miedo de hacer la elección incorrecta produjo algo peor: no hacer ninguna elección en absoluto.
+
+He estado en ese equipo. He sido la persona insistiendo que necesitamos "solo un poco más de investigación." Es cómodo porque se siente productivo sin requerir compromiso.
+
+Pero evitar decisiones es en sí una decisión. Es decidir que el costo de la demora es menor que el riesgo de equivocarse. Y para la mayoría de decisiones técnicas, esa matemática está al revés.
+
+## El Marco de Reversibilidad
+
+La perspectiva que cambió cómo abordo las decisiones: no todas las elecciones son iguales. Algunas puedes deshacer. Algunas no.
+
+### Tipo 1: Las Decisiones Irreversibles
+
+Estas son genuinamente de alto riesgo. Cambiarlas después es caro o imposible:
+
+- Qué tecnología de base de datos usar
+- Qué lenguaje de programación para el sistema central
+- Patrones arquitectónicos mayores (monolito vs. microservicios)
+- Contratos de API externos con socios
+- Arquitectura de seguridad y cumplimiento
+
+Estas merecen análisis cuidadoso, input amplio, y documentación. Pero incluso estas necesitan deadlines. La información perfecta nunca llega.
+
+### Tipo 2: Las Decisiones Reversibles
+
+Estas se sienten importantes en el momento pero realmente pueden cambiarse:
+
+- Diseño de API interno
+- Qué librería o framework usar
+- Organización del código
+- Detalles de implementación
+- La mayoría de decisiones de proceso
+
+Estas deberían tomarse rápido. El costo de elecciones ocasionalmente incorrectas es menor que el costo de deliberación constante.
+
+<Callout type="tip" title="La Regla del 70%">
+Si tienes el 70% de la información que desearías tener, decide. Esperar por el 90% usualmente no vale la demora. Para decisiones reversibles, el 50% a menudo es suficiente.
+</Callout>
+
+## El Arte del Documento de Decisión
+
+Para decisiones Tipo 1, escribo Architecture Decision Records (ADRs). No porque ame la documentación, sino porque fuerzan claridad y crean memoria institucional.
+
+La estructura que uso:
+
+**Estado**: ¿Cuándo se decidió esto? ¿Sigue activo?
+
+**Contexto**: ¿Cuál es la situación? ¿Qué estamos tratando de resolver? ¿Qué restricciones existen?
+
+**Opciones Consideradas**: ¿Qué alternativas evaluamos? ¿Cuáles son los pros y contras de cada una?
+
+**Decisión**: ¿Qué elegimos?
+
+**Razonamiento**: ¿Por qué esta opción sobre otras? ¿Qué tradeoffs aceptamos?
+
+**Consecuencias**: ¿Qué sigue de esta decisión? ¿Qué necesitamos hacer después?
+
+La sección de razonamiento es la más importante. Seis meses desde ahora, alguien preguntará "¿por qué lo hicimos así?" El ADR responde esa pregunta sin requerir que nadie recuerde.
+
+## Reuniendo Input Sin Quedarse Atascado
+
+### El RACI para Decisiones
+
+He encontrado que la autoridad de toma de decisiones poco clara causa más parálisis que opciones técnicas poco claras. ¿Quién investiga? ¿Quién decide? ¿Quién necesita aprobar? ¿Quién solo necesita saber?
+
+| Rol | Qué Hace |
+|-----|----------|
+| Responsable | Hace la investigación, escribe la propuesta |
+| Accountable | Toma la decisión final |
+| Consultado | Provee input antes de la decisión |
+| Informado | Notificado después de que se toma la decisión |
+
+Más importante: debería haber *una* persona accountable. Las decisiones por comité no son decisiones. Son negociaciones que a menudo terminan en compromisos que no satisfacen a nadie.
+
+### Manejando Desacuerdos
+
+El desacuerdo es saludable hasta que se vuelve bloqueante.
+
+La mayoría de desacuerdos técnicos no son realmente sobre los detalles técnicos. Son sobre suposiciones diferentes. Una persona piensa que necesitamos escalar 10x en un año. Otra piensa que 2x es más realista. Por supuesto que prefieren arquitecturas diferentes.
+
+Cuando me encuentro con desacuerdos, trato de encontrar las suposiciones subyacentes:
+- ¿Qué crees sobre los requisitos futuros?
+- ¿Qué riesgos te preocupan más?
+- ¿Qué restricciones estás asumiendo?
+
+Hazlas explícitas. A menudo, una vez que las suposiciones se alinean, la elección "correcta" se vuelve obvia para todos.
+
+Y a veces, después de discusión genuina, la gente sigue en desacuerdo. Ahí es cuando "disagree and commit" se vuelve necesario. Alguien accountable toma la decisión. Todos los demás la apoyan completamente, incluso si habrían elegido diferente.
+
+<Callout type="warning" title="Disagree and Commit">
+"Disagree and commit" es saludable, no disfuncional. Después de discusión genuina, alguien toma la decisión. Otros la apoyan completamente, incluso si habrían elegido diferente. Socavar decisiones después de que se toman es el problema real.
+</Callout>
+
+## Señales de Que Estás Sobre-Analizando
+
+Podrías estar atascado si:
+
+- Estás investigando los mismos tradeoffs por tercera vez
+- El equipo sigue agregando escenarios "¿y qué si...?" que son cada vez más improbables
+- Estás esperando información que no llega (y podría no existir)
+- El costo de la demora claramente excede el costo de equivocarse
+- Todos están frustrados pero nadie tomará la decisión
+
+Cuando reconozco este patrón, fuerzo un deadline. "Decidimos para el jueves, con la información que tengamos."
+
+## El Lado Humano
+
+Las decisiones técnicas son emocionales, incluso cuando pretendemos que no lo son. La gente une identidad a sus enfoques preferidos. "Soy una persona de microservicios" o "Creo en PostgreSQL." Cuestionar eso se siente personal.
+
+Trato de separar identidad de posición. No estamos debatiendo quién es inteligente. Estamos debatiendo qué es mejor para esta situación, con estas restricciones, dado lo que sabemos ahora.
+
+Y trato de recordar que equivocarse sobre una elección técnica está bien. Es información. Lo que no está bien es crear un ambiente donde la gente no puede admitir incertidumbre o cambiar de opinión sin perder imagen.
+
+Los mejores líderes técnicos que conozco no son los que siempre están en lo correcto. Son los que toman decisiones al ritmo correcto, ajustan cuando llega nueva información, y crean espacio para que otros hagan lo mismo.
+
+---
+
+*¿Navegando una decisión técnica difícil? [Hablemos](/contact) de tus opciones.*

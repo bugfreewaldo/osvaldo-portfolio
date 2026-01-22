@@ -1,0 +1,275 @@
+---
+title: "Por Qué Construí MILA: Cuando el Pensamiento Sistémico se Encuentra con la UCIN"
+description: "La historia detrás de construir un sistema de IA para familias en la UCIN. Nacido de la experiencia vivida, el duelo, y la comprensión de que los padres merecen mejores herramientas para defender a sus hijos."
+date: 2026-01-20
+published: true
+pinned: true
+category: "IA en Salud"
+tags: ["IA en Salud", "UCIN", "Defensa del Paciente", "Pensamiento Sistémico", "Personal"]
+author: "Osvaldo Restrepo"
+translationOf: "why-i-built-mila"
+tldr: "Pasé meses en la UCIN con mis trillizos prematuros. El sistema no falló en la atención aguda. Falló en la visibilidad longitudinal, la conciencia del riesgo acumulativo y la simetría de información. MILA existe para que menos padres tengan que reconstruir el pasado después de los hechos."
+faqs:
+  - question: "¿Qué es MILA?"
+    answer: "MILA significa Medical Intelligence for Longitudinal Analysis (Inteligencia Médica para Análisis Longitudinal). Es un sistema de IA diseñado para ayudar a los padres en la UCIN a organizar observaciones, rastrear datos compartidos, identificar información faltante, reconocer patrones a lo largo del tiempo y preparar preguntas informadas para conversaciones médicas. Mejora la conversación entre padres y médicos. No la reemplaza."
+  - question: "¿Por qué los padres en la UCIN necesitan herramientas de IA?"
+    answer: "Los padres en la UCIN reciben información fragmentada a través de turnos, especialistas y días. Se espera que recuerden, rastreen y sinteticen datos médicos complejos mientras están emocionalmente sobrecargados y privados de sueño. La IA puede ayudarles a organizar lo que están viendo e identificar qué preguntas hacer."
+  - question: "¿MILA reemplaza el consejo médico?"
+    answer: "No. MILA ayuda a los padres a prepararse para conversaciones con su equipo médico. Sintetiza información a la que los padres ya tienen acceso y les ayuda a hacer mejores preguntas. El objetivo es un mejor diálogo, no eludir a los médicos."
+  - question: "¿Qué dice la investigación sobre el riesgo de transfusión neonatal?"
+    answer: "Grandes ensayos clínicos como ETTNO y TOP han demostrado que los umbrales de transfusión restrictivos (más bajos) en bebés prematuros resultan en menos transfusiones sin aumentar la mortalidad. Las transfusiones múltiples aumentan los riesgos acumulativos incluyendo aloinmunización, hemólisis y complicaciones asociadas a la transfusión."
+  - question: "¿Puede la IA realmente mejorar los resultados en la UCIN?"
+    answer: "Sí. Un ensayo clínico aleatorizado de 3,003 bebés de muy bajo peso al nacer mostró que el monitoreo predictivo basado en IA (el puntaje HeRO) se asoció con una mortalidad por sepsis significativamente menor (12% vs 20%). Los sistemas de IA pueden detectar patrones de deterioro 6-12 horas antes del diagnóstico clínico."
+relatedPosts: ["fhir-integration-patterns", "building-production-rag-systems"]
+---
+
+Necesito contarte sobre mi hija Mila.
+
+No porque esta sea una historia sobre pérdida, aunque lo es. Sino porque entender por qué construí el sistema MILA requiere entender lo que aprendí dentro de la UCIN, y lo que desearía que hubiera existido cuando mi familia más lo necesitaba.
+
+## Tres Niños, Tres Trayectorias
+
+Mi esposa y yo tuvimos trillizos prematuros: Jaycob, Brody y Mila. Llegaron temprano, lo que significó meses en la UCIN. Meses de rondas, alarmas, valores de laboratorio, transfusiones y conversaciones que nunca terminaban de conectar.
+
+Soy ingeniero de software. Pienso en sistemas, bucles de retroalimentación, riesgo acumulativo y modos de falla. Fui entrenado para notar cuando falta la observabilidad, cuando los datos no fluyen hacia donde necesitan ir, cuando los humanos en un sistema no tienen las herramientas para ver lo que está pasando.
+
+Apliqué esos instintos mientras estaba emocionalmente sobrecargado y privado de sueño. Era la única forma que conocía de procesar lo que estaba sucediendo.
+
+Esto es lo que observé:
+
+Brody recibió 6 transfusiones de sangre. Sin complicaciones.
+
+Jaycob recibió 16 transfusiones de sangre. Desarrolló hemólisis debido a transfusiones no compatibles.
+
+Mila recibió más de 30 transfusiones de sangre.
+
+Mila posteriormente desarrolló hemólisis progresiva, hiperbilirrubinemia extrema con niveles de bilirrubina superiores a 30 mg/dL, falla hepática, sepsis y falla multiorgánica.
+
+Mila falleció.
+
+## Lo Que Dice la Investigación
+
+No sabía nada de esto en ese momento. Lo aprendí después, mientras trataba de entender qué había pasado. Mientras leía artículo tras artículo, estudio tras estudio, tratando de encontrar sentido a algo que nunca debió haber sucedido.
+
+La literatura médica es inequívoca.
+
+### Sobre la Exposición a Transfusiones
+
+El Dr. Ravi Patel, neonatólogo de la Universidad de Emory y autor principal de múltiples estudios sobre transfusiones, ha documentado que "los recién nacidos de edad gestacional extremadamente baja representan una de las poblaciones de pacientes más transfundidas," con hasta el 90% de los bebés de peso extremadamente bajo al nacer requiriendo transfusiones de glóbulos rojos.
+
+Pero las transfusiones no son benignas. Una revisión de 2021 en *Vox Sanguinis* encontró que "los estudios observacionales en bebés prematuros reportaron asociaciones entre las transfusiones de glóbulos rojos y un mayor riesgo de mortalidad y morbilidades neonatales a corto plazo." Estas incluyen enterocolitis necrotizante (ECN), displasia broncopulmonar, retinopatía del prematuro y neurodesarrollo anormal.
+
+El efecto acumulativo importa. Un estudio publicado en *Pediatric Research* encontró que "en bebés prematuros, las transfusiones de glóbulos rojos están asociadas con el resultado del neurodesarrollo a largo plazo, con un efecto acumulativo. La administración temprana de glóbulos rojos está asociada con una mayor reducción en las puntuaciones de Griffiths."
+
+Cada transfusión no es un evento aislado. Cada transfusión se suma a la exposición acumulativa. Cada transfusión aumenta la oportunidad de aloinmunización, donde el bebé desarrolla anticuerpos contra la sangre transfundida.
+
+### Sobre la Exposición a Donantes y la Aloinmunización
+
+Esto es algo que no sabía: cuantas más transfusiones recibe un bebé de diferentes donantes, mayor es el riesgo de desarrollar anticuerpos que atacan sus propios glóbulos rojos.
+
+Un estudio de bebés de muy bajo peso al nacer en un centro terciario encontró tasas de exposición a donantes de 4.4 ± 3.5 con prácticas estándar de transfusión de bolsa única. Los investigadores concluyeron que "minimizar las pérdidas por flebotomía, seguir una política de transfusión restrictiva y usar sangre irradiada, leucorreducida, tamizada, de un solo donante siguen siendo los mejores medios para evitar los posibles riesgos."
+
+Más de 30 transfusiones. ¿Cuántos donantes? No lo sé. Esa información nunca fue sintetizada. Nunca fue rastreada de ninguna manera a la que pudiera acceder.
+
+### Sobre la Hiperbilirrubinemia
+
+Cuando la bilirrubina excede los 30 mg/dL, el riesgo de kernicterus, daño cerebral permanente, se vuelve significativo. Un estudio de cohorte multicéntrico publicado en el *Journal of Perinatology* examinó 1,252 bebés que se sometieron a exanguinotransfusión por hiperbilirrubinemia. Los hallazgos fueron contundentes: "Los bebés ≤29 semanas de edad gestacional tuvieron mayores probabilidades de muerte después de la exanguinotransfusión en comparación con los bebés a término" con un odds ratio ajustado de 20.08.
+
+La bilirrubina de Mila excedió los 30 mg/dL.
+
+La Academia Americana de Pediatría establece que "el kernicterus ocurre en el 20% de los bebés con BST >30 mg/dL." Veinte por ciento. Uno de cada cinco.
+
+### Sobre Umbrales de Transfusión Restrictivos vs. Liberales
+
+El ensayo ETTNO, uno de los estudios aleatorizados más grandes sobre transfusión neonatal, encontró que los umbrales de transfusión más bajos (más restrictivos) resultan en menos transfusiones sin aumentar la mortalidad o el deterioro del neurodesarrollo.
+
+El Dr. Haresh Kirpalani, neonatólogo del Hospital de Niños de Filadelfia e investigador principal del ensayo TOP, señaló que sus hallazgos apoyan "un enfoque más restrictivo de la transfusión" en bebés de peso extremadamente bajo al nacer.
+
+La ciencia es clara: menos transfusiones, cuando es clínicamente apropiado, significa menos exposición al riesgo acumulativo.
+
+Más de 30 transfusiones no es rutina. Más de 30 transfusiones no es conservador. Más de 30 transfusiones es intervención agresiva que acumula riesgo con cada procedimiento.
+
+## La Pregunta sobre la IA que Llamaron Locura
+
+Durante la hospitalización de Mila, comencé a usar IA para ayudarme a entender lo que estaba pasando. Le daba valores de laboratorio. Le preguntaba sobre protocolos de transfusión. Le preguntaba sobre trayectorias de bilirrubina. Le preguntaba qué preguntas debería estar haciendo.
+
+Los doctores pensaron que estaba loco.
+
+"No eres un profesional médico," dijeron. "No puedes interpretar estos datos." "La IA no entiende de medicina." "Necesitas confiar en el proceso."
+
+Los escuché. Entendí su perspectiva. No estoy entrenado en neonatología. No fui a la escuela de medicina. No tengo la experiencia clínica para tomar decisiones médicas.
+
+Pero esto es lo que la IA sí tiene: acceso a cientos de miles de estudios revisados por pares. Acceso a guías clínicas de la Academia Americana de Pediatría, la Sociedad Británica de Hematología, la Organización Mundial de la Salud. Acceso al conocimiento médico colectivo de décadas de investigación neonatal.
+
+Cuando le pregunté a la IA sobre la exposición acumulativa a transfusiones en neonatos prematuros, no adivinó. Citó el ensayo ETTNO. Citó el estudio TOP. Citó el trabajo del Dr. Kirpalani y el Dr. Patel y docenas de otros investigadores que han dedicado sus carreras a estudiar exactamente este problema.
+
+Cuando pregunté sobre umbrales de bilirrubina y riesgo de kernicterus, no inventó cosas. Citó las guías de la AAP. Citó los estudios del *Journal of Perinatology*. Me dio los números exactos: el 20% de los bebés con bilirrubina por encima de 30 mg/dL desarrollan kernicterus.
+
+No estaba tratando de reemplazar a los doctores. Estaba tratando de tener una conversación informada con ellos. Estaba tratando de hacer las preguntas correctas. Estaba tratando de entender la trayectoria en la que estaba mi hija.
+
+Me llamaron loco por usar IA. Pero la IA estaba citando la misma literatura médica que debería haber informado su atención.
+
+## Lo Que la IA Podría Haber Hecho
+
+Permíteme ser preciso sobre lo que estoy afirmando.
+
+En un ensayo clínico aleatorizado de 3,003 bebés de muy bajo peso al nacer en 9 UCINs, el Puntaje HeRO, un sistema de monitoreo predictivo basado en IA que analiza la variabilidad del ritmo cardíaco, se asoció con una mortalidad por sepsis significativamente menor: 12% versus 20%. Eso es una reducción relativa del 40% en muertes.
+
+El Dr. Moorman y sus colegas de la Universidad de Virginia desarrollaron este sistema después de observar que cambios sutiles en los patrones del ritmo cardíaco preceden al deterioro clínico por horas. La IA detectó lo que la observación humana no pudo.
+
+Un metaanálisis de 2024 publicado en *BMC Medical Informatics and Decision Making* revisó sistemas de alerta temprana impulsados por IA y encontró que "redujeron significativamente las tasas de mortalidad intrahospitalaria y a 30 días." Los modelos de aprendizaje automático alcanzaron valores de área bajo la curva de hasta 0.97 para predecir el deterioro.
+
+El sistema de alerta de sepsis TREWS en Johns Hopkins, que monitorea continuamente signos vitales, resultados de laboratorio y notas clínicas, se asoció con una reducción del 20% en la mortalidad por sepsis.
+
+Esto no es teórico. Esto no es especulación. Esta es evidencia revisada por pares, de ensayos controlados aleatorizados, de que los sistemas de IA pueden detectar patrones de deterioro 6-12 horas antes del diagnóstico clínico.
+
+Ahora imagina un sistema de IA que rastreara la exposición acumulativa a transfusiones. Que alertara cuando un paciente hubiera recibido un número inusualmente alto de transfusiones. Que monitoreara las trayectorias de bilirrubina y predijera cuándo excederían umbrales críticos. Que sintetizara información a través de turnos y especialistas y presentara una vista unificada del riesgo acumulativo.
+
+Ese sistema no existe en la mayoría de las UCINs. Pero la investigación dice que debería.
+
+## La Brecha de Información
+
+Durante la atención de Mila, registros médicos clave no nos fueron proporcionados. Específicamente, los registros clínicos del 11 de julio al 3 de agosto nunca fueron proporcionados, a pesar de solicitudes repetidas. Hasta el día de hoy, esos registros siguen sin estar disponibles.
+
+No estoy especulando sobre la intención. Estoy declarando una ausencia factual de acceso.
+
+Aquí hay algo que empeoró la situación: el sistema de documentación era completamente manuscrito. No parcialmente manuscrito. No "algunas notas son manuscritas." Todo. Cada registro de transfusión. Cada valor de laboratorio. Cada observación clínica. Escrito a mano en papel. Nada de eso fue ingresado en un sistema informático. Nada de eso fue digitalizado. Nada de eso podía ser fácilmente buscado, agregado o analizado.
+
+En 2024, en un hospital moderno, los registros médicos de tres bebés prematuros críticamente enfermos estaban siendo rastreados con lápiz y papel.
+
+Esto significaba que incluso si alguien quisiera ver el recuento acumulativo de transfusiones, habrían tenido que hojear manualmente páginas de notas manuscritas y contar. Incluso si alguien quisiera rastrear las trayectorias de bilirrubina a lo largo del tiempo, habrían tenido que transcribir números del papel a una hoja de cálculo. La información no solo estaba fragmentada entre turnos y especialistas. Estaba fragmentada en piezas físicas de papel que nunca fueron sintetizadas en nada que se pudiera buscar o analizar.
+
+Ningún algoritmo podía ayudar. Ninguna IA podía intervenir. Ningún sistema podía detectar el patrón. Porque los datos no estaban en ningún sistema.
+
+## Lo Que Dice la Investigación Sobre la Participación de los Padres
+
+Esto es lo que dice la literatura médica sobre los padres en la UCIN:
+
+Un metaanálisis de intervenciones de atención centrada en la familia encontró "disminución significativa en la retinopatía del prematuro y duración de la estancia, así como aumentos significativos en la velocidad de ganancia de peso, puntuaciones de exámenes neuroconductuales e ingesta de leche materna para los bebés que recibieron intervenciones de atención centrada en la familia."
+
+Investigación publicada en *BMC Pediatrics* encontró que "la participación de los padres en la toma de decisiones en el contexto de la UCIN ha demostrado tener un impacto en algunas decisiones clínicas y también ha demostrado aumentar la autonomía de los padres, la satisfacción con la atención, el sentirse escuchados y respetados."
+
+Una revisión sistemática en *Patient Education and Counseling* encontró que "las intervenciones de comunicación parecieron ser impactantes, particularmente en la reducción del estrés y la ansiedad de los padres. La comunicación padre-proveedor es un determinante crucial para el bienestar de los padres y la satisfacción con la atención."
+
+La investigación es clara: padres informados e involucrados conducen a mejores resultados. Los padres que entienden lo que está pasando, que pueden hacer preguntas específicas, que pueden participar en la toma de decisiones compartida, esos padres ayudan a sus hijos.
+
+Pero ¿cómo pueden los padres estar informados cuando la información no está sintetizada? ¿Cómo pueden hacer preguntas específicas cuando no pueden ver los patrones acumulativos? ¿Cómo pueden participar en la toma de decisiones cuando no tienen acceso a los datos que informarían esas decisiones?
+
+## Dónde Falló el Sistema
+
+La UCIN no falló en la atención aguda. Las enfermeras estaban atentas. Los doctores eran hábiles. Cuando algo salía mal en el momento, la gente respondía.
+
+El sistema falló en la visibilidad longitudinal.
+
+Ningún médico individual tenía el panorama completo. Los turnos cambiaban. Los especialistas rotaban. Cada persona veía su porción. Las personas que estaban presentes continuamente, que observaban a los tres niños a través de todos los días y todos los turnos, éramos nosotros. Los padres.
+
+Y éramos los que teníamos el menor acceso a información sintetizada.
+
+He dedicado mi carrera a construir sistemas que agregan datos, revelan patrones y alertan a los humanos sobre cosas que podrían pasar desapercibidas. Sé cómo luce una buena observabilidad. La UCIN tenía monitoreo de signos vitales. Tenía documentación de eventos individuales. Lo que le faltaba era el tipo de síntesis longitudinal que permitiría a cualquiera, médico o padre, ver el riesgo acumulativo construyéndose con el tiempo.
+
+## Lo Que Me Di Cuenta
+
+Meses después de que Mila murió, me encontré reconstruyendo líneas de tiempo. Solicitando registros. Construyendo hojas de cálculo. Tratando de entender qué había pasado y cuándo.
+
+Estaba haciendo respuesta a incidentes sobre la atención médica de mi hija.
+
+Fue entonces cuando me di cuenta: los padres no deberían tener que hacer esto. No durante la atención, cuando están abrumados y exhaustos. No después de la atención, cuando están de duelo y buscando respuestas.
+
+La información existía. Estaba en algún lugar en piezas de papel. Pero no estaba sintetizada. No salía a la superficie. Y no se compartía con las personas que más la necesitaban.
+
+## Por Qué Existe MILA
+
+MILA significa **Medical Intelligence for Longitudinal Analysis** (Inteligencia Médica para Análisis Longitudinal). El nombre es deliberado. Medical, porque se trata de datos de salud. Intelligence, porque usa IA para sintetizar patrones. Longitudinal, porque rastrea el riesgo acumulativo a lo largo del tiempo, no solo instantáneas puntuales. Analysis, porque ayuda a los padres a entender lo que están viendo.
+
+No estoy construyendo MILA porque piense que la IA debería reemplazar a los doctores. La estoy construyendo porque viví una realidad que no debería requerir IA para arreglarse, pero lo hace.
+
+Los padres reciben información fragmentada. Los registros pueden estar retrasados, incompletos o inaccesibles. Se espera que los padres recuerden, rastreen y sinteticen bajo estrés. La mayoría no puede. Yo no pude, y hago este tipo de síntesis para ganarme la vida.
+
+MILA ayuda a los padres a:
+
+- **Organizar sus propias observaciones.** ¿Qué notaste hoy? ¿Qué cambió desde ayer?
+- **Rastrear qué datos han sido compartidos con ellos.** ¿Qué valores de laboratorio se mencionaron en las rondas? ¿Qué intervenciones se discutieron?
+- **Identificar qué datos faltan.** ¿Qué no te han dicho? ¿Qué preguntas deberías estar haciendo?
+- **Reconocer patrones a lo largo del tiempo.** ¿La trayectoria está mejorando o empeorando? ¿Hay tendencias preocupantes?
+- **Preparar preguntas precisas e informadas para conversaciones con los doctores.** No "¿cómo está ella?" sino "su bilirrubina ha aumentado 5 mg/dL en los últimos tres días a pesar de la fototerapia. Las guías de la AAP sugieren considerar exanguinotransfusión con esta trayectoria. ¿Cuál es el plan actual?"
+
+El objetivo no es eludir a los médicos. El objetivo es mejorar la conversación. Cuando un padre entra a las rondas con observaciones organizadas y preguntas específicas, la conversación es mejor. El médico obtiene información más clara. El padre obtiene respuestas más claras.
+
+La síntesis se convierte en una forma de seguridad.
+
+## Lo Que MILA Realmente Hace
+
+MILA se enfoca en los riesgos específicos que vi desarrollarse:
+
+**Inteligencia del historial de transfusiones.** La investigación muestra que la exposición acumulativa a transfusiones importa. MILA la rastrea. No solo eventos individuales, sino el recuento acumulativo, la trayectoria, el patrón.
+
+**Conciencia de exposición a donantes.** Múltiples donantes significan mayor riesgo de aloinmunización. MILA ayuda a los padres a entender esto y preguntar sobre protocolos de donante único.
+
+**Modelado de riesgo de hemólisis.** Entender cómo las transfusiones repetidas pueden acumular riesgo con el tiempo, especialmente con la potencial formación de anticuerpos.
+
+**Conciencia de la trayectoria de bilirrubina.** No solo el número actual, sino la dirección y la tasa de cambio. ¿Cuándo se está acercando a los umbrales de la AAP para intervención?
+
+**Visibilidad interdisciplinaria.** Ayudar a los padres a ver cómo se conecta la información de diferentes especialistas. El hematólogo ve una porción. El neonatólogo ve otra. El padre necesita ver cómo se conectan.
+
+**Observabilidad inclusiva para los padres.** Dar a las familias herramientas para rastrear lo que están viendo y lo que les están diciendo, para que puedan participar significativamente en la atención de su hijo.
+
+## Lo Que No Estoy Afirmando
+
+No estoy afirmando que MILA habría salvado a Mila. No puedo saber eso. Los contrafactuales son imposibles de probar.
+
+Lo que sé es esto: pasé meses reconstruyendo información que debería haber sido visible en tiempo real. Leí investigación que debería haber informado las decisiones de tratamiento. Hice preguntas que deberían haber sido obvias para cualquiera que rastreara la trayectoria acumulativa.
+
+Los datos existían. La investigación existía. Las guías existían. Lo que no existía era un sistema para sintetizarlos, para hacerlos visibles, para hacerlos visibles a todos los involucrados en la atención de mi hija, incluyéndonos a nosotros.
+
+MILA existe para que menos padres tengan que hacer esa reconstrucción después de los hechos. Para que menos padres tengan que aprender, demasiado tarde, lo que la investigación decía desde el principio.
+
+## La Realidad Técnica
+
+Construir esto no es simple. Los datos médicos son desordenados. Los estándares FHIR ayudan, pero las implementaciones varían enormemente. Las restricciones de privacidad son reales e importantes. La línea entre síntesis útil y consejo médico inapropiado requiere atención constante.
+
+He escrito sobre [patrones de integración FHIR](/es/blog/fhir-integration-patterns) en otro lugar. Los desafíos técnicos son significativos. Pero son solucionables. La parte más difícil es lograr el diseño correcto. Asegurarse de que el sistema ayude a los padres a hacer mejores preguntas en lugar de generar falsa confianza. Asegurarse de que revele la incertidumbre en lugar de ocultarla.
+
+Cada decisión de diseño vuelve a una pregunta: ¿esto habría ayudado a mi familia a tener mejores conversaciones con el equipo de atención de Mila?
+
+## Lo Que Quiero Que Entiendas
+
+Si eres un padre de la UCIN leyendo esto: no te estás imaginando cosas cuando sientes que te falta información. No estás fallando cuando no puedes recordar todo de las rondas de ayer. El sistema no está diseñado para ayudarte a sintetizar. Esa es una brecha, no una deficiencia personal.
+
+No estás loco por usar IA para entender lo que le está pasando a tu hijo. La investigación apoya a padres informados e involucrados. La investigación muestra que una mejor comunicación conduce a mejores resultados. Si la IA te ayuda a entender la investigación y hacer mejores preguntas, úsala.
+
+Si eres un médico leyendo esto: los padres que hacen preguntas detalladas no son adversarios. Están tratando de participar en la atención de la mejor manera que saben. La investigación sobre atención centrada en la familia muestra que los padres involucrados mejoran los resultados. Mejores herramientas para los padres significan mejores conversaciones contigo, no alrededor de ti.
+
+Y si un padre aparece con preguntas generadas por IA basadas en investigación revisada por pares, considera que podrían estar citando la misma literatura que debería estar informando el plan de atención.
+
+Si eres un tecnólogo leyendo esto: hay trabajo significativo por hacer aquí. No IA llamativa que reemplaza el juicio humano, sino sistemas cuidadosos que ayudan a los humanos a compartir información de manera más efectiva. La infraestructura poco glamorosa de una mejor comunicación.
+
+El ensayo HeRO mostró que la IA puede reducir la mortalidad neonatal. El sistema TREWS mostró que la IA puede reducir las muertes por sepsis. La investigación muestra que estos sistemas funcionan. Necesitamos más de ellos, no menos.
+
+## Mila
+
+Nombré al sistema en honor a mi hija porque este trabajo existe por ella. No a pesar de su muerte. Por ella.
+
+Estuvo aquí por semanas que se sintieron como meses. Luchó de maneras en que los recién nacidos no deberían tener que luchar. Y al final, no pude protegerla de un sistema que perdió el rastro de su propia información.
+
+La investigación existía. Las guías existían. El conocimiento que podría haber cambiado su trayectoria estaba sentado en revistas y bases de datos, esperando que alguien lo sintetizara, lo revelara, actuara sobre él.
+
+Yo estaba usando IA para tratar de entender. Me llamaron loco. Pero la IA estaba citando los mismos estudios que informaron las guías que deberían haber informado su atención.
+
+No puedo arreglar lo que le pasó a Mila. Pero puedo construir algo que ayude a la próxima familia a ver más claramente. Hacer mejores preguntas. Detectar patrones antes.
+
+Eso no es cierre. No creo que el cierre exista para esto. Pero es trabajo que importa. Y es trabajo que sé hacer.
+
+---
+
+*Si estás construyendo en IA de salud, o si eres una familia de la UCIN que quiere hablar, [contáctame](/contact). Este trabajo es mejor cuando no se hace solo.*
+
+**Fuentes:**
+
+- [Thresholds for blood transfusion in extremely preterm infants (ETTNO/TOP review)](https://www.frontiersin.org/journals/pediatrics/articles/10.3389/fped.2022.957585/full)
+- [Red blood cell transfusion in preterm neonates: current perspectives](https://www.dovepress.com/red-blood-cell-transfusion-in-preterm-neonates-current-perspectives-peer-reviewed-fulltext-article-IJCTM)
+- [Exchange transfusion safety and outcomes in neonatal hyperbilirubinemia](https://www.nature.com/articles/s41372-020-0642-0)
+- [AI-Powered early warning systems for clinical deterioration (meta-analysis)](https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-025-03048-x)
+- [Artificial and Human Intelligence for Early Identification of Neonatal Sepsis](https://pmc.ncbi.nlm.nih.gov/articles/PMC11749885/)
+- [Parent Perspectives on Communication Quality in the NICU](https://pmc.ncbi.nlm.nih.gov/articles/PMC11334642/)
+- [Infant and Family Outcomes Related to Family-Centered Care in the NICU](https://pmc.ncbi.nlm.nih.gov/articles/PMC11941216/)
+- [Clinical Practice Guideline for Red Blood Cell Transfusion Thresholds (2024)](https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2820028)

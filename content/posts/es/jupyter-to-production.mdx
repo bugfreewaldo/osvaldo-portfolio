@@ -1,0 +1,173 @@
+---
+title: "De Jupyter Notebook a Producción: Patrones de Despliegue ML"
+description: "La brecha entre un notebook funcional y un sistema ML en producción es mayor de lo que la mayoría de tutoriales sugieren. Aquí está cómo cerrarla sin reescribir todo."
+date: 2025-09-20
+updated: 2025-09-28
+published: true
+category: "MLOps"
+tags: ["Python", "MLOps", "Docker", "FastAPI", "Machine Learning"]
+author: "Osvaldo Restrepo"
+translationOf: "jupyter-to-production"
+tldr: "Los notebooks son para exploración, no producción. Extrae tu código del modelo a módulos, envuelve la inferencia en una API, conteneriza todo, y agrega monitoreo. El refactor vale la pena."
+faqs:
+  - question: "¿Por qué no puedo simplemente ejecutar mi Jupyter notebook en producción?"
+    answer: "Los notebooks mezclan exploración, visualización y código de maneras que los hacen frágiles para producción. Carecen de manejo de errores adecuado, gestión de dependencias, testing y monitoreo. Extraer código a módulos es esencial."
+  - question: "¿Cuál es el camino más rápido de notebook a API?"
+    answer: "Extrae tu código de inferencia a un módulo Python, envuélvelo en FastAPI, conteneriza con Docker, y despliega. Puedes tener una API funcionando en horas, luego iterar en robustez."
+  - question: "¿Cómo manejo el versionado de modelos?"
+    answer: "Almacena modelos en almacenamiento cloud versionado (S3, GCS) con metadatos. Usa un registro de modelos (MLflow, Weights & Biases) para rastrear linaje. Carga modelos por ID de versión, no 'latest'."
+  - question: "¿Qué monitoreo necesitan los sistemas ML?"
+    answer: "Rastrea latencia de predicción, tasas de error, y distribuciones de entrada/salida. Monitorea drift de datos y obsolescencia del modelo. Alerta sobre anomalías antes de que los usuarios noten degradación de calidad."
+relatedPosts: ["llm-evaluation-pipelines"]
+---
+
+Todo científico de datos tiene un notebook que "funciona en mi máquina." Hacerlo funcionar confiablemente en producción es un desafío completamente diferente.
+
+Aprendí esto de la manera difícil en mi primer proyecto ML. Tenía un hermoso notebook con visualizaciones preciosas, análisis cuidadosamente documentado, y un modelo que logró 94% de precisión en mi set de prueba. Se lo mostré a mi manager, quien dijo "genial, desplegémoslo para el viernes."
+
+No tenía idea de qué significaba eso. El notebook corría por 45 minutos porque la celda 23 cargaba todo el dataset en memoria. Dependía de una versión específica de pandas que conflictuaba con nuestro ambiente de producción. El modelo estaba guardado en la celda 47, pero las celdas 12-46 tenían que correr primero para crear los objetos de preprocesamiento de los que dependía.
+
+Ese despliegue del viernes se convirtió en tres semanas de reescribir todo. Este post es lo que desearía haber sabido antes de empezar.
+
+## La Brecha Notebook-a-Producción
+
+Un notebook típico contiene una mezcla impía de cosas:
+- Carga y exploración de datos (importante para entender, inútil para producción)
+- Experimentos de ingeniería de features (algunos que abandonaste, algunos que conservaste)
+- Iteraciones de entrenamiento del modelo (los doce enfoques que probaste antes de decidirte por uno)
+- Visualizaciones de evaluación (críticas para tu análisis, irrelevantes para servir predicciones)
+- El modelo "final," enterrado en algún lugar de la celda 47
+
+El notebook tiene dependencias implícitas que son invisibles hasta que rompen: el orden en que se ejecutaron las celdas, variables globales de celdas eliminadas, rutas de archivo hardcodeadas, y paquetes instalados hace meses que has olvidado.
+
+<Callout type="warning" title="La Complejidad Oculta">
+Ese notebook tiene dependencias implícitas: el orden en que se ejecutaron las celdas, variables globales de celdas eliminadas, rutas de archivo hardcodeadas, y paquetes instalados hace meses. Producción no puede manejar nada de eso.
+</Callout>
+
+## Fase 1: Descifra Qué Realmente Importa
+
+Antes de extraer nada, ahora paso tiempo identificando qué se necesita realmente para inferencia. No entrenamiento. No exploración. Solo: dada una entrada, ¿qué código corre para producir una salida?
+
+### El Ejercicio de Inventario
+
+Reviso mi notebook y etiqueto cada celda:
+- **EXPLORACIÓN**: Visualización de datos, estadísticas resumidas, verificaciones de sanidad. No necesario para producción.
+- **INGENIERÍA DE FEATURES**: Código que transforma entradas crudas en entradas del modelo. Necesario.
+- **ENTRENAMIENTO**: Ajuste del modelo, ajuste de hiperparámetros, validación cruzada. No necesario para inferencia.
+- **INFERENCIA**: La llamada predict y cualquier post-procesamiento. Necesario.
+
+Usualmente, alrededor del 70% del código del notebook cae en exploración o entrenamiento. Todo ese es código que no necesitas productivizar.
+
+Este ejercicio es humilde. Una vez tuve un notebook de 500 celdas donde solo 23 celdas eran realmente necesarias para inferencia.
+
+## Fase 2: Extrae a Módulos Limpios
+
+Una vez que sé qué se necesita, creo una estructura de paquete Python adecuada.
+
+La estructura que uso:
+
+```
+ml_service/
+├── src/
+│   ├── __init__.py
+│   ├── features.py      # Ingeniería de features
+│   ├── model.py         # Carga de modelo e inferencia
+│   ├── preprocessing.py # Validación y limpieza de datos
+│   └── config.py        # Gestión de configuración
+├── models/
+│   └── model_v1.pkl     # Modelo serializado
+├── tests/
+│   ├── test_features.py
+│   └── test_model.py
+├── api/
+│   └── main.py          # Aplicación FastAPI
+├── Dockerfile
+├── requirements.txt
+└── pyproject.toml
+```
+
+## Fase 3: Construye la API
+
+FastAPI se ha convertido en mi default para APIs de ML. Te da validación automática de solicitudes, documentación OpenAPI, y soporte async sin mucho boilerplate.
+
+### Lo Que la API Necesita
+
+1. **Endpoint de health check**: Para probes de liveness de Kubernetes. Solo devuelve "healthy" si el modelo está cargado.
+
+2. **Endpoint de predicción única**: Toma una entrada, devuelve una predicción. Simple y fácil de probar.
+
+3. **Endpoint de predicción por lotes**: Toma múltiples entradas, devuelve múltiples predicciones. Más eficiente para procesamiento masivo.
+
+4. **Manejo de errores claro**: Entradas inválidas deberían devolver 422 con un mensaje sobre qué estaba mal, no 500 con un stack trace.
+
+## Fase 4: Conteneriza
+
+Docker asegura reproducibilidad entre ambientes. El modelo que funciona en mi laptop debería funcionar exactamente igual en producción.
+
+### Mejores Prácticas de Dockerfile
+
+1. **Copia requirements primero, luego código**: Docker cachea capas. Si copias requirements.txt e instalas dependencias antes de copiar código, no tendrás que reinstalar dependencias cada vez que cambies código.
+
+2. **Usa un usuario no-root**: Mejor práctica de seguridad.
+
+3. **Incluye un health check**: Para que los orquestadores sepan cuándo el contenedor está listo.
+
+4. **Fija versiones exactas**: `pandas==2.2.0`, no `pandas>=2.0`. Un bump de versión menor en scikit-learn rompió la carga de modelo para mí una vez. Nunca más.
+
+## Fase 5: Testing
+
+El código ML es notoriamente difícil de probar porque "correcto" es difuso. Pero algunas cosas definitivamente son testeables.
+
+### Qué Testeo
+
+**Ingeniería de features**: Dadas estas entradas, ¿transform produce las salidas esperadas? Esto es determinístico y testeable.
+
+**Validación de entrada**: ¿Se rechaza la entrada inválida? ¿La entrada válida pasa?
+
+**Endpoints de API**: ¿El health check devuelve 200? ¿La predicción devuelve la estructura de respuesta esperada?
+
+**Carga de modelo**: ¿Podemos cargar el archivo del modelo? ¿Tiene un método predict?
+
+## Fase 6: Monitoreo
+
+Aquí está la cosa sobre sistemas ML: pueden degradarse silenciosamente. Un servicio tradicional o funciona o lanza errores. Un servicio ML puede devolver predicciones que son técnicamente válidas pero cada vez más incorrectas.
+
+### Qué Monitorear
+
+**Latencia de predicción**: ¿Cuánto tiempo toma la inferencia? Aumentos repentinos podrían indicar problemas de recursos o entradas inusualmente complejas.
+
+**Tasas de error**: ¿Qué porcentaje de solicitudes fallan?
+
+**Distribuciones de entrada**: ¿Las entradas que ves en producción son similares a los datos de entrenamiento? Si tu modelo fue entrenado en valores entre 0-100 y empieza a ver valores en miles, las predicciones son sospechosas.
+
+**Distribuciones de salida**: ¿Las predicciones están distribuidas como se esperaba? Si tu modelo de repente predice la misma clase 99% del tiempo cuando solía ser 60/40, algo está mal.
+
+<Callout type="danger" title="Las Pruebas de Carga Importan">
+Un modelo que corre en 50ms en tu laptop podría tomar 500ms bajo carga debido a contención del GIL, presión de memoria, o arranques en frío. Prueba con concurrencia realista antes del lanzamiento.
+</Callout>
+
+## La Lista de Verificación de Despliegue
+
+Antes de ir a producción, verifico:
+
+- [ ] Todo el código extraído de notebook a módulos
+- [ ] Dependencias fijadas en requirements.txt
+- [ ] Unit tests pasando
+- [ ] Integration tests pasando
+- [ ] Dockerfile construye exitosamente
+- [ ] Endpoint de health check funcionando
+- [ ] Validación de entrada en su lugar
+- [ ] Manejo de errores devuelve códigos HTTP apropiados
+- [ ] Logging configurado
+- [ ] Métricas expuestas para monitoreo
+- [ ] Versión del modelo rastreada en respuestas
+- [ ] Documentación generada (FastAPI /docs)
+- [ ] Load tested para tráfico esperado
+
+Cada ítem en esta lista está ahí porque desplegué sin él una vez y lo lamenté.
+
+El objetivo no es moverse rápido y romper cosas. El objetivo es moverse deliberadamente y construir algo que puedas mantener.
+
+---
+
+*¿Luchando para productivizar un modelo ML? [Hablemos](/contact) sobre tus desafíos de despliegue.*
