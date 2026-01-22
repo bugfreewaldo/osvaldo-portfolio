@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Clock, Tag, Globe } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Tag } from "lucide-react";
 import PostContent from "@/components/blog/PostContent";
 import TableOfContents from "@/components/blog/TableOfContents";
 import FAQSection from "@/components/blog/FAQSection";

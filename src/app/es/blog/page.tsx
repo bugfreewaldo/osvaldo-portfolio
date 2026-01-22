@@ -1,4 +1,4 @@
-import { getAllPosts, getPostTranslation } from "@/lib/blog";
+import { getAllPosts } from "@/lib/blog";
 import { BookOpen } from "lucide-react";
 import BlogPostsList from "@/app/blog/BlogPostsList";
 import Link from "next/link";
