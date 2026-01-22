@@ -1,0 +1,222 @@
+---
+title: "Fine-tuning LLMs for Domain-Specific Tasks: A Practical Guide"
+description: "When to fine-tune vs. prompt engineer, how to prepare training data, and lessons learned from fine-tuning models for healthcare and legal domains."
+date: 2025-10-15
+updated: 2025-10-22
+published: true
+category: "AI Engineering"
+tags: ["LLM", "Fine-tuning", "OpenAI", "Healthcare AI", "NLP"]
+author: "Osvaldo Restrepo"
+tldr: "Fine-tuning is worth it when you need consistent output formats, domain-specific terminology, or behavior that prompt engineering can't reliably achieve. Start with 50-100 high-quality examples, not thousands of mediocre ones."
+faqs:
+  - question: "When should I fine-tune instead of using prompt engineering?"
+    answer: "Fine-tune when you need consistent output formats, domain-specific jargon, or when few-shot prompting hits context limits. Prompt engineering is faster to iterate but less reliable for complex, structured outputs."
+  - question: "How much training data do I need for fine-tuning?"
+    answer: "Quality beats quantity. 50-100 high-quality, diverse examples often outperform thousands of inconsistent ones. Start small, evaluate, and add data strategically based on failure modes."
+  - question: "How do I evaluate a fine-tuned model?"
+    answer: "Use held-out test sets with domain experts for qualitative review. Measure task-specific metrics (accuracy, F1 for classification; ROUGE, human preference for generation). Always compare against the base model with optimized prompts."
+  - question: "What are the costs of fine-tuning?"
+    answer: "Training costs are one-time and relatively cheap ($5-50 for small datasets). Inference costs for fine-tuned models are higher than base models. Factor in data preparation time, which is often the largest investment."
+relatedPosts: ["building-production-rag-systems"]
+---
+
+I'm going to be honest with you: I resisted fine-tuning for way too long.
+
+Every time someone suggested it, I'd counter with "but have you tried better prompting?" And look, prompting is great. I'm a huge fan. But there's a moment in every LLM project where you're writing a 2000-token system prompt with 15 examples, and you start wondering if maybe, just maybe, there's a better way.
+
+Spoiler: there is. Sometimes.
+
+## Why I Finally Gave In
+
+The breaking point came on a clinical documentation project. We needed the model to generate SOAP notes (Subjective, Objective, Assessment, Plan) from transcribed doctor-patient conversations. Sounds straightforward, right?
+
+With prompting alone, we got notes that were... fine. Technically correct. But every physician who reviewed them said the same thing: "This doesn't sound like a doctor wrote it."
+
+The model used phrases like "the patient reports experiencing discomfort" instead of "pt c/o pain." It wrote "blood pressure measurement" instead of "BP." These are tiny differences, but they accumulated into something that felt foreign to the people who had to use it.
+
+I spent three weeks crafting increasingly elaborate prompts. I added examples. I added explicit instructions about medical abbreviations. I added more examples. The prompts got longer and longer, and the results got marginally better but never quite right.
+
+Then I fine-tuned on 80 actual SOAP notes from our partner clinic. The difference was immediate and obvious. The model didn't just understand what to write. It understood *how* clinicians write.
+
+## When Fine-tuning Actually Makes Sense
+
+Here's my honest take after building several production LLM apps: fine-tuning is neither the magic solution nor the overcomplicated mess that different camps on Twitter would have you believe. It's just a tool. A surprisingly accessible one.
+
+<Callout type="tip" title="My Decision Framework">
+**Fine-tune when:**
+- Output format must be highly consistent (JSON schemas, medical codes)
+- Domain terminology is specialized and frequent
+- Few-shot examples exceed context window limits
+- You need behavior that prompts can't reliably produce
+
+**Stick with prompting when:**
+- Requirements change frequently
+- You have limited training data
+- The task is mostly reasoning, not formatting
+- Base model performance is already acceptable
+</Callout>
+
+The real question isn't "should I fine-tune?" It's "is this problem about *what* to say or *how* to say it?" Fine-tuning excels at the "how": consistent formatting, style, terminology. For complex reasoning, the base model is usually smarter than whatever you'd fine-tune.
+
+## Data Preparation: The Real Work
+
+I'm not going to sugarcoat this: the fine-tuning API call itself is the easy part. Literally a few lines of code. The *actual* work is preparing training data that doesn't suck. And let me tell you, most training data sucks.
+
+### My Expensive Lesson in Quality vs. Quantity
+
+My first fine-tuning attempt used 2,000 examples that I scraped together from various sources. Internal documents, public datasets, synthetic generations. I figured more data = better model, right?
+
+The result was a model that was confidently inconsistent. It had learned all the contradictory patterns in my messy data. Sometimes it used abbreviations, sometimes it didn't. Sometimes it included patient identifiers, sometimes it didn't. It was a reflection of my data's incoherence.
+
+My second attempt used 80 carefully curated examples. Every single one reviewed by a domain expert. Consistent formatting. Consistent terminology. Clear examples of both good outputs and appropriate refusals.
+
+Night and day difference. The model trained on 80 good examples absolutely destroyed the one trained on 2,000 mediocre ones.
+
+### Diversity Beats Volume
+
+Here's something that surprised me: for a clinical note summarization task, 80 diverse examples covering different specialties (cardiology, oncology, pediatrics), note types (progress notes, discharge summaries), and edge cases (incomplete data, complex patients) massively outperformed 500 examples from a single department.
+
+The model that trained on homogeneous data basically learned to write cardiology notes. For everything. A pediatric patient? Cardiology note style. A surgery follow-up? You guessed it.
+
+I will die on this hill: diversity matters more than volume. If you have limited resources for data preparation (and you always do), spend them on coverage, not count.
+
+### Include the Edge Cases
+
+I once trained a model exclusively on successful examples. Beautiful, well-formed outputs. Guess what it never learned? How to gracefully decline inappropriate requests.
+
+The first time someone asked it to write a prescription (which it absolutely should not do), it tried. Because every example in its training data was the model helpfully completing a task.
+
+Now I always include examples of appropriate refusals, unclear inputs that need clarification, and edge cases that require special handling. If you don't teach the model about boundaries, it won't know they exist.
+
+## The Baseline Trap
+
+Before you fine-tune anything, establish a baseline. I've seen people fine-tune for weeks only to discover their prompt needed a minor tweak.
+
+The baseline process I use now:
+
+1. Write the best prompt I can with zero-shot
+2. Add few-shot examples (3-5 of the best ones)
+3. Iterate on the prompt for at least a day
+4. Measure performance on a held-out test set
+5. Only then decide if fine-tuning is worth it
+
+If your best prompting approach gets you to 85% of where you need to be, fine-tuning might get you to 95%. But if prompting gets you to 50%, fine-tuning isn't going to magically fix fundamental issues.
+
+The biggest gains from fine-tuning come when the model already kind of understands the task but just can't get the style or format quite right. That's the sweet spot.
+
+## Hyperparameters: What Actually Matters
+
+I've wasted a lot of time tweaking hyperparameters. Here's what I've learned actually matters:
+
+**Epochs**: Start with 3. Look at the validation loss. If it's still dropping, go higher. If it starts going up, you're overfitting. For small datasets (under 100 examples), 3-4 epochs is usually right. For larger datasets, you might need fewer.
+
+**Learning rate**: Lower rates (0.5-1.0x multiplier) for smaller datasets where you want gentle adaptation. Higher rates (1.5-2.0x) for larger datasets where the model needs to learn more substantial patterns.
+
+**Batch size**: Keep it at 1 for small datasets. Seriously. I know it sounds wrong if you're used to deep learning, but fine-tuning isn't training from scratch. You want the model to see each example individually and learn from it.
+
+These aren't magic numbers. I arrived at them through trial, error, and way too much coffee.
+
+## Domain-Specific Lessons
+
+### Healthcare: Terminology Is Everything
+
+Medical terminology is brutal. "MI" must *always* expand to "myocardial infarction," not sometimes "heart attack" because the model felt casual that day. "SOB" is "shortness of breath," not... the other thing.
+
+One cardiologist told me our initial prompting-based solution "sounded like a medical student who learned from Grey's Anatomy." Harsh but fair. After fine-tuning on properly formatted clinical notes, same cardiologist said it "actually sounds like a resident now." Progress!
+
+The key insight: medical professionals have spent years developing a precise vocabulary. Your model needs to speak that vocabulary, not translate it into layperson terms.
+
+### Legal: Format Is Non-Negotiable
+
+Lawyers are particular about everything, but especially citations. A citation that's 90% correct is 100% wrong.
+
+Before fine-tuning, our legal summarization tool produced citations in three or four different formats:
+- "See Smith v. Jones, 123 F.3d 456"
+- "Smith v. Jones (123 F.3d 456)"
+- "Smith v. Jones at 123 F.3d 456"
+
+All technically referencing the same case. All wrong from a legal citation perspective.
+
+After fine-tuning: "Smith v. Jones, 123 F.3d 456, 458 (9th Cir. 2020)"
+
+Every. Single. Time. The lawyers were thrilled. (I didn't even know that was possible.)
+
+## The Economics Reality
+
+Let me break down what a recent project actually cost:
+
+<table>
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th>Cost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Training (3 epochs)</td>
+      <td>$12.40</td>
+    </tr>
+    <tr>
+      <td>Validation runs</td>
+      <td>$3.20</td>
+    </tr>
+    <tr>
+      <td>Data preparation (8 hours)</td>
+      <td>~$400 (assuming $50/hr)</td>
+    </tr>
+    <tr>
+      <td><strong>Total</strong></td>
+      <td><strong>~$415</strong></td>
+    </tr>
+  </tbody>
+</table>
+
+Notice anything? The API costs are almost a rounding error. The *real* cost is your time preparing data.
+
+This has two implications:
+
+First, don't optimize for API costs. The difference between running one training job and five is maybe $50. The difference between good data and bad data is whether the project succeeds or fails.
+
+Second, invest in tooling and processes that make data prep faster. If you can cut data prep time in half, you've saved more than you'd ever save on training costs.
+
+## Versioning: Learn From My Mistakes
+
+Past me: "I'll just remember which model is which."
+Present me: "Which one of these 12 fine-tuned models was the good one?"
+
+Now I maintain a simple registry:
+
+```python
+model_registry = {
+    "clinical-summarizer-v1": {
+        "base_model": "gpt-4o-mini-2024-07-18",
+        "fine_tuned_id": "ft:gpt-4o-mini-2024-07-18:org::abc123",
+        "training_examples": 85,
+        "val_accuracy": 0.91,
+        "deployed_date": "2025-10-15",
+        "training_data_hash": "sha256:..."
+    }
+}
+```
+
+Version everything. Track training data with hashes. Note validation metrics. Future you will thank present you.
+
+## The Bottom Line
+
+Fine-tuning works when:
+
+1. You've actually tried good prompting first
+2. You have high-quality, diverse training data
+3. You can measure success objectively
+4. The task benefits from learned patterns over reasoning
+
+Start with 50-100 excellent examples. Measure everything. Add data based on what's actually failing, not vibes.
+
+And hey, if prompting works well enough? That's fine too. No one's giving out awards for using the fanciest technique. They're giving out paychecks for shipping things that work.
+
+The goal isn't to fine-tune. The goal is to solve the problem. Fine-tuning is just one way to get there.
+
+---
+
+*Working on a domain-specific LLM application? [Let's chat](/contact). I've probably made the mistake you're about to make.*

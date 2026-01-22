@@ -1,0 +1,296 @@
+---
+title: "HL7 FHIR Integration Patterns: A Developer's Guide"
+description: "Practical patterns for integrating with healthcare systems using FHIR. Covers authentication, resource mapping, bulk data, and lessons from real EHR integrations."
+date: 2025-11-25
+updated: 2025-12-02
+published: true
+category: "Healthcare Tech"
+tags: ["FHIR", "HL7", "Healthcare", "API", "Interoperability"]
+author: "Osvaldo Restrepo"
+tldr: "FHIR is the modern standard for healthcare data exchange. Use SMART on FHIR for auth, understand resource references, handle partial data gracefully, and test against real EHR sandboxes, not just spec compliance."
+faqs:
+  - question: "What is HL7 FHIR?"
+    answer: "FHIR (Fast Healthcare Interoperability Resources) is a standard for exchanging healthcare data electronically. It uses modern web APIs (REST, JSON) unlike older standards like HL7v2 which use custom message formats."
+  - question: "How does SMART on FHIR authentication work?"
+    answer: "SMART on FHIR is OAuth 2.0 adapted for healthcare. Apps request specific scopes (e.g., patient/*.read), users authorize access, and tokens are issued with limited permissions and expiry."
+  - question: "Why do different EHRs implement FHIR differently?"
+    answer: "FHIR allows extensions and optional elements. Each EHR (Epic, Cerner, etc.) makes different choices about what to support. Always test against your target EHR's sandbox, not just generic FHIR validators."
+  - question: "What is FHIR Bulk Data?"
+    answer: "Bulk Data Access is a FHIR specification for exporting large datasets asynchronously. Instead of page-by-page requests, you request an export job and download ndjson files when ready. Essential for analytics and population health."
+relatedPosts: ["building-production-rag-systems", "healthcare-software-ux"]
+---
+
+Healthcare interoperability has improved dramatically with FHIR. But the spec is complex, implementations vary, and real-world integrations have gotchas the documentation doesn't mention.
+
+I've integrated with Epic, Cerner, and several smaller EHRs. Each one was different despite nominally supporting the same standard. This post covers what I learned the hard way.
+
+## FHIR in Plain English
+
+Before FHIR, healthcare data exchange was a nightmare. HL7v2 messages looked like this:
+
+```
+MSH|^~\&|HIS|MedCenter|LIS|MedCenter|20060307110114||ORM^O01|...
+PID|||12001||Jones^John^^^Mr.||19670824|M|||123 Main St.^^Anywhere ...
+```
+
+Parsing these required specialized knowledge and lots of edge case handling. Every system implemented the standard slightly differently.
+
+FHIR modernized this with REST APIs and JSON. A patient looks like:
+
+```json
+{
+  "resourceType": "Patient",
+  "id": "123",
+  "name": [{"family": "Jones", "given": ["John"]}],
+  "birthDate": "1967-08-24"
+}
+```
+
+Much better. But "much better than HL7v2" is a low bar. FHIR still has plenty of complexity.
+
+## Resources: The Building Blocks
+
+FHIR models healthcare data as resources: Patient, Observation, Condition, MedicationRequest, Encounter, and many others. Resources reference each other. An Observation references the Patient it belongs to. A MedicationRequest references the Encounter where it was ordered.
+
+The common resources you'll work with:
+
+<table>
+  <thead>
+    <tr>
+      <th>Resource</th>
+      <th>What It Contains</th>
+      <th>Typical Use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Patient</td>
+      <td>Demographics, identifiers</td>
+      <td>Core identity</td>
+    </tr>
+    <tr>
+      <td>Observation</td>
+      <td>Labs, vitals, assessments</td>
+      <td>Clinical data</td>
+    </tr>
+    <tr>
+      <td>Condition</td>
+      <td>Diagnoses, problems</td>
+      <td>Problem list</td>
+    </tr>
+    <tr>
+      <td>MedicationRequest</td>
+      <td>Prescriptions</td>
+      <td>Medication orders</td>
+    </tr>
+    <tr>
+      <td>Encounter</td>
+      <td>Visits, admissions</td>
+      <td>Episode of care</td>
+    </tr>
+    <tr>
+      <td>DocumentReference</td>
+      <td>Clinical documents</td>
+      <td>Notes, reports</td>
+    </tr>
+    <tr>
+      <td>DiagnosticReport</td>
+      <td>Lab panels, imaging results</td>
+      <td>Grouped results</td>
+    </tr>
+  </tbody>
+</table>
+
+The first surprise for most developers: Patient doesn't contain clinical data. A Patient resource has demographics. The clinical data lives in Observations, Conditions, and other resources that *reference* the Patient.
+
+This means you can't just fetch a patient and have everything. You need to fetch the patient, then search for their observations, their conditions, their medications. Each is a separate API call (though you can batch them).
+
+## Authentication: SMART on FHIR
+
+SMART on FHIR is OAuth 2.0 adapted for healthcare. If you've implemented OAuth before, most of it will be familiar. But there are healthcare-specific wrinkles.
+
+### The Flow
+
+1. Your app discovers the EHR's authorization endpoints (from a well-known URL)
+2. You redirect the user to authenticate and authorize your app
+3. The user logs into the EHR, grants permissions
+4. You receive an authorization code
+5. You exchange the code for an access token
+6. You use the token to call FHIR APIs
+
+Standard OAuth so far. The healthcare-specific parts:
+
+**Scopes are granular.** Instead of "read user data," you request "patient/Observation.read" (read observations for the current patient) or "patient/*.read" (read everything for the current patient). You should request minimum necessary permissions. Asking for write access when you only need read access will slow or block app approval.
+
+**Patient context is passed with the token.** When a clinician launches your app from the EHR while viewing a patient, you receive a patient ID along with your access token. This tells you which patient you're authorized to access.
+
+**Token expiration matters.** Healthcare tokens often have short lifetimes (60 minutes is common). For background processing, you need refresh tokens and "offline_access" scope.
+
+<Callout type="tip" title="Scope Design">
+Start with read-only scopes. Write access requires more scrutiny from EHR app review teams and from customers. If you don't need to write, don't ask.
+</Callout>
+
+## The Spec vs. Reality
+
+Here's where theory meets practice. The FHIR spec is extensive, but it allows enormous flexibility. Which means different EHRs implement it differently.
+
+### Every Field Is Optional (Basically)
+
+A Patient resource *can* have a birth date, phone number, address, multiple identifiers, multiple names. But most of these are optional in the spec.
+
+In practice, this means you'll get patients without phone numbers, without addresses, sometimes without birth dates. Your code must handle missing data gracefully. Never assume a field exists just because it should.
+
+I learned this the hard way. We built a feature that relied on patient phone numbers for notifications. Worked great in testing. In production, 30% of patients had no phone number in the EHR. Our "reliable" notification system was silently failing for a third of users.
+
+Now every field access is defensive. If it's not there, handle it. Don't crash, don't show blank screens, don't send malformed messages.
+
+### Names Are Complicated
+
+A FHIR patient can have multiple names (legal, nickname, maiden, etc.). Each name can have multiple given names (first, middle). Names can have prefixes, suffixes, periods of validity.
+
+```json
+"name": [
+  {
+    "use": "official",
+    "family": "Smith",
+    "given": ["John", "Robert"]
+  },
+  {
+    "use": "nickname",
+    "text": "Johnny"
+  }
+]
+```
+
+Your code needs to pick the right name. I typically prefer "official" use if present, fall back to the first name in the list, and use "text" if the structured components are missing.
+
+### Values Have Multiple Types
+
+An Observation's value can be a quantity (number with units), a string, a codeable concept (coded value), a boolean, a ratio, and more. The spec calls this "value[x]" where x is the type.
+
+```json
+// Numeric
+"valueQuantity": {"value": 95, "unit": "mg/dL"}
+
+// Coded
+"valueCodeableConcept": {"coding": [{"code": "positive", "display": "Positive"}]}
+
+// String
+"valueString": "Patient reports improvement"
+
+// Component (like blood pressure)
+"component": [
+  {"code": {...}, "valueQuantity": {"value": 120, "unit": "mmHg"}},
+  {"code": {...}, "valueQuantity": {"value": 80, "unit": "mmHg"}}
+]
+```
+
+Your code needs to handle all these cases. I check for each value type in order of likelihood for my use case. For lab results, I start with valueQuantity. For assessment results, I start with valueCodeableConcept.
+
+## Testing Against Real EHRs
+
+The FHIR validator will tell you if your requests are spec-compliant. It won't tell you if they'll work with Epic or Cerner.
+
+<Callout type="warning" title="Spec vs. Reality">
+The FHIR spec allows many optional elements. Epic, Cerner, and other EHRs implement different subsets. Always test against your target EHR's sandbox, not just generic validators.
+</Callout>
+
+### Get Sandbox Access Early
+
+Epic, Cerner, and other major EHRs have developer programs with sandbox environments. Sign up early. The approval process can take days or weeks.
+
+Each sandbox has test patients with varying amounts of data. Find patients that represent your edge cases: patients with lots of observations, patients with minimal data, patients with unusual name formats.
+
+### Document EHR Differences
+
+I maintain a table of "what works where":
+
+<table>
+  <thead>
+    <tr>
+      <th>Feature</th>
+      <th>Epic</th>
+      <th>Cerner</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Patient search by MRN</td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Different identifier systems</td>
+    </tr>
+    <tr>
+      <td>Bulk data export</td>
+      <td>Yes</td>
+      <td>Limited</td>
+      <td>Cerner has size limits</td>
+    </tr>
+    <tr>
+      <td>Observation._include</td>
+      <td>Works</td>
+      <td>Partial</td>
+      <td>Cerner missing some refs</td>
+    </tr>
+    <tr>
+      <td>Custom extensions</td>
+      <td>Many</td>
+      <td>Different</td>
+      <td>Can't assume interop</td>
+    </tr>
+  </tbody>
+</table>
+
+This documentation saves time when debugging "works in Epic, fails in Cerner" issues.
+
+## Bulk Data: When Page-by-Page Won't Cut It
+
+For analytics and population health, fetching one page at a time is too slow. A hospital with 100,000 patients and millions of observations would take forever.
+
+FHIR Bulk Data Access solves this. You request an export job, the server processes it asynchronously, and you download NDJSON files when ready.
+
+The flow:
+1. POST or GET to /$export with your parameters
+2. Receive a 202 Accepted with a Content-Location header pointing to a status URL
+3. Poll the status URL until you get 200 (complete) instead of 202 (processing)
+4. Download the NDJSON files from the URLs in the response
+
+For large exports, this can take hours. Your code needs to handle polling, retries, timeouts, and partial failures gracefully.
+
+I typically kick off exports, then poll status every 30 seconds. If the export hasn't completed in a reasonable time (varies by size, but I use 4 hours as a maximum for most use cases), something is probably wrong.
+
+## Common Pitfalls
+
+**Assuming data exists.** I've said it before, but it's worth repeating. Fields are optional. References might be broken. Codes might be in systems you don't recognize.
+
+**Ignoring coding systems.** A diagnosis code might be ICD-10, ICD-9, SNOMED, or a local code. Your code needs to check the system, not just the code value. "123456" means different things in different code systems.
+
+**Token expiration in long operations.** If you're doing bulk data export or large data processing, your token might expire mid-operation. Implement token refresh, and handle 401 responses by refreshing and retrying.
+
+**Rate limits.** EHRs have rate limits. They're often not clearly documented. Implement exponential backoff, respect Retry-After headers, and test your app's behavior when throttled.
+
+**Timezone handling.** FHIR datetimes can be UTC, local with offset, or local without offset. Parse them carefully. A timestamp like "2024-01-15T14:30:00" without a timezone is ambiguous.
+
+<Callout type="danger" title="PHI Handling">
+FHIR resources contain Protected Health Information. Log IDs only (not full resources), encrypt at rest, audit access, and ensure your HTTP client doesn't cache responses containing patient data.
+</Callout>
+
+## The Integration Checklist
+
+Before going live with a FHIR integration:
+
+- [ ] Tested against actual EHR sandbox (not just validators)
+- [ ] Handle missing/optional fields throughout the app
+- [ ] Token refresh implemented for long-running operations
+- [ ] Rate limit handling with backoff
+- [ ] Logging includes request IDs but not PHI
+- [ ] Error messages are helpful without exposing internals
+- [ ] Bulk data export works for expected data volumes
+- [ ] Documented differences between target EHRs
+
+FHIR has made healthcare integration possible in ways it wasn't before. But don't mistake "possible" for "easy." The standard is complex, implementations vary, and healthcare data is messy. Build defensively, test thoroughly, and expect surprises.
+
+---
+
+*Building a FHIR integration? [Reach out](/contact) to discuss your interoperability requirements.*

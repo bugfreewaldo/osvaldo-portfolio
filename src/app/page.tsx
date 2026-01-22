@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
-import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram } from "lucide-react";
+import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper } from "lucide-react";
 
 // Rotating text phrases
 const rotatingPhrases = [
@@ -214,12 +214,12 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm mb-6">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm mb-6">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                 </span>
-                Available for projects
+                Available only upon request
               </div>
             </motion.div>
 
@@ -413,6 +413,57 @@ export default function Home() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Featured In / Press */}
+      <section className="relative py-12 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="text-center mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
+              Featured In
+            </h2>
+          </motion.div>
+
+          <motion.a
+            href="https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block max-w-3xl mx-auto p-6 rounded-2xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+                <Newspaper className="w-6 h-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">USA News</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-sm text-slate-500">Feature Article</span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  How the MILA AI Platform Began with One Family&apos;s Story
+                </h3>
+                <p className="mt-2 text-slate-600 dark:text-slate-400">
+                  The story behind building an AI assistant for NICU families, turning personal experience into technology that helps parents navigate one of the most challenging times of their lives.
+                </p>
+                <div className="mt-4 flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-sm font-medium">
+                  Read the full article
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </div>
+          </motion.a>
         </div>
       </section>
 

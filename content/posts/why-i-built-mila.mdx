@@ -1,0 +1,151 @@
+---
+title: "Why I Built MILA: When Systems Thinking Meets the NICU"
+description: "The story behind building an AI system for NICU families. Born from lived experience, grief, and the realization that parents deserve better tools to advocate for their children."
+date: 2026-01-20
+published: true
+pinned: true
+category: "Healthcare AI"
+tags: ["Healthcare AI", "NICU", "Patient Advocacy", "Systems Thinking", "Personal"]
+author: "Osvaldo Restrepo"
+tldr: "I spent months in the NICU with my premature triplets. The system didn't fail at acute care. It failed at longitudinal visibility, cumulative risk awareness, and information symmetry. MILA exists so fewer parents have to reconstruct the past after the fact."
+faqs:
+  - question: "What is MILA?"
+    answer: "MILA is an AI system designed to help NICU parents organize observations, track shared data, identify missing information, recognize patterns over time, and prepare informed questions for medical conversations. It improves the conversation between parents and clinicians. It does not replace it."
+  - question: "Why do NICU parents need AI tools?"
+    answer: "NICU parents receive fragmented information across shifts, specialists, and days. They're expected to remember, track, and synthesize complex medical data while emotionally overloaded and sleep deprived. AI can help them organize what they're seeing and identify what questions to ask."
+  - question: "Does MILA replace medical advice?"
+    answer: "No. MILA helps parents prepare for conversations with their medical team. It synthesizes information parents already have access to and helps them ask better questions. The goal is better dialogue, not bypassing clinicians."
+relatedPosts: ["fhir-integration-patterns", "building-production-rag-systems"]
+---
+
+I need to tell you about my daughter Mila.
+
+Not because this is a story about loss, though it is. But because understanding why I built the MILA system requires understanding what I learned inside the NICU, and what I wish had existed when my family needed it most.
+
+## Three Children, Three Trajectories
+
+My wife and I had premature triplets: Jaycob, Brody, and Mila. They arrived early, which meant months in the NICU. Months of rounds, alarms, lab values, transfusions, and conversations that never quite connected.
+
+I'm a software engineer. I think in systems, feedback loops, cumulative risk, and failure modes. I was trained to notice when observability is missing, when data isn't flowing where it needs to go, when the humans in a system don't have the tools to see what's happening.
+
+I applied those instincts while emotionally overloaded and sleep deprived. It was the only way I knew how to process what was happening.
+
+Here's what I observed:
+
+Brody received 6 blood transfusions. No complications.
+
+Jaycob received 16 blood transfusions. He developed hemolysis due to unmatched transfusions.
+
+Mila received 38 blood transfusions.
+
+Mila later developed progressive hemolysis, extreme hyperbilirubinemia with bilirubin levels exceeding 30 mg/dL, liver failure, sepsis, and multi-organ failure.
+
+Mila passed away.
+
+## What the Experience Actually Felt Like
+
+This was not a single catastrophic moment. It was an accumulation.
+
+Transfusions were presented as routine. Lab values were discussed one at a time. Conversations were short, technical, and fragmented across shifts and specialists. Each interaction made sense in isolation. None of them connected the dots.
+
+My wife and I were there every day. We watched patterns emerge across time. Changes in skin color. Reactions after procedures. Numbers that kept creeping in directions that worried us. But we had no tools to synthesize what we were seeing. No way to know if our pattern recognition was signal or noise.
+
+There was no alarm for trajectory. Only alarms for events.
+
+We were expected to participate, consent, and advocate. We were doing all of those things. But we were doing them with incomplete information, fragmented across conversations we couldn't fully remember, about medical concepts we were learning in real time.
+
+## The Information Gap
+
+I need to be precise here, because precision matters.
+
+During Mila's care, key medical records were not made available to us. Specifically, clinical records from July 11 through August 3 were never provided, despite repeated requests. To this day, those records remain unavailable.
+
+I'm not speculating about intent. I'm stating a factual absence of access.
+
+That absence meant that cumulative transfusion exposure, lab trajectories, and risk compounding were opaque to us. We were the people responsible for advocating for our daughter, and we couldn't see the full picture. Not because we weren't paying attention. Because the information wasn't there.
+
+## Where the System Failed
+
+The NICU didn't fail at acute care. The nurses were attentive. The doctors were skilled. When something went wrong in the moment, people responded.
+
+The system failed at longitudinal visibility.
+
+No single clinician held the full picture. Shifts changed. Specialists rotated. Each person saw their slice. The people who were present continuously, who watched all three children across all the days and all the shifts, were us. The parents.
+
+And we were the ones with the least access to synthesized information.
+
+I've spent my career building systems that aggregate data, surface patterns, and alert humans to things they might miss. I know what good observability looks like. The NICU had monitoring for vitals. It had documentation for individual events. What it lacked was the kind of longitudinal synthesis that would let anyone, clinician or parent, see cumulative risk building over time.
+
+## What I Realized
+
+Months after Mila died, I found myself reconstructing timelines. Requesting records. Building spreadsheets. Trying to understand what had happened and when.
+
+I was doing incident response on my daughter's medical care.
+
+That's when I realized: parents shouldn't have to do this. Not during care, when they're overwhelmed and exhausted. Not after care, when they're grieving and searching for answers.
+
+The information existed. It was in the system somewhere. But it wasn't synthesized. It wasn't surfaced. And it wasn't shared with the people who needed it most.
+
+## Why AI Enters This Story
+
+I'm not building MILA because I think AI should replace doctors. I'm building it because I lived through a reality that shouldn't require AI to fix, but does.
+
+Parents receive fragmented information. Records may be delayed, incomplete, or inaccessible. Parents are expected to remember, track, and synthesize under stress. Most can't. I couldn't, and I do this kind of synthesis for a living.
+
+AI can help parents:
+
+- Organize their own observations
+- Track what data has been shared with them
+- Identify what data is missing
+- Recognize patterns over time
+- Prepare precise, informed questions for conversations with doctors
+
+The goal isn't to bypass clinicians. The goal is to improve the conversation. When a parent walks into rounds with organized observations and specific questions, the conversation is better. The clinician gets clearer input. The parent gets clearer answers.
+
+Synthesis becomes a form of safety.
+
+## What MILA Actually Does
+
+MILA is focused on the specific risks I watched unfold:
+
+**Transfusion history intelligence.** Tracking cumulative exposure, not just individual events.
+
+**Hemolysis risk modeling.** Understanding how repeated transfusions can compound risk over time.
+
+**Bilirubin trajectory awareness.** Not just the current number, but the direction and rate of change.
+
+**Cross-disciplinary visibility.** Helping parents see how information from different specialists connects.
+
+**Parent-inclusive observability.** Giving families tools to track what they're seeing and what they're being told.
+
+I'm not claiming this would have saved Mila. I can't know that. What I know is that I spent months reconstructing information that should have been visible in real time. MILA exists so fewer parents have to do that reconstruction after the fact.
+
+## The Technical Reality
+
+Building this isn't simple. Medical data is messy. FHIR standards help, but implementations vary wildly. Privacy constraints are real and important. The line between helpful synthesis and inappropriate medical advice requires constant attention.
+
+I've written about [FHIR integration patterns](/blog/fhir-integration-patterns) elsewhere. The technical challenges are significant. But they're solvable. The harder part is getting the design right. Making sure the system helps parents ask better questions rather than generating false confidence. Making sure it surfaces uncertainty rather than hiding it.
+
+Every design decision goes back to one question: would this have helped my family have better conversations with Mila's care team?
+
+## What I Want You to Understand
+
+If you're a NICU parent reading this: you're not imagining things when you feel like you're missing information. You're not failing when you can't remember everything from yesterday's rounds. The system isn't designed to help you synthesize. That's a gap, not a personal shortcoming.
+
+If you're a clinician reading this: parents who ask detailed questions aren't adversaries. They're trying to participate in care the best way they know how. Better tools for parents mean better conversations with you, not around you.
+
+If you're a technologist reading this: there's meaningful work to be done here. Not flashy AI that replaces human judgment, but careful systems that help humans share information more effectively. The unsexy infrastructure of better communication.
+
+## Mila
+
+I named the system after my daughter because this work exists because of her. Not in spite of her death. Because of it.
+
+She was here for weeks that felt like months. She fought in ways that newborns shouldn't have to fight. And in the end, I couldn't protect her from a system that lost track of its own information.
+
+I can't fix what happened to Mila. But I can build something that helps the next family see more clearly. Ask better questions. Catch patterns earlier.
+
+That's not closure. I don't think closure exists for this. But it's work that matters. And it's work I know how to do.
+
+---
+
+*If you're building in healthcare AI, or if you're a NICU family who wants to talk, [reach out](/contact). This work is better when it's not done alone.*

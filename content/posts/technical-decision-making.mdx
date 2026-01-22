@@ -1,0 +1,241 @@
+---
+title: "Technical Decision-Making Under Uncertainty"
+description: "A framework for making technical decisions when you don't have all the information. Covers reversibility, decision documents, and knowing when to commit."
+date: 2025-10-28
+updated: 2025-11-05
+published: true
+category: "Engineering Leadership"
+tags: ["Decision Making", "Architecture", "Leadership", "Engineering Management"]
+author: "Osvaldo Restrepo"
+tldr: "Most technical decisions are reversible, so make them quickly. For irreversible decisions, write a decision document, gather input, but set a deadline. Perfect information never arrives. Decide and learn."
+faqs:
+  - question: "How do you make technical decisions without all the information?"
+    answer: "Classify decisions by reversibility. Reversible decisions (library choices, API design) should be made quickly since you can change course. Irreversible decisions (database choice, major architecture) deserve more analysis, but still need deadlines."
+  - question: "What is a decision document (ADR)?"
+    answer: "An Architecture Decision Record captures the context, options considered, decision made, and reasoning. It creates institutional memory and lets future developers understand why choices were made."
+  - question: "How do you handle disagreement on technical decisions?"
+    answer: "Seek to understand the underlying concerns, not just the positions. Often disagreements stem from different assumptions about requirements or constraints. Make those explicit, then decide. 'Disagree and commit' is valid."
+  - question: "When should you revisit a technical decision?"
+    answer: "When the assumptions that drove the decision change significantly: new scale, new requirements, or new information about costs/risks. Don't revisit just because something better exists; consider migration costs."
+relatedPosts: ["phd-to-industry"]
+---
+
+Every engineering team faces decisions with incomplete information. Wait too long, and you're paralyzed. Decide too fast, and you accumulate regret. The challenge isn't making perfect decisions. It's making good-enough decisions at the right speed.
+
+I used to think good technical leadership meant making the *right* decision. Now I think it means making *a* decision, quickly when appropriate, thoughtfully when required, and learning from the outcomes either way.
+
+## The Paralysis Pattern
+
+Early in my career, I watched a team spend six weeks debating which message queue to use. They researched extensively. They built prototypes. They had meetings about meetings. And then requirements changed, and half of their analysis became irrelevant.
+
+Meanwhile, nothing got shipped.
+
+That team wasn't being careful. They were being stuck. The fear of making the wrong choice produced something worse: making no choice at all.
+
+I've been on that team. I've been the person insisting we need "just a bit more research." It's comfortable because it feels productive without requiring commitment.
+
+But decision avoidance is itself a decision. It's deciding that the cost of delay is lower than the risk of being wrong. And for most technical decisions, that math is backwards.
+
+## The Reversibility Framework
+
+The insight that changed how I approach decisions: not all choices are equal. Some you can undo. Some you can't.
+
+### Type 1: The Irreversible Decisions
+
+These are genuinely high stakes. Changing them later is expensive or impossible:
+
+- Which database technology to build on
+- What programming language for the core system
+- Major architectural patterns (monolith vs. microservices)
+- External API contracts with partners
+- Security and compliance architecture
+
+These deserve careful analysis, broad input, and documentation. But even these need deadlines. Perfect information never arrives.
+
+### Type 2: The Reversible Decisions
+
+These feel important in the moment but can actually be changed:
+
+- Internal API design
+- Which library or framework to use
+- Code organization
+- Implementation details
+- Most process decisions
+
+These should be made quickly. The cost of occasional wrong choices is lower than the cost of constant deliberation.
+
+The problem: many teams treat Type 2 decisions like Type 1. They debate internal implementation details with the intensity reserved for existential architecture choices. This burns time, energy, and morale.
+
+<Callout type="tip" title="The 70% Rule">
+If you have 70% of the information you wish you had, decide. Waiting for 90% usually isn't worth the delay. For reversible decisions, 50% is often enough.
+</Callout>
+
+## The Art of the Decision Document
+
+For Type 1 decisions, I write Architecture Decision Records (ADRs). Not because I love documentation, but because they force clarity and create institutional memory.
+
+The structure I use:
+
+**Status**: When was this decided? Is it still active?
+
+**Context**: What's the situation? What are we trying to solve? What constraints exist?
+
+**Options Considered**: What alternatives did we evaluate? What are the pros and cons of each?
+
+**Decision**: What did we choose?
+
+**Rationale**: Why this option over others? What trade-offs did we accept?
+
+**Consequences**: What follows from this decision? What do we need to do next?
+
+The rationale section is the most important. Six months from now, someone will ask "why did we do it this way?" The ADR answers that question without requiring anyone to remember.
+
+### When to Write an ADR
+
+Write one when:
+- The decision affects multiple teams or systems
+- It's genuinely hard to reverse
+- There was significant debate
+- You expect future questions about the choice
+
+Don't write one for every technical choice. That's not documentation; it's bureaucracy.
+
+## Gathering Input Without Getting Stuck
+
+### The RACI for Decisions
+
+I've found that unclear decision-making authority causes more paralysis than unclear technical options. Who researches? Who decides? Who needs to approve? Who just needs to know?
+
+<table>
+  <thead>
+    <tr>
+      <th>Role</th>
+      <th>What They Do</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Responsible</td>
+      <td>Does the research, writes the proposal</td>
+    </tr>
+    <tr>
+      <td>Accountable</td>
+      <td>Makes the final call</td>
+    </tr>
+    <tr>
+      <td>Consulted</td>
+      <td>Provides input before the decision</td>
+    </tr>
+    <tr>
+      <td>Informed</td>
+      <td>Notified after the decision is made</td>
+    </tr>
+  </tbody>
+</table>
+
+Most importantly: there should be *one* accountable person. Decisions by committee aren't decisions. They're negotiations that often end in compromise that satisfies no one.
+
+### Time-Boxed Input
+
+When gathering feedback on a proposal, I set explicit deadlines:
+
+"Input needed by Friday. If you haven't responded by then, I'll assume no objections and proceed."
+
+This sounds harsh, but it's actually respectful. It acknowledges that people have limited attention and gives them a clear window. It also prevents the endless waiting-for-one-more-opinion cycle.
+
+### Handling Disagreement
+
+Disagreement is healthy until it becomes blocking.
+
+Most technical disagreements aren't actually about the technical details. They're about differing assumptions. One person thinks we need to scale 10x in a year. Another thinks 2x is more realistic. Of course they prefer different architectures.
+
+When I hit disagreement, I try to find the underlying assumptions:
+- What do you believe about future requirements?
+- What risks are you most worried about?
+- What constraints are you assuming?
+
+Make those explicit. Often, once assumptions align, the "right" choice becomes obvious to everyone.
+
+And sometimes, after genuine discussion, people still disagree. That's when "disagree and commit" becomes necessary. Someone accountable makes the call. Everyone else supports it fully, even if they would have chosen differently.
+
+<Callout type="warning" title="Disagree and Commit">
+"Disagree and commit" is healthy, not dysfunctional. After genuine discussion, someone makes the call. Others support it fully, even if they'd have chosen differently. Undermining decisions after they're made is the real problem.
+</Callout>
+
+## The Decision Checklist
+
+Before finalizing a major decision, I verify:
+
+**Requirements clear?** Do we agree on what we're solving for? I've seen weeks spent debating solutions to differently understood problems.
+
+**Options explored?** Have we considered at least three approaches? If only one option seems viable, we probably haven't looked hard enough.
+
+**Trade-offs documented?** What are we giving up with each option? Every choice has downsides. Pretending otherwise leads to surprised Pikachu faces later.
+
+**Risks identified?** What could go wrong? How would we know early?
+
+**Reversibility assessed?** How hard is it to change course if we're wrong?
+
+**Input gathered?** Have relevant stakeholders had a chance to weigh in?
+
+**Deadline set?** When must we decide? Without a deadline, decisions drift forever.
+
+## Signs You're Over-Analyzing
+
+You might be stuck if:
+
+- You're researching the same trade-offs for the third time
+- The team keeps adding "what about..." scenarios that are increasingly unlikely
+- You're waiting for information that isn't coming (and might not exist)
+- The cost of delay clearly exceeds the cost of being wrong
+- Everyone's frustrated but no one will make the call
+
+When I recognize this pattern, I force a deadline. "We decide by Thursday, with whatever information we have."
+
+## Signs You're Under-Analyzing
+
+You might be rushing if:
+
+- You can't articulate why you chose one option over another
+- You didn't consider alternatives seriously
+- People with relevant experience weren't consulted
+- You're treating a Type 1 decision like Type 2
+- The decision feels more like guessing than choosing
+
+## Learning from Decisions
+
+The goal isn't perfect decisions. It's building better decision-making intuition over time.
+
+I periodically review major decisions: What did we expect? What actually happened? What would we do differently knowing what we know now?
+
+This isn't about blame. It's about calibration. Over time, you develop a sense of which decisions deserve heavy analysis and which don't.
+
+One thing I've noticed from these reviews: I'm usually more overconfident than underconfident. Things I thought were "obviously right" often had more nuance than I appreciated. This has made me more willing to seek input and document reasoning, even when I feel certain.
+
+## The Meta-Decision
+
+Perhaps the most important skill: knowing when to invest decision-making effort.
+
+High stakes + High uncertainty = Worth heavy investment. Research deeply, gather broad input, document thoroughly.
+
+High stakes + Low uncertainty = Decide quickly. You know the answer. Excessive analysis is procrastination.
+
+Low stakes + High uncertainty = Decide quickly. You can change it if you're wrong.
+
+Low stakes + Low uncertainty = Just do it. Why are we even discussing this?
+
+Most engineering decisions are in the "low stakes" row. Treat them that way.
+
+## The Human Side
+
+Technical decisions are emotional, even when we pretend they're not. People attach identity to their preferred approaches. "I'm a microservices person" or "I believe in PostgreSQL." Challenging that feels personal.
+
+I try to separate identity from position. We're not debating who's smart. We're debating what's best for this situation, with these constraints, given what we know now.
+
+And I try to remember that being wrong about a technical choice is fine. It's information. What's not fine is creating an environment where people can't admit uncertainty or change their minds without losing face.
+
+The best technical leaders I know aren't the ones who are always right. They're the ones who make decisions at the right pace, adjust when new information arrives, and create space for others to do the same.
+
+---
+
+*Navigating a difficult technical decision? [Let's talk](/contact) through your options.*

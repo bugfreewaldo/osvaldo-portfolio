@@ -1,0 +1,217 @@
+---
+title: "Designing Multi-tenant SaaS Applications: Architecture Patterns"
+description: "How to build SaaS applications that serve multiple customers from shared infrastructure while maintaining isolation, security, and performance."
+date: 2025-12-05
+updated: 2025-12-12
+published: true
+category: "Backend Engineering"
+tags: ["SaaS", "Architecture", "PostgreSQL", "Security", "Multi-tenancy"]
+author: "Osvaldo Restrepo"
+tldr: "Multi-tenancy is a spectrum from shared everything to isolated everything. Most B2B SaaS should use shared application + database-per-tenant or schema-per-tenant. Row-level security works for smaller tenants; dedicated resources for enterprise."
+faqs:
+  - question: "What is multi-tenancy in SaaS?"
+    answer: "Multi-tenancy means multiple customers (tenants) share the same application infrastructure while their data remains isolated. It enables cost efficiency through shared resources while maintaining security boundaries."
+  - question: "Should I use one database per tenant or shared database?"
+    answer: "It depends on your scale and customers. Shared database with row-level security is simpler and cheaper for many small tenants. Database-per-tenant provides stronger isolation for enterprise customers with compliance requirements."
+  - question: "How do you prevent data leakage between tenants?"
+    answer: "Defense in depth: tenant context in every request, database-level row security policies, application middleware that enforces tenant filtering, and automated tests that verify isolation."
+  - question: "How do you handle different pricing tiers?"
+    answer: "Feature flags tied to tenant subscription level, rate limiting per tier, and resource quotas enforced at multiple layers (API gateway, application, database)."
+relatedPosts: ["event-driven-data-pipelines"]
+---
+
+Building SaaS that serves hundreds of customers from shared infrastructure requires careful architecture decisions. Get isolation wrong, and you have data breaches. Get scaling wrong, and you have performance nightmares.
+
+I learned this building a platform that started with ten customers and grew to hundreds. The architecture that worked at ten was creaking at fifty and breaking at a hundred. We had to rearchitect under pressure, which is exactly as painful as it sounds.
+
+This post is what I wish I'd understood before we started.
+
+## The Multi-tenancy Spectrum
+
+Multi-tenancy isn't a single pattern. It's a spectrum of isolation levels, each with different trade-offs.
+
+At one extreme: shared everything. One database, one schema, all tenants' data mixed together, distinguished only by a tenant_id column. Cheap to operate, terrifying if you get a query wrong.
+
+At the other extreme: dedicated everything. Each tenant gets their own database, their own application instance, their own everything. Rock-solid isolation, expensive to operate, hard to maintain at scale.
+
+Most real-world systems live somewhere in the middle.
+
+<Callout type="tip" title="My Default Choice">
+For B2B SaaS with mixed customer sizes: shared application layer + schema-per-tenant in PostgreSQL. Small tenants share schemas with row-level security; enterprise tenants get dedicated schemas or databases.
+</Callout>
+
+The right choice depends on your customers. Startups building for SMBs can usually go more shared. Anyone serving enterprise customers with compliance requirements needs more isolation.
+
+## Tenant Context: The Foundation
+
+Every request must carry tenant context. This sounds obvious, but getting it wrong is how data leaks happen.
+
+I've seen systems where tenant filtering happened "most of the time." Developers remembered to add WHERE tenant_id = ? to most queries. But not all. And the queries they forgot were the ones that ended up exposing Customer A's data to Customer B.
+
+The fix isn't better code review. It's making tenant filtering automatic and impossible to bypass.
+
+### Making It Automatic
+
+The pattern I use: extract tenant context from every request at the middleware layer, store it in request-scoped context, and have the database layer automatically filter by tenant.
+
+This means developers can write simple queries without thinking about tenant filtering. The system handles it. If someone forgets to specify a tenant, the query fails rather than returning all tenants' data.
+
+With PostgreSQL's Row-Level Security (RLS), you can enforce this at the database level. Even if application code has a bug, the database won't return data from other tenants.
+
+### The Critical Rule
+
+There should be no code path, anywhere in the system, that queries data without tenant context. None. Not for admin tools, not for debugging, not for "just this one report."
+
+The moment you create a bypass, you've created a vulnerability. Admin tools should set tenant context like everything else. Debugging should happen on anonymized data or with explicit tenant context.
+
+I once had to explain to a customer that their data might have been visible to another customer because of an admin dashboard that "needed" access to all tenants. That was a conversation I never want to have again.
+
+## Choosing Your Isolation Level
+
+### Row-Level Security: The Starting Point
+
+For most SaaS products, start with row-level security in a shared database. Every table has a tenant_id column. Every query filters by it.
+
+PostgreSQL RLS enforces this at the database level. You define policies that automatically add tenant filters to every query. Even if your application code forgets to filter, the database won't return other tenants' data.
+
+The setup is straightforward: enable RLS on each table, create policies that filter by the current tenant (stored in a session variable), and make sure your application sets that session variable on every connection.
+
+The catch: superuser connections bypass RLS. Never use superuser credentials in application code. Create a dedicated application role with restricted permissions.
+
+### Schema-per-Tenant: When You Need More
+
+For medium-sized tenants needing stronger isolation, schema-per-tenant is a good middle ground. Each tenant gets their own PostgreSQL schema within a shared database.
+
+Benefits:
+- Cleaner isolation than row-level security
+- Easier to reason about (tenant's data is in tenant's schema)
+- Can apply schema-level resource limits
+- Simpler data exports (dump the whole schema)
+
+Drawbacks:
+- More complex provisioning (create schema, run migrations)
+- More complex connection management (set search_path per request)
+- Harder to do cross-tenant queries (which is arguably a feature, not a bug)
+
+### Database-per-Tenant: The Enterprise Option
+
+For enterprise customers, sometimes you need full database isolation. They may require it for compliance. They may want the option to migrate to self-hosted. They may just have enough scale that it makes sense.
+
+Benefits:
+- Complete isolation
+- Independent scaling per tenant
+- Easiest to understand and audit
+- Customers can have their own backup/restore schedules
+
+Drawbacks:
+- Most expensive to operate
+- Connection pool management becomes complex
+- Schema migrations must run across all tenant databases
+- Harder to aggregate data across tenants
+
+I've seen teams try to start with database-per-tenant "for maximum flexibility." It's usually overkill and creates operational burden that slows down everything else. Start simpler; move to dedicated databases when specific customers actually need it.
+
+## The Pricing Tier Problem
+
+Different customers pay for different capabilities. Enforcing that cleanly is harder than it looks.
+
+### Feature Flags Done Right
+
+Every feature check should go through a centralized system that knows the tenant's subscription level. Don't sprinkle "if customer is enterprise" checks throughout the code.
+
+The pattern I use: a FeatureAccess service that takes a tenant and a feature name, returns whether access is allowed. All feature checks go through this service. When sales upgrades a customer's tier, we update one place, and everything adjusts.
+
+### Rate Limiting Without Frustration
+
+Rate limits need to be obvious, enforceable, and not punitive.
+
+Obvious: Show customers their usage and limits. Nobody should be surprised when they hit a limit.
+
+Enforceable: Check at the API gateway level, not deep in application code. Failed rate limit checks should return immediately, not after doing expensive work.
+
+Not punitive: Limits should prevent abuse, not punish legitimate use. If a customer regularly hits limits, that's a sign they should upgrade, not a problem to solve with stricter limits.
+
+I track usage in Redis with monthly counters. Each API call increments the counter. When it exceeds the limit, requests return a clear error with instructions for upgrading. At month end, counters reset automatically.
+
+## Testing Tenant Isolation
+
+This is the test suite that lets me sleep at night.
+
+Every deploy runs tests that verify:
+
+1. Tenant A cannot access Tenant B's data through any API endpoint
+2. List endpoints only return the current tenant's records
+3. Create operations cannot specify a different tenant
+4. The database returns nothing (not an error) for cross-tenant queries
+
+That last point is subtle. If Tenant B requests Tenant A's resource, they should get a 404, not a 403. A 403 confirms the resource exists. A 404 doesn't leak that information.
+
+<Callout type="danger" title="Run These in CI">
+Tenant isolation tests must run on every deployment. A single missed filter in a new endpoint can expose all tenant data. Automate this. Never rely on manual testing for security properties.
+</Callout>
+
+## The Noisy Neighbor Problem
+
+Shared infrastructure means one tenant's behavior affects others. A heavy query from Customer A can slow down Customer B's experience.
+
+### Resource Isolation
+
+For database-level isolation, I use statement timeouts and connection limits per tenant. No single tenant can monopolize database resources.
+
+For application-level isolation, I use queue-based processing for heavy operations. Bulk imports, report generation, data exports. These run in background workers with per-tenant rate limits, so one tenant's large export doesn't block another tenant's small one.
+
+### Identifying the Culprit
+
+When things get slow, you need to know which tenant is causing it. Every log entry, every metric, every trace should include tenant_id.
+
+When a database query times out, I want to know: which tenant ran it? When CPU spikes, I want to know: which tenant's requests are responsible?
+
+Without tenant-scoped monitoring, you're debugging blind.
+
+## Tenant Onboarding and Offboarding
+
+### Onboarding Should Be Automated
+
+When a new customer signs up, their environment should be ready in seconds, not hours. This means automated database provisioning, automated schema creation, automated default data population.
+
+The onboarding flow I use:
+1. Create tenant record in the control plane
+2. Provision database resources (schema or database, depending on tier)
+3. Run database migrations in the new environment
+4. Create admin user account
+5. Populate with default data (if any)
+6. Send welcome email
+
+All automated. No manual steps. If onboarding requires a human, you can't scale.
+
+### Offboarding Must Be Complete
+
+When a customer leaves (or when GDPR deletion is requested), you must delete all their data. All of it. Not just the obvious stuff.
+
+This means:
+- All database records
+- All file storage (S3, etc.)
+- All cache entries
+- All analytics data
+- All logs containing their data
+- All backups (or at least a plan for backup retention)
+
+I maintain a checklist of everywhere tenant data lives and automate deletion across all of them.
+
+## The Honest Complexity
+
+Multi-tenant architecture is genuinely complex. You're building a system that serves many customers from shared infrastructure while preventing any single customer from affecting others or seeing others' data.
+
+Every decision involves trade-offs:
+- More isolation = more cost and operational complexity
+- More sharing = more risk and more edge cases
+- Simpler architecture now = harder scaling later
+- Complex architecture now = slower shipping now
+
+The right balance depends on your stage, your customers, and your team. What works for a 10-person startup serving SMBs is different from what works for an enterprise software company with compliance requirements.
+
+Start simpler than you think you need. Add isolation when you have concrete reasons, not hypothetical ones. And test your isolation aggressively, because the one time you're wrong, it really matters.
+
+---
+
+*Building a multi-tenant platform? [Let's discuss](/contact) your architecture requirements.*

@@ -1,0 +1,297 @@
+---
+title: "Building Production RAG Systems: Lessons from Healthcare AI"
+description: "Practical guide to building reliable Retrieval-Augmented Generation systems for production, with real examples from building MILA, a neonatal LLM assistant."
+date: 2024-01-15
+updated: 2024-01-20
+published: true
+category: "AI Engineering"
+tags: ["RAG", "LangChain", "Pinecone", "Healthcare AI", "LLM", "HIPAA"]
+author: "Osvaldo Restrepo"
+tldr: "RAG systems in production need three things: reliable retrieval with proper chunking, robust evaluation (retrieval@k, factuality checks), and safe guardrails for sensitive domains like healthcare."
+faqs:
+  - question: "What is RAG and why use it?"
+    answer: "RAG (Retrieval-Augmented Generation) combines document retrieval with LLM generation. It reduces hallucinations by grounding responses in actual source documents, making it essential for accuracy-critical applications."
+  - question: "How do you evaluate RAG system quality?"
+    answer: "Use metrics like retrieval@k (did the right documents get retrieved?), answer faithfulness (is the answer grounded in sources?), and end-to-end correctness. Build regression suites to catch quality degradation."
+  - question: "What embedding model should I use?"
+    answer: "For general English content, text-embedding-3-small offers good quality at low cost. For domain-specific content (medical, legal), consider fine-tuning or specialized models."
+  - question: "Is it possible to build HIPAA-compliant RAG systems?"
+    answer: "Yes, but it requires encryption at rest and in transit, comprehensive audit logging, Business Associate Agreements with all vendors, role-based access controls, and minimum necessary data principles. Every vendor touching PHI must sign a BAA."
+  - question: "What are the penalties for HIPAA violations in AI systems?"
+    answer: "HIPAA violations can result in fines ranging from $100 to $50,000 per violation, with annual maximums up to $1.5 million per violation category. Criminal penalties can include imprisonment for knowingly obtaining PHI under false pretenses."
+relatedPosts: []
+---
+
+When I built MILA, a neonatal LLM assistant for hospital communication, I learned that production RAG is fundamentally different from demo RAG. This guide shares those lessons.
+
+## The Production Reality Check
+
+Most RAG tutorials show you how to embed documents and query them. That gets you 60% of the way there. The other 40% is what keeps the system reliable in production.
+
+<Callout type="tip" title="Key Insight">
+RAG systems fail silently. Unlike crashes, retrieval failures just produce plausible-sounding wrong answers. You need evaluation built in from day one.
+</Callout>
+
+## Document Preparation
+
+### Chunking Strategy
+
+Chunk size matters more than you think. For MILA's hospital policies:
+
+```python
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=512,
+    chunk_overlap=50,
+    separators=["\n\n", "\n", ". ", " "]
+)
+```
+
+<Callout type="warning" title="Common Mistake">
+Don't use fixed-size chunking for structured documents. Policy documents have sections that should stay together. Use semantic chunking when possible.
+</Callout>
+
+### Metadata is Essential
+
+Every chunk needs metadata for filtering and citation:
+
+```python
+{
+    "source": "feeding_policy_v2.pdf",
+    "section": "Breastfeeding Guidelines",
+    "page": 12,
+    "last_updated": "2024-01-10",
+    "applicable_units": ["NICU", "PICU"]
+}
+```
+
+## Retrieval Pipeline
+
+### Hybrid Search
+
+Pure vector search misses exact matches. Pure keyword search misses semantic similarity. Use both:
+
+```python
+from pinecone import Pinecone
+
+# Vector search
+vector_results = index.query(
+    vector=query_embedding,
+    top_k=10,
+    include_metadata=True
+)
+
+# Keyword boost for medical terms
+keyword_boost = boost_results_containing(
+    results=vector_results,
+    terms=extract_medical_terms(query)
+)
+```
+
+## Evaluation Framework
+
+This is where most teams cut corners. Don't.
+
+### Retrieval Quality
+
+```python
+def evaluate_retrieval(queries: list[Query], k: int = 5):
+    """Measure if relevant docs appear in top-k results."""
+    results = []
+    for query in queries:
+        retrieved = retriever.get_relevant_docs(query.text, k=k)
+        retrieved_ids = {doc.id for doc in retrieved}
+        relevant_ids = set(query.relevant_doc_ids)
+
+        recall_at_k = len(retrieved_ids & relevant_ids) / len(relevant_ids)
+        results.append(recall_at_k)
+
+    return sum(results) / len(results)
+```
+
+### Answer Faithfulness
+
+Check if answers are grounded in retrieved documents:
+
+```python
+def check_faithfulness(answer: str, sources: list[str]) -> float:
+    """Use LLM to verify claims are supported by sources."""
+    prompt = f"""
+    Answer: {answer}
+    Sources: {sources}
+
+    For each claim in the answer, is it supported by the sources?
+    Return a score from 0-1.
+    """
+    return llm_evaluate(prompt)
+```
+
+## Production Guardrails
+
+### Human-in-the-Loop
+
+For MILA, no message goes to parents without clinician approval:
+
+```python
+class MessageWorkflow:
+    async def generate_draft(self, context: dict) -> Draft:
+        draft = await self.rag_chain.invoke(context)
+        draft.status = "pending_review"
+        return draft
+
+    async def approve(self, draft_id: str, clinician_id: str):
+        # Log approval for audit trail
+        await self.audit_log.record(draft_id, clinician_id, "approved")
+        return await self.send_to_family(draft_id)
+```
+
+### Uncertainty Detection
+
+When retrieval confidence is low, say so:
+
+```python
+if max(retrieval_scores) < CONFIDENCE_THRESHOLD:
+    return {
+        "response": "I don't have enough information to answer this accurately.",
+        "suggested_action": "Please consult the policy database directly or ask a supervisor.",
+        "retrieval_scores": retrieval_scores
+    }
+```
+
+## HIPAA Compliance for Healthcare RAG
+
+Building AI systems that handle Protected Health Information (PHI) requires strict adherence to HIPAA regulations. This isn't optional. It's federal law.
+
+### The HIPAA Security Rule Essentials
+
+<Callout type="danger" title="Critical">
+Any RAG system processing PHI must implement administrative, physical, and technical safeguards. Violations can result in fines up to $1.5 million per incident.
+</Callout>
+
+For MILA, we implemented these technical safeguards:
+
+```python
+class HIPAACompliantRAG:
+    def __init__(self):
+        self.encryption = AES256Encryption()
+        self.audit_logger = HIPAAAuditLog()
+        self.access_control = RoleBasedAccessControl()
+
+    async def query(self, user: User, query: str) -> Response:
+        # 1. Verify user authorization
+        if not self.access_control.can_access_phi(user):
+            self.audit_logger.log_unauthorized_attempt(user, query)
+            raise UnauthorizedAccessError()
+
+        # 2. Log all PHI access (required by HIPAA)
+        access_id = self.audit_logger.log_phi_access(
+            user_id=user.id,
+            purpose="patient_communication",
+            timestamp=datetime.utcnow()
+        )
+
+        # 3. Process with encryption in transit
+        response = await self._process_query(query)
+
+        # 4. Log response generation
+        self.audit_logger.log_response_generated(access_id, response.id)
+
+        return response
+```
+
+### Data Handling Requirements
+
+PHI in your vector database requires special handling:
+
+1. **Encryption at rest** - All embeddings and metadata must be encrypted
+2. **Encryption in transit** - TLS 1.2+ for all API calls
+3. **Access logging** - Every query touching PHI must be logged with user ID, timestamp, and purpose
+4. **Minimum necessary** - Only retrieve the minimum PHI needed for the task
+
+```python
+# BAD: Storing raw PHI in metadata
+chunk_metadata = {
+    "patient_name": "John Doe",  # Never do this
+    "mrn": "12345678"
+}
+
+# GOOD: De-identified references with access controls
+chunk_metadata = {
+    "document_id": "encrypted_ref_abc123",
+    "content_type": "care_protocol",
+    "phi_level": "restricted",
+    "requires_authorization": True
+}
+```
+
+### Business Associate Agreements
+
+<Callout type="warning" title="Legal Requirement">
+Every vendor in your RAG pipeline (LLM provider, vector database, cloud host) must sign a Business Associate Agreement (BAA) before processing PHI.
+</Callout>
+
+For MILA's infrastructure:
+- **OpenAI** - Enterprise agreement with BAA
+- **Pinecone** - HIPAA-eligible tier with BAA
+- **AWS** - BAA covering all services used
+
+### Audit Trail Requirements
+
+HIPAA requires you to track who accessed what PHI and when. This isn't just logging, it's legal documentation:
+
+```python
+class HIPAAAuditLog:
+    def log_phi_access(
+        self,
+        user_id: str,
+        purpose: str,
+        timestamp: datetime,
+        patient_ids: list[str] | None = None
+    ) -> str:
+        """
+        Creates immutable audit record for PHI access.
+        Retention: minimum 6 years per HIPAA requirements.
+        """
+        record = AuditRecord(
+            id=generate_uuid(),
+            user_id=user_id,
+            action="PHI_ACCESS",
+            purpose=purpose,
+            timestamp=timestamp,
+            patient_ids=hash_patient_ids(patient_ids),  # Store hashed
+            ip_address=get_client_ip(),
+            user_agent=get_user_agent()
+        )
+
+        # Write to immutable audit store
+        self.audit_store.append(record)
+
+        return record.id
+```
+
+## Monitoring in Production
+
+Track these metrics daily:
+
+1. **Retrieval latency** - p50 and p95
+2. **Empty retrieval rate** - queries with no relevant docs
+3. **User feedback signals** - edits, rejections, regenerations
+4. **Cost per query** - embedding + LLM tokens
+
+## Conclusion
+
+Production RAG requires more than good retrieval. It needs:
+
+- Thoughtful document preparation with metadata
+- Hybrid search for robustness
+- Continuous evaluation with regression tests
+- Guardrails appropriate to your domain
+- Monitoring that catches silent failures
+- **HIPAA compliance** for healthcare applications (encryption, audit trails, BAAs)
+
+The difference between a demo and production is trust. Build systems that earn it.
+
+---
+
+*Have questions about RAG systems? [Get in touch](/contact) or check out my [MILA project](/projects/mila-neonatal-llm) for more details.*

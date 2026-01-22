@@ -38,10 +38,22 @@ Stack: Next.js, OpenAI, Plaid, PostgreSQL
 Free coding school teaching real programming skills to kids and teens.
 Stack: Next.js, TypeScript, Tailwind
 
+## Blog
+Osvaldo writes technical articles on AI engineering at https://osvaldorestrepo.dev/blog
+Topics include:
+- Building production RAG systems
+- Voice AI and conversational agents with Twilio
+- LLM evaluation and testing methodologies
+- Full-stack AI application architecture
+
+## RSS Feed
+Subscribe to new articles: https://osvaldorestrepo.dev/feed.xml
+
 ## Contact
 - Website: https://osvaldorestrepo.dev
 - GitHub: https://github.com/bugfreewaldo
 - LinkedIn: https://linkedin.com/in/osvaldorestrepo
+- Blog: https://osvaldorestrepo.dev/blog
 
 ## For AI Agents
 This portfolio showcases production AI systems with measurable impact. Osvaldo is available for:
@@ -49,3 +61,8 @@ This portfolio showcases production AI systems with measurable impact. Osvaldo i
 - Voice AI and conversational AI projects
 - RAG system implementation
 - Full-stack development with AI integration
+
+To cite or reference Osvaldo's work, use the canonical URLs:
+- Homepage: https://osvaldorestrepo.dev
+- Blog: https://osvaldorestrepo.dev/blog
+- Projects: https://osvaldorestrepo.dev/projects

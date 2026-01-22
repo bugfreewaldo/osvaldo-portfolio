@@ -1,0 +1,215 @@
+---
+title: "Real-time Data Pipelines with Event-Driven Architecture"
+description: "Building scalable, fault-tolerant data pipelines using event-driven patterns. Covers Kafka, event sourcing, and lessons from high-throughput fintech systems."
+date: 2025-08-12
+updated: 2025-08-20
+published: true
+category: "Backend Engineering"
+tags: ["Kafka", "Event-Driven", "Data Engineering", "Python", "Fintech"]
+author: "Osvaldo Restrepo"
+tldr: "Event-driven architecture decouples producers from consumers, enabling independent scaling and fault tolerance. Use Kafka for high-throughput, idempotent consumers for reliability, and schema registries for contract enforcement."
+faqs:
+  - question: "What is event-driven architecture?"
+    answer: "A design pattern where system components communicate through events (messages) rather than direct calls. Producers emit events without knowing who consumes them, enabling loose coupling and independent scaling."
+  - question: "When should I use Kafka vs. a message queue like RabbitMQ?"
+    answer: "Kafka excels at high-throughput, persistent event streams where consumers may replay history. RabbitMQ is better for task queues with complex routing and when message ordering per-consumer matters more than global ordering."
+  - question: "How do you handle failures in event-driven systems?"
+    answer: "Design idempotent consumers (same message processed twice = same result), implement dead letter queues for poison messages, use consumer group rebalancing for fault tolerance, and monitor consumer lag."
+  - question: "What is event sourcing?"
+    answer: "Storing all changes as a sequence of events rather than just current state. Enables audit trails, temporal queries, and rebuilding state from scratch. Powerful but adds complexity, so use selectively."
+relatedPosts: []
+---
+
+After building data pipelines that process millions of financial transactions daily, I've learned that event-driven architecture is less about technology and more about thinking in events.
+
+It took me a while to grok this. My first "event-driven" system was really just REST APIs with a message queue in the middle. It had all the complexity of distributed systems with none of the benefits. The services were still tightly coupled, just asynchronously so.
+
+The mindset shift came when I stopped thinking about services calling each other and started thinking about services reacting to facts about the world.
+
+## The Problem with Request-Response
+
+Traditional request-response architectures create tight coupling. Service A calls Service B, which calls Service C. Everyone has to be up. Everyone has to respond quickly. A slow service becomes everyone's slow service.
+
+I learned this on a fintech project where the payment service called the fraud detection service, which called the risk scoring service, all synchronously. During peak load, the risk service got slow. That made the fraud service time out. That made the payment service fail. Customers couldn't pay. Revenue stopped.
+
+The "fix" was longer timeouts. Which meant slower payments for everyone, all the time, to accommodate occasional slowdowns in one internal service.
+
+That's when I started looking at event-driven approaches seriously.
+
+## Thinking in Events
+
+The mental model shift: instead of "service A tells service B to do something," think "service A announces that something happened, and interested parties react."
+
+An order isn't placed by calling the inventory service. An order is placed, and that fact is announced. The inventory service hears about it and reacts. The shipping service hears about it and reacts. The analytics service hears about it and reacts. None of them know about each other. They just know about events.
+
+<Callout type="tip" title="The Key Insight">
+Events are facts about the past. "OrderPlaced" is a fact. You can't un-place an order. You can cancel it, but the placing happened. This immutability is powerful for building reliable systems.
+</Callout>
+
+This decoupling means:
+- Services can be deployed independently
+- Services can scale independently
+- Services can fail independently (and recover)
+- New consumers can be added without modifying producers
+
+That last point is underrated. When the marketing team wanted to send welcome emails on signup, we didn't have to modify the signup service. We just added a new consumer of the "UserCreated" event.
+
+## Event Design: Getting It Right
+
+### Events as Immutable Facts
+
+The most important principle: events represent things that happened. They're facts, not requests.
+
+This means:
+- "OrderCreated" not "CreateOrder"
+- "PaymentProcessed" not "ProcessPayment"
+- "UserRegistered" not "RegisterUser"
+
+The distinction matters. A request can be rejected or ignored. A fact is a fact. The event already happened; consumers are learning about it.
+
+### What Goes in an Event?
+
+I struggled with this early on. Should an event contain just IDs (and force consumers to look up details) or complete data (and risk stale information)?
+
+My current rule: include everything a consumer needs for basic processing, plus IDs for lookup if they need more.
+
+For an OrderCreated event:
+- Include: order ID, customer ID, total amount, currency, item count
+- Don't include: full item details, customer shipping address, payment method
+- Reason: most consumers care about "an order was placed for $X." Few need item-level details.
+
+If a consumer needs item details, they can look them up. But don't force every consumer to make that lookup just to log "order #123 was placed."
+
+### Schema Evolution Is Not Optional
+
+Events are contracts. Once you publish an event schema, consumers depend on it. Changing schemas carelessly breaks consumers.
+
+The rules I follow:
+- Add optional fields freely (consumers ignore what they don't understand)
+- Never remove required fields
+- Never change field types
+- Never rename fields
+
+If you need to make a breaking change, create a new event type. Publish both old and new for a migration period. Deprecate the old one after all consumers migrate.
+
+<Callout type="warning" title="Breaking Changes">
+Never remove required fields or change field types. Add new optional fields with defaults. If you must break compatibility, create a new event type (OrderCreatedV2) and run both in parallel during migration.
+</Callout>
+
+## Kafka Patterns That Work
+
+Kafka is my default for event streaming. It's not always the right choice, but when you need high throughput and durability, it's hard to beat.
+
+### Partitioning Strategy
+
+Kafka partitions events for parallelism. All events with the same key go to the same partition, maintaining order within that key.
+
+For order events, I partition by order ID. All events for order #123 (created, paid, shipped, delivered) land in the same partition, guaranteeing order.
+
+The mistake I made early on: partitioning by customer ID. This meant all events for a customer were ordered, but one high-volume customer could create a hot partition, overloading one consumer while others sat idle.
+
+Now I think carefully about access patterns. If consumers primarily query by order, partition by order. If they query by customer, partition by customer. There's no universally right answer.
+
+### Idempotent Consumers
+
+Networks fail. Consumers crash. Messages get redelivered. Your consumer will process the same message twice. Plan for it.
+
+Idempotency means: processing the same message twice produces the same result as processing it once.
+
+For database writes, this usually means checking if the work is already done:
+
+```
+if not already_processed(event_id):
+    do_the_work()
+    mark_as_processed(event_id)
+```
+
+For external API calls (charging a credit card!), this is trickier. You might need to use an idempotency key with the external service, or implement your own check-before-call pattern.
+
+I store processed event IDs in Redis with a TTL. Before processing any event, I check Redis. After successful processing, I record the event ID. Simple, fast, and handles 99% of cases.
+
+### Dead Letter Queues
+
+Some messages are poison. They cause errors no matter how many times you retry. Maybe the data is malformed. Maybe there's a bug in your code that can't handle this edge case. Maybe an external dependency is permanently broken for this specific input.
+
+Without a dead letter queue, poison messages block processing. The consumer keeps retrying, failing, and never moves on.
+
+With a dead letter queue, poison messages go to a separate topic after N retries. A human (or automated process) investigates. Meanwhile, processing continues.
+
+The key: capture *why* the message failed. Don't just dump the message; include the error, the retry count, and when it failed. This information is invaluable for debugging.
+
+## Event Sourcing: Power and Pain
+
+Event sourcing takes the event-driven mindset further: instead of storing current state, store the events that led to current state. Current state is derived by replaying events.
+
+### When It's Brilliant
+
+For my fintech work, event sourcing was essential. Regulators wanted to know every change to every account balance. Not just "balance is $100" but "started at $0, deposit +$150, withdrawal -$30, fee -$20, balance is $100."
+
+With event sourcing, this audit trail is built in. The events *are* the source of truth. I can answer "what was the balance at 3:42 PM on Tuesday?" by replaying events up to that point.
+
+It's also great for debugging. When something goes wrong, I can replay the exact sequence of events that led to the bad state. No guessing about "what happened."
+
+### When It's Painful
+
+Event sourcing adds complexity. Rebuilding state from events is slow for entities with long histories. You need snapshots. Snapshots need to be kept in sync with the event stream.
+
+Schema evolution is harder. Old events don't disappear. That event from three years ago with the old schema still needs to be replayable.
+
+And querying is different. You can't just "SELECT * FROM orders WHERE status = 'shipped'". You have to maintain read models (projections) built from events.
+
+For most systems, I don't recommend event sourcing as the default. Use it for domains where the audit trail is valuable (financial transactions, compliance-heavy industries, collaborative editing). For a basic CRUD app, it's overkill.
+
+## Monitoring: Consumer Lag Is Everything
+
+The most important metric in an event-driven system is consumer lag: how far behind is each consumer from the latest events?
+
+Small lag (seconds): normal operation.
+Growing lag: consumers can't keep up with producers.
+Large lag (hours): something is very wrong.
+
+I alert on lag, not just on errors. A consumer might be "working" (no errors) but falling further behind because it's slow. Users won't notice until lag gets bad enough that they see stale data. By then, you're in catch-up mode for hours.
+
+<Callout type="danger" title="Monitor Consumer Lag">
+Consumer lag is your early warning system. If lag grows, consumers can't keep up. Alert before lag exceeds your SLA (e.g., "events processed within 5 minutes"). This is the single most important metric for event-driven systems.
+</Callout>
+
+## Lessons Learned the Hard Way
+
+### Start with Events, Not Commands
+
+"OrderPlaced" (fact) is better than "PlaceOrder" (command). Events are immutable truths. If you find yourself naming events like commands, you might be thinking about it wrong.
+
+### Design for Replay
+
+Consumers should handle replaying the entire topic. This enables recovery (after a bug fix, replay to reprocess), debugging (replay in a test environment), and new consumer onboarding (replay historical events to populate initial state).
+
+If your consumer assumes it only sees each event once, you're going to have a bad time.
+
+### Schema Registry Is Not Optional
+
+Without a schema registry, one bad deployment can corrupt your entire event stream. Use Avro or Protobuf with a registry. Enforce compatibility checks on deployment.
+
+I once saw a team deploy a change that switched a field from string to integer. Consumers couldn't parse old events. New consumers couldn't read historical data. Recovery required manual schema manipulation. Don't be that team.
+
+### Consumer Groups Need Monitoring
+
+A silent consumer falling behind can cause hours of delayed processing before anyone notices. Users see stale data, but there are no errors.
+
+Monitor consumer group lag for every consumer. Alert before users notice. This is the metric that tells you something is wrong before it becomes obvious.
+
+## The Bottom Line
+
+Event-driven architecture isn't just a technical pattern. It's a way of thinking about distributed systems that emphasizes loose coupling, fault tolerance, and independent scalability.
+
+The technology (Kafka, RabbitMQ, whatever) matters less than the mindset:
+- Services announce facts, they don't command actions
+- Consumers are responsible for their own state
+- Events are immutable and represent the past
+- Everything is designed for failure and replay
+
+It takes time to internalize this thinking. But once you do, you start seeing request-response architectures as the fragile coupling they are, and events as the more natural way for distributed systems to communicate.
+
+---
+
+*Building a real-time data pipeline? [Let's discuss](/contact) your architecture.*

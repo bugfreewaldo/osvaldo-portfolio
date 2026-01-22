@@ -1,0 +1,267 @@
+---
+title: "From Jupyter Notebook to Production: ML Deployment Patterns"
+description: "The gap between a working notebook and a production ML system is larger than most tutorials suggest. Here's how to bridge it without rewriting everything."
+date: 2025-09-20
+updated: 2025-09-28
+published: true
+category: "MLOps"
+tags: ["Python", "MLOps", "Docker", "FastAPI", "Machine Learning"]
+author: "Osvaldo Restrepo"
+tldr: "Notebooks are for exploration, not production. Extract your model code into modules, wrap inference in an API, containerize everything, and add monitoring. The refactor is worth it."
+faqs:
+  - question: "Why can't I just run my Jupyter notebook in production?"
+    answer: "Notebooks mix exploration, visualization, and code in ways that make them fragile for production. They lack proper error handling, dependency management, testing, and monitoring. Extracting code to modules is essential."
+  - question: "What's the fastest path from notebook to API?"
+    answer: "Extract your inference code to a Python module, wrap it in FastAPI, containerize with Docker, and deploy. You can have a working API in hours, then iterate on robustness."
+  - question: "How do I handle model versioning?"
+    answer: "Store models in versioned cloud storage (S3, GCS) with metadata. Use a model registry (MLflow, Weights & Biases) for tracking lineage. Load models by version ID, not 'latest'."
+  - question: "What monitoring do ML systems need?"
+    answer: "Track prediction latency, error rates, and input/output distributions. Monitor for data drift and model staleness. Alert on anomalies before users notice quality degradation."
+relatedPosts: ["llm-evaluation-pipelines"]
+---
+
+Every data scientist has a notebook that "works on my machine." Getting it to work reliably in production is a different challenge entirely.
+
+I learned this the hard way on my first ML project. I had a beautiful notebook with gorgeous visualizations, carefully documented analysis, and a model that achieved 94% accuracy on my test set. I showed it to my manager, who said "great, let's deploy it by Friday."
+
+I had no idea what that meant. The notebook ran for 45 minutes because cell 23 loaded the entire dataset into memory. It depended on a specific version of pandas that conflicted with our production environment. The model was saved in cell 47, but cells 12-46 had to run first to create the preprocessing objects it depended on.
+
+That Friday deploy turned into three weeks of rewriting everything. This post is what I wish I'd known before I started.
+
+## The Notebook-to-Production Gap
+
+A typical notebook contains an unholy mix of things:
+- Data loading and exploration (important for understanding, useless for production)
+- Feature engineering experiments (some of which you abandoned, some of which you kept)
+- Model training iterations (the twelve approaches you tried before settling on one)
+- Evaluation visualizations (critical for your analysis, irrelevant to serving predictions)
+- The "final" model, buried somewhere in cell 47
+
+The notebook has implicit dependencies that are invisible until they break: the order cells were run, global variables from deleted cells, hardcoded file paths, and packages installed months ago that you've forgotten about.
+
+<Callout type="warning" title="The Hidden Complexity">
+That notebook has implicit dependencies: the order cells were run, global variables from deleted cells, hardcoded file paths, and packages installed months ago. Production can't handle any of that.
+</Callout>
+
+## Phase 1: Figure Out What Actually Matters
+
+Before extracting anything, I now spend time identifying what's actually needed for inference. Not training. Not exploration. Just: given an input, what code runs to produce an output?
+
+### The Inventory Exercise
+
+I go through my notebook and label every cell:
+- **EXPLORATION**: Data visualization, summary statistics, sanity checks. Not needed for production.
+- **FEATURE ENGINEERING**: Code that transforms raw inputs into model inputs. Needed.
+- **TRAINING**: Model fitting, hyperparameter tuning, cross-validation. Not needed for inference.
+- **INFERENCE**: The predict call and any post-processing. Needed.
+
+Usually, about 70% of notebook code falls into exploration or training. That's all code you don't need to productionize.
+
+This exercise is humbling. I once had a 500-cell notebook where only 23 cells were actually needed for inference. The rest was my journey of figuring out what to do, preserved in amber.
+
+### Untangling Dependencies
+
+The tricky part is figuring out which exploration/training code creates objects that inference depends on.
+
+For example: I might fit a StandardScaler during training, then use it during inference. The training code creates the scaler. The inference code uses it. I need to save the fitted scaler and load it in production, not re-fit it every time.
+
+I make a list of every artifact that inference needs:
+- Model weights/parameters
+- Fitted preprocessors (scalers, encoders, imputers)
+- Feature column lists (which features the model expects, in what order)
+- Any lookup tables or reference data
+
+Each of these needs to be saved and versioned.
+
+## Phase 2: Extract to Clean Modules
+
+Once I know what's needed, I create a proper Python package structure.
+
+The structure I use:
+
+```
+ml_service/
+├── src/
+│   ├── __init__.py
+│   ├── features.py      # Feature engineering
+│   ├── model.py         # Model loading and inference
+│   ├── preprocessing.py # Data validation and cleaning
+│   └── config.py        # Configuration management
+├── models/
+│   └── model_v1.pkl     # Serialized model
+├── tests/
+│   ├── test_features.py
+│   └── test_model.py
+├── api/
+│   └── main.py          # FastAPI application
+├── Dockerfile
+├── requirements.txt
+└── pyproject.toml
+```
+
+### The Feature Engineering Module
+
+Feature engineering code is usually the messiest to extract because it evolved through experimentation. I now write it as a class with explicit fit and transform methods.
+
+The key principle: the class should be stateless after fitting. All learned parameters (means, standard deviations, category mappings) get stored as instance attributes during fit, then used during transform.
+
+This way, I can fit the feature engineer once on training data, save it (with pickle or joblib), and load it in production without ever seeing training data again.
+
+### The Model Wrapper
+
+I wrap my model in a class that handles loading, validation, and inference. The wrapper knows where to find the model file, what version it is, and what inputs it expects.
+
+Input validation happens here. If someone passes negative values to a model that was trained on positive values only, I want to catch that and return a clear error, not let the model produce garbage predictions silently.
+
+I also include the model version in every prediction response. When something goes wrong in production, knowing which model version produced the bad output is invaluable for debugging.
+
+## Phase 3: Build the API
+
+FastAPI has become my default for ML APIs. It gives you automatic request validation, OpenAPI documentation, and async support without much boilerplate.
+
+### What the API Needs
+
+1. **Health check endpoint**: For Kubernetes liveness probes. Just returns "healthy" if the model is loaded.
+
+2. **Single prediction endpoint**: Takes one input, returns one prediction. Simple and easy to test.
+
+3. **Batch prediction endpoint**: Takes multiple inputs, returns multiple predictions. More efficient for bulk processing.
+
+4. **Clear error handling**: Invalid inputs should return 422 with a message about what was wrong, not 500 with a stack trace.
+
+### Input Validation
+
+Pydantic models handle input validation beautifully. I define what inputs look like, including constraints (this field must be positive, that field must be one of these values), and FastAPI automatically validates before my code even runs.
+
+This catches errors early with clear messages. "feature_a must be greater than 0" is infinitely more useful than "ValueError: cannot convert NaN to int" deep in the feature engineering code.
+
+<Callout type="tip" title="Validation Catches Real Problems">
+Explicit input validation catches errors early with clear messages. "feature_a must be greater than 0" is infinitely more useful than "ValueError: cannot convert NaN to int" deep in your feature pipeline.
+</Callout>
+
+## Phase 4: Containerize
+
+Docker ensures reproducibility across environments. The model that works on my laptop should work exactly the same in production.
+
+### Dockerfile Best Practices
+
+1. **Copy requirements first, then code**: Docker caches layers. If you copy requirements.txt and install dependencies before copying code, you won't have to reinstall dependencies every time you change code.
+
+2. **Use a non-root user**: Security best practice. Running as root in a container is asking for trouble.
+
+3. **Include a health check**: So orchestrators know when the container is ready to receive traffic.
+
+4. **Pin exact versions**: `pandas==2.2.0`, not `pandas>=2.0`. A minor version bump in scikit-learn broke model loading for me once. Never again.
+
+### Dependency Pinning Horror Story
+
+I once deployed a model that worked fine in testing. A week later, predictions started looking wrong. No code had changed. What happened?
+
+Our CI rebuilt the image, which pulled `pandas~=2.0` (compatible release specifier). Pandas 2.1 had been released with a subtle change in how it handled missing values during type conversion. Our feature engineering code produced slightly different outputs, and the model's accuracy dropped by 8%.
+
+Now I pin everything. Not just direct dependencies, but transitive ones too. `pip freeze > requirements.txt` after testing, and that file goes into version control.
+
+## Phase 5: Configuration Management
+
+I use Pydantic for configuration management. Environment variables override defaults, and everything is type-checked.
+
+### The Settings Pattern
+
+```python
+class Settings(BaseSettings):
+    model_path: str = "models/model_v1.pkl"
+    api_port: int = 8000
+    max_batch_size: int = 100
+
+    class Config:
+        env_file = ".env"
+```
+
+In development, I use a .env file. In production, I set real environment variables. The code doesn't care where the values come from.
+
+The max_batch_size setting is one I learned to add after a customer tried to send 100,000 predictions in one request and crashed the server. Now we reject batches over a configurable limit with a clear error message.
+
+## Phase 6: Testing
+
+ML code is notoriously hard to test because "correct" is fuzzy. But some things are definitely testable.
+
+### What I Test
+
+**Feature engineering**: Given these inputs, does transform produce expected outputs? This is deterministic and testable.
+
+**Input validation**: Does invalid input get rejected? Does valid input pass through?
+
+**API endpoints**: Does the health check return 200? Does prediction return the expected response structure?
+
+**Model loading**: Can we load the model file? Does it have a predict method?
+
+I don't test whether the model is "good" in unit tests. That's what offline evaluation is for. I test whether the code that runs the model works correctly.
+
+### Integration Tests
+
+I also run integration tests that send real requests to a running container. This catches issues that unit tests miss, like configuration problems or serialization bugs.
+
+## Phase 7: Monitoring
+
+Here's the thing about ML systems: they can degrade silently. A traditional service either works or throws errors. An ML service can return predictions that are technically valid but increasingly wrong.
+
+### What to Monitor
+
+**Prediction latency**: How long does inference take? Sudden increases might indicate resource issues or unusually complex inputs.
+
+**Error rates**: What percentage of requests fail? Are certain input types failing more than others?
+
+**Input distributions**: Are the inputs you're seeing in production similar to training data? If your model was trained on values between 0-100 and starts seeing values in the thousands, predictions are suspect.
+
+**Output distributions**: Are predictions distributed as expected? If your model suddenly predicts the same class 99% of the time when it used to be 60/40, something's wrong.
+
+### Data Drift Detection
+
+I run statistical tests comparing production input distributions to training data distributions. If they diverge beyond a threshold, I get an alert.
+
+This caught a real problem once: upstream data changed from returning ages as integers (25, 30, 45) to returning them as floats with decimal places (25.3, 30.7, 45.1). The model could handle it, but the distributions looked different enough to trigger a warning, which led us to investigate and discover the upstream change.
+
+<Callout type="danger" title="Load Testing Matters">
+A model that runs in 50ms on your laptop might take 500ms under load due to GIL contention, memory pressure, or cold starts. Test with realistic concurrency before launch.
+</Callout>
+
+## The Deployment Checklist
+
+Before going to production, I verify:
+
+- [ ] All code extracted from notebook to modules
+- [ ] Dependencies pinned in requirements.txt
+- [ ] Unit tests passing
+- [ ] Integration tests passing
+- [ ] Dockerfile builds successfully
+- [ ] Health check endpoint working
+- [ ] Input validation in place
+- [ ] Error handling returns proper HTTP codes
+- [ ] Logging configured
+- [ ] Metrics exposed for monitoring
+- [ ] Model version tracked in responses
+- [ ] Documentation generated (FastAPI /docs)
+- [ ] Load tested for expected traffic
+
+Each item on this list is there because I shipped without it once and regretted it.
+
+## The Honest Truth About Timeline
+
+Going from "notebook works" to "production-ready service" takes longer than you expect. For a moderately complex model, I now budget:
+
+- **1-2 days**: Code extraction and module creation
+- **1 day**: API development
+- **Half day**: Containerization
+- **1-2 days**: Testing (unit, integration, load)
+- **Half day**: Monitoring setup
+- **Buffer for surprises**: At least 1 day
+
+So a week is reasonable for something straightforward. I tell stakeholders two weeks to be safe.
+
+The good news: the second time is much faster. Once you have a template and know the pitfalls, new models can go to production in a couple of days.
+
+The goal isn't to move fast and break things. The goal is to move deliberately and build something you can maintain.
+
+---
+
+*Struggling to productionize an ML model? [Let's talk](/contact) about your deployment challenges.*

@@ -1,0 +1,251 @@
+---
+title: "Building Evaluation Pipelines for LLM Applications"
+description: "How to systematically test LLM applications before they break in production. Covers automated testing, human evaluation, regression detection, and CI/CD integration."
+date: 2025-11-08
+updated: 2025-11-15
+published: true
+category: "AI Engineering"
+tags: ["LLM", "Testing", "Evaluation", "CI/CD", "MLOps"]
+author: "Osvaldo Restrepo"
+tldr: "LLM evaluation requires three layers: automated metrics for quick feedback, LLM-as-judge for nuanced assessment, and human evaluation for ground truth. Build regression tests that catch quality degradation before users do."
+faqs:
+  - question: "How do you test LLM applications?"
+    answer: "Use a three-layer approach: automated metrics (exact match, ROUGE, format validation), LLM-as-judge for semantic evaluation, and periodic human review for ground truth calibration."
+  - question: "What is LLM-as-judge evaluation?"
+    answer: "Using a separate LLM to evaluate outputs from your application. The judge model scores responses on criteria like relevance, accuracy, and helpfulness. It's faster than human eval but requires careful prompt design."
+  - question: "How do you catch LLM regressions?"
+    answer: "Maintain a golden dataset of input-output pairs. Run evaluations on every model change, prompt update, or dependency upgrade. Set alerts for score drops beyond acceptable thresholds."
+  - question: "Should LLM tests be in CI/CD?"
+    answer: "Yes, but selectively. Run fast automated checks on every PR. Run comprehensive evaluations nightly or on release branches. Expensive human evaluations can be monthly or per major release."
+relatedPosts: ["building-production-rag-systems", "fine-tuning-llms-domain-specific"]
+---
+
+Here's a fun thing about LLM applications: they fail silently.
+
+Unlike a traditional bug that crashes your app and wakes you up at 3 AM, an LLM quality regression just... produces plausible-looking wrong answers. Your users notice. Your metrics eventually notice. You, blissfully unaware, are probably updating your LinkedIn about how smoothly the launch went.
+
+Ask me how I know.
+
+## The Wake-Up Call
+
+The first LLM application I shipped went to production with zero automated evaluation. I tested it manually, it seemed to work, and I shipped it. I was proud of myself for moving fast.
+
+Three weeks later, someone finally complained that the responses had gotten "weird." I investigated and discovered that a prompt tweak I'd made two weeks earlier had subtly broken about 15% of responses. Not catastrophically. Just... wrong enough that users noticed but kept using it, assuming they were doing something wrong.
+
+Fifteen percent of our users had been getting degraded service for two weeks, and I had no idea. There was no alert, no dashboard showing quality metrics, nothing. The only signal was user complaints, and most users don't complain. They just leave.
+
+That was the last time I shipped an LLM app without evaluation infrastructure.
+
+## The Three-Layer Approach
+
+After burning myself enough times, I developed what I call the "Trust, But Verify, But Also Verify That You Verified" framework. Let me simplify:
+
+**Layer 1: Automated Metrics** (run on every commit)
+Fast, dumb checks that catch obvious failures.
+
+**Layer 2: LLM-as-Judge** (run daily and on PR reviews)
+Good enough for nuanced assessment most of the time.
+
+**Layer 3: Human Evaluation** (run monthly or on major releases)
+The expensive truth that keeps everything calibrated.
+
+Each layer catches different problems at different costs. Skip one, and something will slip through. I've tested this hypothesis repeatedly, against my will.
+
+## Layer 1: Fast and Dumb Checks
+
+These won't tell you if your LLM's responses are *good*, but they'll definitely tell you when something is obviously broken.
+
+### Format Validation
+
+Is the JSON actually JSON? You'd be amazed how often this catches real problems.
+
+I once had a prompt tweak that caused 15% of responses to include a friendly preamble before the JSON. "Sure! Here's your data:" followed by the actual JSON. Very helpful. Completely broke the parser.
+
+Automated format checks would have caught this in seconds. Instead, I caught it from a Slack message at 11 PM asking why the integration was failing.
+
+### Sanity Checks
+
+Things that should never happen:
+
+- Response is suspiciously short (less than 10 characters)
+- Response is suspiciously long (more than 10,000 characters)
+- Response contains test data ("test@example.com" appearing in production output is a bad sign)
+- Response contains excessive apologies (a confused model often apologizes repeatedly)
+
+That last one sounds silly, but it's actually useful. If your model starts 40% of its responses with "I apologize, but I'm not sure I can help with that..." something has gone wrong.
+
+### The Minimum Viable Test Suite
+
+Before anything else, I run these checks:
+
+1. Can the model produce valid JSON when asked?
+2. Can it produce responses in the expected length range?
+3. Does it avoid including obviously wrong content (test data, placeholder text)?
+4. Does it not crash on common edge cases (empty input, very long input, non-English characters)?
+
+These tests run in under a minute. They catch maybe 20% of issues. But that 20% is the "the whole thing is completely broken" category, which is worth catching before merge.
+
+## Layer 2: LLM-as-Judge
+
+Here's where it gets interesting. You use a (hopefully smarter) LLM to judge whether your (hopefully production-ready) LLM is doing a good job.
+
+Yes, it's LLMs all the way down. Welcome to 2025.
+
+### Why This Works (And When It Doesn't)
+
+LLM-as-judge works surprisingly well when the judging prompt is specific. "Rate this response 1-10" is useless. You'll get a bunch of 7s and 8s that tell you nothing.
+
+"Does this response accurately summarize the main points without adding information not in the source?" is useful. Now the judge has a clear task.
+
+The approach breaks down when:
+- The evaluation criteria are subjective ("is this response friendly enough?")
+- The judge model has the same blind spots as the model being judged
+- The task requires domain expertise the judge model lacks
+
+For my healthcare applications, I found that GPT-4 could reliably judge factual accuracy and formatting. It could not reliably judge whether a message struck the right tone for worried parents.
+
+<Callout type="tip" title="Key Insight">
+LLM-as-judge works best for *objective* criteria that you can clearly articulate. Factual accuracy, adherence to format, inclusion of required information. For subjective qualities, you still need humans.
+</Callout>
+
+### Pairwise Comparison for Model Upgrades
+
+When comparing "old model" vs. "new model," absolute scores are less reliable than "which one is better?"
+
+Humans have trouble giving consistent absolute ratings. Is this response a 7 or an 8? Hard to say. Is response A better than response B? Much easier.
+
+The same applies to LLM judges. Instead of asking for scores, I ask: "Which response better addresses the user's question? Respond with 'A', 'B', or 'tie'."
+
+One important trick: run the comparison both ways (A vs B, then B vs A). LLMs have a slight preference for whatever's listed first. If both orderings agree, you have high confidence. If they disagree, it's probably a close call.
+
+### The Judge Prompt That Actually Works
+
+After many iterations, here's what I've found works:
+
+1. Be specific about criteria (not "is this good?" but "does this address X, Y, and Z?")
+2. Provide a rubric (what does a 5 look like vs. a 3?)
+3. Ask for reasoning before the score (forces the model to think through the evaluation)
+4. Request structured output (JSON makes parsing reliable)
+
+The reasoning step is crucial. When the judge has to explain *why* a response scores a certain way, the scores become more consistent and more useful for debugging.
+
+## Layer 3: Human Evaluation
+
+At some point, you need actual humans to look at actual outputs. I know, I know, it doesn't scale. But nothing else tells you whether your medical summarizer "sounds like a doctor" or "sounds like a medical student who watched too much House."
+
+### Make It Structured
+
+Don't just ask "is this good?" You'll get inconsistent answers that are impossible to aggregate.
+
+I use rubrics with specific questions:
+- Does this response contain any factual errors? (Yes/No, with specific callouts)
+- Is any important information missing? (List what's missing)
+- Would you trust this output enough to use it? (Yes/No)
+- Free-text feedback for anything else
+
+That second-to-last question is the real one. Everything else is detail to help understand *why* something isn't trustworthy.
+
+### The Calibration Problem
+
+Without clear guidelines, annotators disagree 30-40% of the time. I learned this the expensive way when we had to throw out an entire annotation batch because our guidelines were too vague.
+
+Now I do calibration rounds first:
+1. Write rubrics with examples of good and bad responses
+2. Have two annotators independently rate the same 20 examples
+3. Discuss disagreements and clarify the rubric
+4. Only then scale up annotation
+
+The time spent on calibration saves you from unusable data later.
+
+<Callout type="warning" title="Annotation Guidelines Matter">
+Without clear guidelines, annotators disagree 30-40% of the time. We threw out an entire annotation batch once because our rubric was ambiguous. Write rubrics. Give examples. Test with two annotators before scaling up.
+</Callout>
+
+## The Regression Test Suite
+
+This is where the magic happens. By "magic" I mean "paranoid automation that saves you from yourself."
+
+### Building a Golden Dataset
+
+Start collecting examples where you know what good outputs look like. Every time you manually verify a response, save it. Every time a user gives positive feedback, save it. Every time a domain expert says "yes, this is correct," save it.
+
+Over time, you build a golden dataset of input-output pairs. This becomes your regression test suite.
+
+I organize mine by category and difficulty:
+- Easy examples that should always work (basic questions, common scenarios)
+- Medium examples with some complexity (edge cases, domain-specific terminology)
+- Hard examples that stress-test the system (ambiguous inputs, adversarial questions, unusual formats)
+
+If a change breaks easy examples, something is very wrong. If it improves hard examples without hurting medium ones, you're probably making progress.
+
+### The CI/CD Integration
+
+I've configured our pipeline to run evaluation on every PR that touches prompt files or LLM-related code.
+
+Fast checks (format validation, basic sanity) run on every commit. They take under a minute.
+
+Golden dataset evaluation runs on PRs. It takes about 5 minutes and catches most regressions.
+
+Full evaluation with LLM-as-judge runs nightly. It's more expensive but catches subtle quality drifts.
+
+Human evaluation happens monthly or before major releases. It's the ground truth that keeps everything calibrated.
+
+The key insight: I set a threshold. If accuracy drops more than 5% on the golden dataset, the PR cannot merge. This sounds strict, but it's prevented several "minor prompt improvements" from tanking production quality.
+
+## Monitoring in Production
+
+Here's the uncomfortable truth: even with great testing, things drift. Users ask questions you didn't anticipate. Edge cases emerge. The model that was 95% accurate in testing slowly becomes 90% accurate on real data.
+
+### What I Track Daily
+
+**Negative feedback rate**: Users clicking thumbs-down. This is noisy but trends matter.
+
+**Edit rate**: Users modifying AI outputs before using them. High edit rates suggest the output needs improvement.
+
+**Length anomalies**: Suddenly very short or very long responses often correlate with quality issues.
+
+**Latency spikes**: Often correlated with quality issues (model struggling = longer response time).
+
+### The Gift of User Edits
+
+User edits are actually a gift. They show you exactly how the model should have responded. When a user edits "Your appointment is scheduled for next Tuesday" to "Your appointment is scheduled for Tuesday, January 14th at 2:00 PM," they're giving you training data.
+
+We capture these edits and review them weekly. They've identified issues that no amount of pre-launch testing would have caught.
+
+## My Evaluation Failures
+
+I've made enough mistakes that I can categorize them:
+
+**Failure 1: Testing only on English.**
+Deployed to users who spoke Spanish. The eval metrics looked great! The user reviews did not.
+
+**Failure 2: Using GPT-4 to evaluate GPT-4.**
+It was very forgiving of its own style quirks. Added human evaluation for ground truth calibration after that.
+
+**Failure 3: Running evaluations manually "when we remember."**
+We did not remember. Added automated nightly runs.
+
+**Failure 4: Golden dataset got stale.**
+Real usage evolved, but our test cases didn't. Now we add 5 new golden examples per week based on actual usage patterns.
+
+**Failure 5: Optimizing for average scores.**
+Improving average quality while some segments got worse. Now we track scores by category, not just overall.
+
+## The Bottom Line
+
+If you're building with LLMs and you're not running evaluations on every change, you're flying blind. I don't say this to be dramatic. I say it because I've crashed into the mountain.
+
+Build all three layers:
+1. Automated checks for obvious failures
+2. LLM-as-judge for nuanced quality
+3. Human evaluation for ground truth
+
+Run them automatically. Alert on regressions. And for the love of all that is holy, don't skip testing just because the PR "only changes one word in the prompt."
+
+Those are the ones that get you. The tiny changes that seem harmless. The "quick fixes" that break something subtle. The confidence that comes from having done this a hundred times before.
+
+Trust your evaluation pipeline. Don't trust your intuition about what's safe to change.
+
+---
+
+*Building an LLM application and terrified of silent failures? [Let's chat](/contact). I've developed very strong opinions about this.*

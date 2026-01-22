@@ -1,0 +1,205 @@
+---
+title: "Building for Clinicians: UX Lessons from Healthcare Software"
+description: "What I learned designing MILA and other healthcare applications. Clinicians have 15 seconds between patients, so design for that reality."
+date: 2026-01-05
+updated: 2026-01-12
+published: true
+category: "Product Design"
+tags: ["Healthcare", "UX", "Product Design", "MILA", "Clinical Workflows"]
+author: "Osvaldo Restrepo"
+tldr: "Healthcare UX is about respecting clinician time. Design for interruptions, never require a mouse when keys work, show only what matters for the current decision, and test with actual clinicians, not proxies."
+faqs:
+  - question: "Why is healthcare software often poorly designed?"
+    answer: "It's built to satisfy purchasing committees (administrators), not end users (clinicians). Features that look good in RFPs often create workflow friction. Clinicians rarely choose their tools."
+  - question: "How do you design for interrupted workflows?"
+    answer: "Assume every task will be interrupted. Auto-save constantly, make state recovery instant, design for quick context switching. A clinician might return to a half-completed note hours later."
+  - question: "Should healthcare software use dark mode?"
+    answer: "Depends on the environment. Bright rooms (most clinics) need light interfaces. Low-light settings (radiology, night shifts) benefit from dark mode. Best: give users control and remember their preference per device."
+  - question: "How important is mobile for clinical software?"
+    answer: "Critical for some workflows (rounding, bedside), irrelevant for others (detailed charting). Design mobile for quick reference and simple input; complex tasks need full keyboards."
+relatedPosts: ["building-production-rag-systems"]
+---
+
+After building MILA, a neonatal LLM assistant, and working on several clinical applications, I've learned that healthcare UX isn't just "regular UX but careful." It's a fundamentally different design context, and I had to unlearn a lot of what I thought I knew about good design.
+
+The first time I watched a hospitalist use software I'd helped build, I was horrified. Not because of bugs, but because of how *wrong* my assumptions were about how they'd interact with it.
+
+## The Clinical Reality Most Designers Don't See
+
+A hospitalist sees 15-20 patients per day. Between patients, they have maybe 15 minutes for documentation if they're lucky. During those 15 minutes, they're interrupted by pager alerts, nurses with questions, family members wanting updates, and other physicians needing consults.
+
+Your software competes for seconds, not minutes.
+
+I didn't fully grasp this until I spent a week shadowing clinicians. I saw a doctor interrupted *eleven times* while writing a single progress note. Eleven. And she had to pick up exactly where she left off each time, or start over.
+
+<Callout type="tip" title="Design Principle">
+If it takes more than 3 clicks or 10 seconds, clinicians will find a workaround. Those workarounds often involve sticky notes, which defeats your software's purpose entirely. I've seen ICUs with sticky notes covering computer monitors because the official system was too slow.
+</Callout>
+
+## Lesson 1: Design for Interruptions
+
+Clinical work is inherently interruptible. A nurse asks a question. A rapid response is called. A family member arrives unexpectedly. The patient in room 4 is suddenly unstable.
+
+Every single feature I design now assumes it will be interrupted mid-task.
+
+### Auto-save Everything, Always
+
+This seems obvious, but I can't tell you how many clinical applications require a manual save button. In 2025! A doctor writes a note, gets called away for an emergency, comes back an hour later, and everything they wrote is gone.
+
+We implemented aggressive auto-saving with visible feedback. Every keystroke triggers a debounced save. Users see a small indicator showing "Saved" or "Saving..." at all times. It sounds minor, but clinicians started trusting the system because they could see it was protecting their work.
+
+The key insight: clinicians need to *know* their work is saved without thinking about it. A save button requires conscious action. Auto-save removes that cognitive burden.
+
+### State Recovery That Actually Works
+
+Beyond just saving text, we store everything: cursor position, scroll location, which sections were expanded, what was in the search box. When a clinician returns to a half-finished task, it should look exactly like they left it.
+
+I once watched a physician try to remember what she was doing when she got interrupted. She'd been looking up a medication interaction, but the page had refreshed and she had to start over. It took her three minutes to get back to where she was. Three minutes times dozens of interruptions per day adds up to hours of lost productivity.
+
+Now we store work-in-progress with full context. If you were mid-sentence, we restore you mid-sentence. If you had a medication lookup open in a side panel, it's still there.
+
+## Lesson 2: Keyboard-First Design
+
+Clinicians often use shared workstations with suboptimal mice. The mouse might be sticky, positioned awkwardly, or simply missing. A good keyboard user is 3x faster than a mouse user for data entry, and clinicians know this.
+
+I learned this lesson embarrassingly late. We had a beautiful interface with intuitive drag-and-drop functionality. Clinicians hated it. They wanted to keep their hands on the keyboard and never reach for the mouse.
+
+### Every Action Gets a Shortcut
+
+We now design keyboard shortcuts before we design the UI. Every significant action should be accomplishable without touching a mouse. Save, submit, navigate sections, search patients, open common templates. If you have to mouse-click it, you've already failed a subset of your users.
+
+The shortcut system needs to be discoverable, too. We show keyboard hints next to buttons and menu items. Power users learn them naturally; new users can still click.
+
+### Minimize Modals
+
+Modals are a UX anti-pattern in clinical settings. Every modal requires the user to stop, read, make a decision, and click. That's four cognitive steps for what might be a simple confirmation.
+
+Instead of "Are you sure you want to mark this as reviewed?" with Yes/No buttons, we show an inline confirmation with an undo option. One click marks it reviewed. If that was a mistake, one more click undoes it. The happy path is one action, not three.
+
+## Lesson 3: Information Density Done Right
+
+Here's where healthcare UX differs most from consumer UX. The standard advice is "simplify, reduce, show less." In clinical contexts, that's often wrong.
+
+Clinicians need dense information displays. They're trained to scan large amounts of data quickly and extract what matters. A lab result panel with six numbers visible is better than six clicks to see each number individually.
+
+But dense doesn't mean cluttered. The challenge is showing a lot of information in a way that supports rapid comprehension.
+
+### Progressive Disclosure with Intent
+
+We use progressive disclosure, but thoughtfully. The summary view shows everything a clinician needs for a quick decision. Expanding shows everything they might need for a deeper analysis.
+
+The key is understanding what "quick decision" means clinically. For a lab result, the quick decision is: is this value abnormal and does it require action? So we show the value, visually indicate if it's out of range, and show the trend. Everything else (reference ranges, specimen type, ordering physician) is available but not primary.
+
+One cardiologist told me: "I don't want your software to think for me. I want it to show me what I need to think about." That's become my design north star.
+
+### Color Coding That Works Clinically
+
+We use a traffic light pattern but with clinical semantics:
+
+- **Red backgrounds**: This needs attention *now*. Critical values, emergency alerts.
+- **Amber/yellow**: This is notable. Abnormal but not critical, pending items.
+- **Neutral (gray/white)**: This is normal or expected. No action needed.
+- **Blue**: This is informational. Status updates, FYI items.
+
+The critical insight: we never rely on color alone. Eight percent of men have some form of red-green color blindness. Every color-coded element also has an icon, pattern, or text label.
+
+<Callout type="warning" title="Color Blindness">
+8% of men have red-green color blindness. Never rely on color alone. Our initial designs failed accessibility testing badly. Now we use icons, patterns, and text labels alongside color coding. It's more work upfront but essential for real-world use.
+</Callout>
+
+## Lesson 4: Error Prevention Over Error Handling
+
+In healthcare, errors have consequences. A wrong medication dose isn't just a bug; it's patient harm. Design should prevent errors, not just catch them after the fact.
+
+### Smart Defaults Based on Context
+
+We pre-populate fields with clinically sensible defaults based on context. For an elderly patient with pain, we default to acetaminophen at a lower dose with appropriate maximum daily limits. The clinician can change anything, but the starting point is safe.
+
+This isn't about replacing clinical judgment. It's about reducing cognitive load for routine decisions so clinicians can focus their judgment on complex cases.
+
+### Hard Stops vs. Soft Warnings
+
+Not all alerts are equal. We distinguish between:
+
+**Hard stops**: Cannot proceed. Drug-drug interaction with high mortality risk. The system will not allow this order without removing one of the medications.
+
+**Soft warnings**: Can proceed with documentation. Drug-drug interaction with monitoring required. The system requires you to acknowledge the warning and select a reason for override.
+
+**Information**: FYI only. No action required, but you might want to know this.
+
+The ratio matters. If 90% of alerts are ignorable, clinicians learn to ignore all alerts. Alert fatigue is real and dangerous. We worked with clinical pharmacists to tune our alerts so that when a hard stop appears, clinicians know it's serious.
+
+## Lesson 5: Test with Real Clinicians
+
+The most important lesson, and the one I had to learn painfully: your assumptions are wrong. Test with actual clinicians in actual clinical environments.
+
+### My Assumptions vs. Reality
+
+<table>
+  <thead>
+    <tr>
+      <th>My Assumption</th>
+      <th>Reality</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Clinicians want comprehensive dashboards</td>
+      <td>They want ONE number that tells them what to do next</td>
+    </tr>
+    <tr>
+      <td>Dark mode is always better</td>
+      <td>Fluorescent-lit exam rooms make dark mode hard to read</td>
+    </tr>
+    <tr>
+      <td>Mobile-first is essential</td>
+      <td>Charting happens on desktop; mobile is for quick lookups</td>
+    </tr>
+    <tr>
+      <td>Voice input is the future</td>
+      <td>Background noise makes voice unreliable</td>
+    </tr>
+    <tr>
+      <td>AI suggestions should be prominent</td>
+      <td>Clinicians want AI to pre-fill, not suggest. They'll edit</td>
+    </tr>
+  </tbody>
+</table>
+
+That last one surprised me most. I thought clinicians would want AI recommendations highlighted so they could accept or reject them. Turns out they find that patronizing. What they actually want is for AI to do the grunt work, like pre-filling notes with relevant information from the chart, and then get out of the way so they can edit it into their voice.
+
+### Testing in Context
+
+We don't test in conference rooms anymore. We test at nursing stations, during rounds, in actual clinical settings. The environment matters. Software that works fine in a quiet conference room fails completely in a noisy unit with constant interruptions.
+
+We also test with realistic scenarios. "Find patient X's latest potassium level" is a real task. "Document a 5-minute visit" with a timer running is a real task. "Respond to a simulated page mid-task, then return" tests recovery from interruption.
+
+<Callout type="info" title="Proxy Users Don't Work">
+Medical students, administrators, and "clinical informaticists" who haven't seen patients in years are not substitutes for practicing clinicians. Test with people who will actually use your software in their daily work. The feedback is completely different.
+</Callout>
+
+## MILA-Specific Lessons
+
+Building an LLM assistant for neonatal communication taught me even more specific lessons:
+
+**Tone matters enormously.** Messages to parents about their newborn require specific empathy that generic LLM outputs lack. "Your baby's bilirubin is elevated" needs to be communicated very differently to worried new parents than to another clinician. We fine-tuned on hundreds of real (anonymized) parent communications to get the tone right.
+
+**Clinician approval is non-negotiable.** Every AI-generated message gets reviewed before sending. But the review process needs to be one click, not a workflow. We show the suggested message with an "Approve & Send" button. Edits are easy; approval is instant.
+
+**Context is everything.** The same lab result means different things at 2 days old vs. 2 weeks old. We built context-aware summarization that considers gestational age, birth complications, and current treatment plan. Generic templates don't work.
+
+**Trust is earned slowly.** We started with low-stakes messages (appointment reminders, general information) and only expanded to clinical content after months of demonstrated reliability. Clinicians needed to see the AI get hundreds of easy things right before they'd trust it with anything harder.
+
+## The Unsexy Truth About Healthcare UX
+
+Good healthcare UX isn't flashy. It doesn't win design awards. It's not the kind of thing you put in a portfolio to impress other designers.
+
+Good healthcare UX is invisible. It's the clinician who finishes their notes 20 minutes earlier and gets home to dinner with their kids. It's the nurse who catches a critical value because the alert actually means something. It's the parent who gets timely, empathetic updates about their baby.
+
+You know you've done it right when clinicians don't complain. That's the bar. Not delight. Not surprise. Just: this doesn't get in my way.
+
+After years of working in this space, I've come to appreciate that constraint. Consumer apps can aim for delight. Healthcare apps should aim for trust. And trust is earned through reliability, speed, and respect for the user's time and expertise.
+
+---
+
+*Building healthcare software? [Let's talk](/contact) about designing for clinical workflows. I've made most of the mistakes already, so you don't have to.*
