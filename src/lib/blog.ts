@@ -2,7 +2,16 @@ import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
 
+export type Locale = "en" | "es";
+
 const postsDirectory = path.join(process.cwd(), "content/posts");
+
+function getPostsDirectory(locale: Locale = "en"): string {
+  if (locale === "es") {
+    return path.join(postsDirectory, "es");
+  }
+  return postsDirectory;
+}
 
 export interface PostFrontmatter {
   title: string;
@@ -18,11 +27,14 @@ export interface PostFrontmatter {
   tldr?: string;
   faqs?: { question: string; answer: string }[];
   relatedPosts?: string[];
+  // Internationalization
+  translationOf?: string; // slug of the original post this is a translation of
 }
 
 export interface Post {
   slug: string;
   url: string;
+  locale: Locale;
   frontmatter: PostFrontmatter;
   content: string;
   readingTimeMinutes: number;
@@ -34,18 +46,20 @@ function calculateReadingTime(content: string): number {
   return Math.ceil(wordCount / wordsPerMinute);
 }
 
-export function getPostSlugs(): string[] {
-  if (!fs.existsSync(postsDirectory)) {
+export function getPostSlugs(locale: Locale = "en"): string[] {
+  const dir = getPostsDirectory(locale);
+  if (!fs.existsSync(dir)) {
     return [];
   }
   return fs
-    .readdirSync(postsDirectory)
+    .readdirSync(dir)
     .filter((file) => file.endsWith(".mdx"))
     .map((file) => file.replace(/\.mdx$/, ""));
 }
 
-export function getPostBySlug(slug: string): Post | null {
-  const fullPath = path.join(postsDirectory, `${slug}.mdx`);
+export function getPostBySlug(slug: string, locale: Locale = "en"): Post | null {
+  const dir = getPostsDirectory(locale);
+  const fullPath = path.join(dir, `${slug}.mdx`);
 
   if (!fs.existsSync(fullPath)) {
     return null;
@@ -76,19 +90,22 @@ export function getPostBySlug(slug: string): Post | null {
     frontmatter.faqs = [];
   }
 
+  const urlPrefix = locale === "es" ? "/es/blog" : "/blog";
+
   return {
     slug,
-    url: `/blog/${slug}`,
+    url: `${urlPrefix}/${slug}`,
+    locale,
     frontmatter,
     content,
     readingTimeMinutes: calculateReadingTime(content),
   };
 }
 
-export function getAllPosts(): Post[] {
-  const slugs = getPostSlugs();
+export function getAllPosts(locale: Locale = "en"): Post[] {
+  const slugs = getPostSlugs(locale);
   const posts = slugs
-    .map((slug) => getPostBySlug(slug))
+    .map((slug) => getPostBySlug(slug, locale))
     .filter((post): post is Post => post !== null && post.frontmatter.published !== false)
     .sort((a, b) => {
       // Pinned posts always come first
@@ -102,4 +119,24 @@ export function getAllPosts(): Post[] {
     });
 
   return posts;
+}
+
+// Helper to find translation of a post
+export function getPostTranslation(slug: string, fromLocale: Locale): Post | null {
+  const targetLocale = fromLocale === "en" ? "es" : "en";
+
+  // First, try to find a post with the same slug in the other locale
+  const sameSlugPost = getPostBySlug(slug, targetLocale);
+  if (sameSlugPost) {
+    return sameSlugPost;
+  }
+
+  // Then, look for a post that has translationOf pointing to this slug
+  const allPosts = getAllPosts(targetLocale);
+  const translatedPost = allPosts.find(post => post.frontmatter.translationOf === slug);
+  if (translatedPost) {
+    return translatedPost;
+  }
+
+  return null;
 }

@@ -1,12 +1,15 @@
-import { getAllPosts } from "@/lib/blog";
+import { getAllPosts, getPostTranslation } from "@/lib/blog";
 import { BookOpen } from "lucide-react";
-import BlogPostsList from "./BlogPostsList";
+import BlogPostsList from "@/app/blog/BlogPostsList";
 import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
+  title: "Blog | Osvaldo Restrepo",
+  description:
+    "Guías prácticas sobre ingeniería de IA, desde sistemas RAG en producción hasta agentes de voz. Lecciones reales de proyectos reales.",
   alternates: {
-    canonical: "/blog",
+    canonical: "/es/blog",
     languages: {
       en: "/blog",
       es: "/es/blog",
@@ -14,8 +17,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function BlogPage() {
-  const posts = getAllPosts();
+export default function SpanishBlogPage() {
+  const posts = getAllPosts("es");
+  const englishPostCount = getAllPosts("en").length;
 
   return (
     <main className="relative min-h-screen">
@@ -35,24 +39,25 @@ export default function BlogPage() {
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
-                Technical Writing
+                Escritura Técnica
               </span>
             </div>
             {/* Language switcher */}
             <Link
-              href="/es/blog"
+              href="/blog"
               className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
             >
-              <span className="text-base">🇪🇸</span>
-              Español
+              <span className="text-base">🇺🇸</span>
+              English
             </Link>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white">
             Blog
           </h1>
           <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
-            Practical guides on AI engineering, from production RAG systems to
-            voice agents. Real lessons from real projects.
+            Guías prácticas sobre ingeniería de IA, desde sistemas RAG en
+            producción hasta agentes de voz. Lecciones reales de proyectos
+            reales.
           </p>
         </div>
       </section>
@@ -60,7 +65,24 @@ export default function BlogPage() {
       {/* Posts Grid */}
       <section className="relative px-4 pb-16">
         <div className="max-w-4xl mx-auto">
-          <BlogPostsList posts={posts} />
+          {posts.length > 0 ? (
+            <BlogPostsList posts={posts} />
+          ) : (
+            <div className="text-center py-16">
+              <p className="text-slate-600 dark:text-slate-400 mb-4">
+                Aún no hay publicaciones en español.
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-500 mb-6">
+                Hay {englishPostCount} publicaciones disponibles en inglés.
+              </p>
+              <Link
+                href="/blog"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+              >
+                Ver blog en inglés
+              </Link>
+            </div>
+          )}
         </div>
       </section>
     </main>

@@ -1,9 +1,10 @@
 import { getPostBySlug, getPostSlugs, getPostTranslation } from "@/lib/blog";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Clock, Tag } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Tag, Globe } from "lucide-react";
 import PostContent from "@/components/blog/PostContent";
 import TableOfContents from "@/components/blog/TableOfContents";
 import FAQSection from "@/components/blog/FAQSection";
@@ -14,17 +15,17 @@ interface PageProps {
 }
 
 export async function generateStaticParams() {
-  return getPostSlugs().map((slug) => ({ slug }));
+  return getPostSlugs("es").map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = getPostBySlug(slug);
+  const post = getPostBySlug(slug, "es");
   if (!post) return {};
 
-  const ogImage = post.frontmatter.image || `/blog/${slug}/opengraph-image`;
+  const ogImage = post.frontmatter.image || `/es/blog/${slug}/opengraph-image`;
 
   return {
     title: post.frontmatter.title,
@@ -40,7 +41,8 @@ export async function generateMetadata({
       authors: [post.frontmatter.author || "Osvaldo Restrepo"],
       tags: post.frontmatter.tags,
       images: [ogImage],
-      url: `/blog/${slug}`,
+      url: `/es/blog/${slug}`,
+      locale: "es_ES",
     },
     twitter: {
       card: "summary_large_image",
@@ -49,22 +51,24 @@ export async function generateMetadata({
       images: [ogImage],
     },
     alternates: {
-      canonical: `/blog/${slug}`,
+      canonical: `/es/blog/${slug}`,
       languages: {
-        en: `/blog/${slug}`,
-        es: getPostTranslation(slug, "en") ? `/es/blog/${getPostTranslation(slug, "en")?.slug}` : undefined,
+        es: `/es/blog/${slug}`,
+        en: post.frontmatter.translationOf
+          ? `/blog/${post.frontmatter.translationOf}`
+          : undefined,
       },
     },
   };
 }
 
-export default async function BlogPostPage({ params }: PageProps) {
+export default async function SpanishBlogPostPage({ params }: PageProps) {
   const { slug } = await params;
-  const post = getPostBySlug(slug);
+  const post = getPostBySlug(slug, "es");
   if (!post) notFound();
 
-  // Check if Spanish version exists
-  const spanishPost = getPostTranslation(slug, "en");
+  // Check if English version exists
+  const englishPost = getPostTranslation(slug, "es");
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -73,7 +77,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     description: post.frontmatter.description,
     image:
       post.frontmatter.image ||
-      `https://osvaldorestrepo.dev/blog/${slug}/opengraph-image`,
+      `https://osvaldorestrepo.dev/es/blog/${slug}/opengraph-image`,
     datePublished: post.frontmatter.date,
     dateModified: post.frontmatter.updated || post.frontmatter.date,
     author: {
@@ -88,8 +92,9 @@ export default async function BlogPostPage({ params }: PageProps) {
     },
     mainEntityOfPage: {
       "@type": "WebPage",
-      "@id": `https://osvaldorestrepo.dev/blog/${slug}`,
+      "@id": `https://osvaldorestrepo.dev/es/blog/${slug}`,
     },
+    inLanguage: "es",
     keywords: post.frontmatter.tags?.join(", ") || "",
     wordCount: post.content.split(/\s+/).length,
     timeRequired: `PT${post.readingTimeMinutes}M`,
@@ -135,20 +140,20 @@ export default async function BlogPostPage({ params }: PageProps) {
           {/* Back link and language switcher */}
           <div className="flex items-center justify-between mb-8">
             <Link
-              href="/blog"
+              href="/es/blog"
               className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to Blog
+              Volver al Blog
             </Link>
 
-            {spanishPost && (
+            {englishPost && (
               <Link
-                href={spanishPost.url}
+                href={englishPost.url}
                 className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               >
-                <span className="text-base">🇪🇸</span>
-                Leer en Español
+                <span className="text-base">🇺🇸</span>
+                Read in English
               </Link>
             )}
           </div>
@@ -168,7 +173,7 @@ export default async function BlogPostPage({ params }: PageProps) {
             {post.frontmatter.tldr && (
               <div className="mt-6 p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
                 <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 mb-1">
-                  TL;DR
+                  Resumen
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
                   {post.frontmatter.tldr}
@@ -180,11 +185,13 @@ export default async function BlogPostPage({ params }: PageProps) {
             <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-slate-500">
               <span className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
-                {format(new Date(post.frontmatter.date), "MMMM d, yyyy")}
+                {format(new Date(post.frontmatter.date), "d 'de' MMMM, yyyy", {
+                  locale: es,
+                })}
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="w-4 h-4" />
-                {post.readingTimeMinutes} min read
+                {post.readingTimeMinutes} min de lectura
               </span>
             </div>
 
