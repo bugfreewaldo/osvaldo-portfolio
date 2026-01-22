@@ -10,11 +10,15 @@ author: "Osvaldo Restrepo"
 tldr: "I spent months in the NICU with my premature triplets. The system didn't fail at acute care. It failed at longitudinal visibility, cumulative risk awareness, and information symmetry. MILA exists so fewer parents have to reconstruct the past after the fact."
 faqs:
   - question: "What is MILA?"
-    answer: "MILA is an AI system designed to help NICU parents organize observations, track shared data, identify missing information, recognize patterns over time, and prepare informed questions for medical conversations. It improves the conversation between parents and clinicians. It does not replace it."
+    answer: "MILA stands for Medical Intelligence for Longitudinal Analysis. It's an AI system designed to help NICU parents organize observations, track shared data, identify missing information, recognize patterns over time, and prepare informed questions for medical conversations. It improves the conversation between parents and clinicians. It does not replace it."
   - question: "Why do NICU parents need AI tools?"
     answer: "NICU parents receive fragmented information across shifts, specialists, and days. They're expected to remember, track, and synthesize complex medical data while emotionally overloaded and sleep deprived. AI can help them organize what they're seeing and identify what questions to ask."
   - question: "Does MILA replace medical advice?"
     answer: "No. MILA helps parents prepare for conversations with their medical team. It synthesizes information parents already have access to and helps them ask better questions. The goal is better dialogue, not bypassing clinicians."
+  - question: "What does research say about neonatal transfusion risk?"
+    answer: "Large clinical trials like ETTNO and TOP have shown that restrictive (lower) transfusion thresholds in premature infants result in fewer transfusions without increasing mortality. Multiple transfusions increase cumulative risks including alloimmunization, hemolysis, and transfusion-associated complications. The medical consensus supports minimizing transfusion exposure when clinically appropriate."
+  - question: "Can AI actually improve NICU outcomes?"
+    answer: "Yes. A randomized clinical trial of 3,003 VLBW infants showed that AI-based predictive monitoring (the HeRO score) was associated with significantly lower sepsis-associated mortality (12% vs 20%). AI systems can detect deterioration patterns 6-12 hours before clinical diagnosis."
 relatedPosts: ["fhir-integration-patterns", "building-production-rag-systems"]
 ---
 
@@ -42,27 +46,113 @@ Mila later developed progressive hemolysis, extreme hyperbilirubinemia with bili
 
 Mila passed away.
 
-## What the Experience Actually Felt Like
+## What the Research Says
 
-This was not a single catastrophic moment. It was an accumulation.
+I didn't know any of this at the time. I learned it later, while trying to understand what happened. While reading paper after paper, study after study, trying to make sense of something that should never have happened.
 
-Transfusions were presented as routine. Lab values were discussed one at a time. Conversations were short, technical, and fragmented across shifts and specialists. Each interaction made sense in isolation. None of them connected the dots.
+The medical literature is unambiguous.
 
-My wife and I were there every day. We watched patterns emerge across time. Changes in skin color. Reactions after procedures. Numbers that kept creeping in directions that worried us. But we had no tools to synthesize what we were seeing. No way to know if our pattern recognition was signal or noise.
+### On Transfusion Exposure
 
-There was no alarm for trajectory. Only alarms for events.
+Dr. Ravi Patel, a neonatologist at Emory University and lead author of multiple transfusion studies, has documented that "extremely low gestational age newborns represent one of the most heavily transfused patient populations," with up to 90% of extremely low birth weight infants requiring red blood cell transfusions.
 
-We were expected to participate, consent, and advocate. We were doing all of those things. But we were doing them with incomplete information, fragmented across conversations we couldn't fully remember, about medical concepts we were learning in real time.
+But transfusions are not benign. A 2021 review in *Vox Sanguinis* found that "observational studies on preterm infants reported associations between RBC transfusions and increased risk of mortality and short-term neonatal morbidities." These include necrotizing enterocolitis (NEC), bronchopulmonary dysplasia, retinopathy of prematurity, and abnormal neurodevelopment.
+
+The cumulative effect matters. A study published in *Pediatric Research* found that "in preterm infants, RBC transfusions are associated with long-term neurodevelopmental outcome, with a cumulative effect. Early RBC administration is associated with a greater reduction in Griffiths scores."
+
+Each transfusion is not an isolated event. Each transfusion adds to cumulative exposure. Each transfusion increases the opportunity for alloimmunization, where the infant develops antibodies against transfused blood.
+
+### On Donor Exposure and Alloimmunization
+
+Here's something I didn't know: the more transfusions an infant receives from different donors, the higher the risk of developing antibodies that attack their own red blood cells.
+
+A study of VLBW infants at a tertiary center found donor exposure rates of 4.4 ± 3.5 with standard single-bag transfusion practices. The researchers concluded that "minimizing phlebotomy losses, following a restrictive transfusion policy and using screened, leukocyte depleted, irradiated, single donor blood remain the best means of avoiding the possible risks."
+
+38 transfusions. How many donors? I don't know. That information was never synthesized. Never tracked in any way I could access.
+
+### On Hyperbilirubinemia
+
+When bilirubin exceeds 30 mg/dL, the risk of kernicterus, permanent brain damage, becomes significant. A multicenter cohort study published in the *Journal of Perinatology* examined 1,252 infants who underwent exchange transfusion for hyperbilirubinemia. The findings were stark: "Infants ≤29 weeks of GA had greater odds of death following exchange transfusion compared with term infants" with an adjusted odds ratio of 20.08.
+
+Mila's bilirubin exceeded 30 mg/dL.
+
+The American Academy of Pediatrics states that "kernicterus occurs in 20% of infants with TSB >30 mg/dL." Twenty percent. One in five.
+
+### On Restrictive vs. Liberal Transfusion Thresholds
+
+The ETTNO trial, one of the largest randomized studies on neonatal transfusion, found that lower (more restrictive) transfusion thresholds result in fewer transfusions without increasing mortality or neurodevelopmental impairment.
+
+Dr. Haresh Kirpalani, a neonatologist at the Children's Hospital of Philadelphia and principal investigator of the TOP trial, noted that their findings support "a more restrictive approach to transfusion" in extremely low birth weight infants.
+
+The science is clear: fewer transfusions, when clinically appropriate, means less exposure to cumulative risk.
+
+38 transfusions is not routine. 38 transfusions is not conservative. 38 transfusions is aggressive intervention that compounds risk with each procedure.
+
+## The AI Question They Called Crazy
+
+During Mila's hospitalization, I started using AI to help me understand what was happening. I fed it lab values. I asked it about transfusion protocols. I asked it about bilirubin trajectories. I asked it what questions I should be asking.
+
+The doctors thought I was crazy.
+
+"You're not a medical professional," they said. "You can't interpret this data." "AI doesn't understand medicine." "You need to trust the process."
+
+I heard them. I understood their perspective. I'm not trained in neonatology. I didn't go to medical school. I don't have the clinical experience to make medical decisions.
+
+But here's what AI does have: access to hundreds of thousands of peer-reviewed studies. Access to clinical guidelines from the American Academy of Pediatrics, the British Society for Haematology, the World Health Organization. Access to the collective medical knowledge of decades of neonatal research.
+
+When I asked AI about cumulative transfusion exposure in premature neonates, it didn't guess. It cited the ETTNO trial. It cited the TOP study. It cited the work of Dr. Kirpalani and Dr. Patel and dozens of other researchers who have spent their careers studying exactly this problem.
+
+When I asked about bilirubin thresholds and kernicterus risk, it didn't make things up. It cited the AAP guidelines. It cited the *Journal of Perinatology* studies. It gave me the exact numbers: 20% of infants with bilirubin above 30 mg/dL develop kernicterus.
+
+I wasn't trying to replace the doctors. I was trying to have an informed conversation with them. I was trying to ask the right questions. I was trying to understand the trajectory my daughter was on.
+
+They called me crazy for using AI. But the AI was citing the same medical literature that should have informed her care.
+
+## What AI Could Have Done
+
+Let me be precise about what I'm claiming.
+
+In a randomized clinical trial of 3,003 VLBW infants across 9 NICUs, the HeRO Score, an AI-based predictive monitoring system that analyzes heart rate variability, was associated with significantly lower sepsis-associated mortality: 12% versus 20%. That's a 40% relative reduction in deaths.
+
+Dr. Moorman and his colleagues at the University of Virginia developed this system after observing that subtle changes in heart rate patterns precede clinical deterioration by hours. The AI detected what human observation missed.
+
+A 2024 meta-analysis published in *BMC Medical Informatics and Decision Making* reviewed AI-powered early warning systems and found they "significantly reduced in-hospital and 30-day mortality rates." Machine learning models achieved area under the curve values up to 0.97 for predicting deterioration.
+
+The TREWS sepsis alert system at Johns Hopkins, which continuously monitors vital signs, laboratory results, and clinical notes, was associated with a 20% reduction in sepsis mortality.
+
+This isn't theoretical. This isn't speculation. This is peer-reviewed, randomized-controlled-trial evidence that AI systems can detect deterioration patterns 6-12 hours before clinical diagnosis.
+
+Now imagine an AI system that tracked cumulative transfusion exposure. That flagged when a patient had received an unusually high number of transfusions. That monitored bilirubin trajectories and predicted when they would exceed critical thresholds. That synthesized information across shifts and specialists and presented a unified view of cumulative risk.
+
+That system doesn't exist in most NICUs. But the research says it should.
 
 ## The Information Gap
-
-I need to be precise here, because precision matters.
 
 During Mila's care, key medical records were not made available to us. Specifically, clinical records from July 11 through August 3 were never provided, despite repeated requests. To this day, those records remain unavailable.
 
 I'm not speculating about intent. I'm stating a factual absence of access.
 
-That absence meant that cumulative transfusion exposure, lab trajectories, and risk compounding were opaque to us. We were the people responsible for advocating for our daughter, and we couldn't see the full picture. Not because we weren't paying attention. Because the information wasn't there.
+Here's something that made the situation worse: the documentation system was entirely handwritten. Not partially handwritten. Not "some notes are handwritten." Everything. Every transfusion record. Every lab value. Every clinical observation. Handwritten on paper. None of it was entered into a computer system. None of it was digitized. None of it could be easily searched, aggregated, or analyzed.
+
+In 2024, in a modern hospital, the medical records for three critically ill premature infants were being tracked with pen and paper.
+
+This meant that even if someone wanted to see the cumulative transfusion count, they would have had to manually flip through pages of handwritten notes and count. Even if someone wanted to track bilirubin trajectories over time, they would have had to transcribe numbers from paper into a spreadsheet. The information wasn't just fragmented across shifts and specialists. It was fragmented across physical pieces of paper that were never synthesized into anything searchable or analyzable.
+
+No algorithm could help. No AI could intervene. No system could detect the pattern. Because the data wasn't in any system at all.
+
+## What the Research Says About Parent Involvement
+
+Here's what the medical literature says about parents in the NICU:
+
+A meta-analysis of family-centered care interventions found "significant decrease in retinopathy of prematurity and length of stay, as well as significant increases in weight gain velocity, neurobehavioral exam scores, and breastmilk intake for infants receiving FCC interventions."
+
+Research published in *BMC Pediatrics* found that "parent involvement in decision making in the NICU context has been shown to have an impact on some clinical decisions and has also been shown to increase parents' autonomy, satisfaction with care, feeling heard and respected."
+
+A systematic review in *Patient Education and Counseling* found that "communication interventions appeared impactful, particularly in reducing parental stress and anxiety. Parent-provider communication is a crucial determinant for parental well-being and satisfaction with care."
+
+The research is clear: informed, involved parents lead to better outcomes. Parents who understand what's happening, who can ask specific questions, who can participate in shared decision-making, those parents help their children.
+
+But how can parents be informed when the information isn't synthesized? How can they ask specific questions when they can't see the cumulative patterns? How can they participate in decision-making when they don't have access to the data that would inform those decisions?
 
 ## Where the System Failed
 
@@ -84,21 +174,23 @@ I was doing incident response on my daughter's medical care.
 
 That's when I realized: parents shouldn't have to do this. Not during care, when they're overwhelmed and exhausted. Not after care, when they're grieving and searching for answers.
 
-The information existed. It was in the system somewhere. But it wasn't synthesized. It wasn't surfaced. And it wasn't shared with the people who needed it most.
+The information existed. It was on pieces of paper somewhere. But it wasn't synthesized. It wasn't surfaced. And it wasn't shared with the people who needed it most.
 
-## Why AI Enters This Story
+## Why MILA Exists
+
+MILA stands for **Medical Intelligence for Longitudinal Analysis**. The name is deliberate. Medical, because this is about healthcare data. Intelligence, because it uses AI to synthesize patterns. Longitudinal, because it tracks cumulative risk over time, not just point-in-time snapshots. Analysis, because it helps parents understand what they're seeing.
 
 I'm not building MILA because I think AI should replace doctors. I'm building it because I lived through a reality that shouldn't require AI to fix, but does.
 
 Parents receive fragmented information. Records may be delayed, incomplete, or inaccessible. Parents are expected to remember, track, and synthesize under stress. Most can't. I couldn't, and I do this kind of synthesis for a living.
 
-AI can help parents:
+MILA helps parents:
 
-- Organize their own observations
-- Track what data has been shared with them
-- Identify what data is missing
-- Recognize patterns over time
-- Prepare precise, informed questions for conversations with doctors
+- **Organize their own observations.** What did you notice today? What changed from yesterday?
+- **Track what data has been shared with them.** What lab values were mentioned in rounds? What interventions were discussed?
+- **Identify what data is missing.** What haven't they told you? What questions should you be asking?
+- **Recognize patterns over time.** Is the trajectory improving or worsening? Are there concerning trends?
+- **Prepare precise, informed questions for conversations with doctors.** Not "how is she doing?" but "her bilirubin has increased 5 mg/dL over the past three days despite phototherapy. The AAP guidelines suggest considering exchange transfusion at this trajectory. What's the current plan?"
 
 The goal isn't to bypass clinicians. The goal is to improve the conversation. When a parent walks into rounds with organized observations and specific questions, the conversation is better. The clinician gets clearer input. The parent gets clearer answers.
 
@@ -108,17 +200,27 @@ Synthesis becomes a form of safety.
 
 MILA is focused on the specific risks I watched unfold:
 
-**Transfusion history intelligence.** Tracking cumulative exposure, not just individual events.
+**Transfusion history intelligence.** The research shows cumulative transfusion exposure matters. MILA tracks it. Not just individual events, but the cumulative count, the trajectory, the pattern.
 
-**Hemolysis risk modeling.** Understanding how repeated transfusions can compound risk over time.
+**Donor exposure awareness.** Multiple donors mean higher alloimmunization risk. MILA helps parents understand this and ask about single-donor protocols.
 
-**Bilirubin trajectory awareness.** Not just the current number, but the direction and rate of change.
+**Hemolysis risk modeling.** Understanding how repeated transfusions can compound risk over time, especially with potential antibody formation.
 
-**Cross-disciplinary visibility.** Helping parents see how information from different specialists connects.
+**Bilirubin trajectory awareness.** Not just the current number, but the direction and rate of change. When is it approaching AAP thresholds for intervention?
 
-**Parent-inclusive observability.** Giving families tools to track what they're seeing and what they're being told.
+**Cross-disciplinary visibility.** Helping parents see how information from different specialists connects. The hematologist sees one slice. The neonatologist sees another. The parent needs to see how they connect.
 
-I'm not claiming this would have saved Mila. I can't know that. What I know is that I spent months reconstructing information that should have been visible in real time. MILA exists so fewer parents have to do that reconstruction after the fact.
+**Parent-inclusive observability.** Giving families tools to track what they're seeing and what they're being told, so they can participate meaningfully in their child's care.
+
+## What I'm Not Claiming
+
+I'm not claiming MILA would have saved Mila. I can't know that. Counterfactuals are impossible to prove.
+
+What I know is this: I spent months reconstructing information that should have been visible in real time. I read research that should have informed treatment decisions. I asked questions that should have been obvious to anyone tracking the cumulative trajectory.
+
+The data existed. The research existed. The guidelines existed. What didn't exist was a system to synthesize them, to surface them, to make them visible to everyone involved in my daughter's care, including us.
+
+MILA exists so fewer parents have to do that reconstruction after the fact. So fewer parents have to learn, too late, what the research said all along.
 
 ## The Technical Reality
 
@@ -132,15 +234,25 @@ Every design decision goes back to one question: would this have helped my famil
 
 If you're a NICU parent reading this: you're not imagining things when you feel like you're missing information. You're not failing when you can't remember everything from yesterday's rounds. The system isn't designed to help you synthesize. That's a gap, not a personal shortcoming.
 
-If you're a clinician reading this: parents who ask detailed questions aren't adversaries. They're trying to participate in care the best way they know how. Better tools for parents mean better conversations with you, not around you.
+You're not crazy for using AI to understand what's happening to your child. The research supports informed, involved parents. The research shows better communication leads to better outcomes. If AI helps you understand the research and ask better questions, use it.
+
+If you're a clinician reading this: parents who ask detailed questions aren't adversaries. They're trying to participate in care the best way they know how. The research on family-centered care shows that involved parents improve outcomes. Better tools for parents mean better conversations with you, not around you.
+
+And if a parent shows up with AI-generated questions based on peer-reviewed research, consider that they might be citing the same literature that should be informing the care plan.
 
 If you're a technologist reading this: there's meaningful work to be done here. Not flashy AI that replaces human judgment, but careful systems that help humans share information more effectively. The unsexy infrastructure of better communication.
+
+The HeRO trial showed AI can reduce neonatal mortality. The TREWS system showed AI can reduce sepsis deaths. The research shows these systems work. We need more of them, not fewer.
 
 ## Mila
 
 I named the system after my daughter because this work exists because of her. Not in spite of her death. Because of it.
 
 She was here for weeks that felt like months. She fought in ways that newborns shouldn't have to fight. And in the end, I couldn't protect her from a system that lost track of its own information.
+
+The research existed. The guidelines existed. The knowledge that could have changed her trajectory was sitting in journals and databases, waiting for someone to synthesize it, to surface it, to act on it.
+
+I was using AI to try to understand. They called me crazy. But the AI was citing the same studies that informed the guidelines that should have informed her care.
 
 I can't fix what happened to Mila. But I can build something that helps the next family see more clearly. Ask better questions. Catch patterns earlier.
 
@@ -149,3 +261,14 @@ That's not closure. I don't think closure exists for this. But it's work that ma
 ---
 
 *If you're building in healthcare AI, or if you're a NICU family who wants to talk, [reach out](/contact). This work is better when it's not done alone.*
+
+**Sources:**
+
+- [Thresholds for blood transfusion in extremely preterm infants (ETTNO/TOP review)](https://www.frontiersin.org/journals/pediatrics/articles/10.3389/fped.2022.957585/full)
+- [Red blood cell transfusion in preterm neonates: current perspectives](https://www.dovepress.com/red-blood-cell-transfusion-in-preterm-neonates-current-perspectives-peer-reviewed-fulltext-article-IJCTM)
+- [Exchange transfusion safety and outcomes in neonatal hyperbilirubinemia](https://www.nature.com/articles/s41372-020-0642-0)
+- [AI-Powered early warning systems for clinical deterioration (meta-analysis)](https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-025-03048-x)
+- [Artificial and Human Intelligence for Early Identification of Neonatal Sepsis](https://pmc.ncbi.nlm.nih.gov/articles/PMC11749885/)
+- [Parent Perspectives on Communication Quality in the NICU](https://pmc.ncbi.nlm.nih.gov/articles/PMC11334642/)
+- [Infant and Family Outcomes Related to Family-Centered Care in the NICU](https://pmc.ncbi.nlm.nih.gov/articles/PMC11941216/)
+- [Clinical Practice Guideline for Red Blood Cell Transfusion Thresholds (2024)](https://jamanetwork.com/journals/jamanetworkopen/fullarticle/2820028)
