@@ -1,0 +1,300 @@
+---
+title: "Mejores Prácticas de Kubernetes para Despliegues en Producción"
+description: "Una guía práctica para ejecutar Kubernetes en producción, cubriendo gestión de recursos, endurecimiento de seguridad, observabilidad y estrategias de despliegue basadas en experiencia del mundo real."
+date: 2026-01-10
+updated: 2026-01-18
+published: true
+category: "DevOps"
+tags: ["Kubernetes", "DevOps", "Cloud", "Docker", "Infraestructura", "Producción"]
+author: "Osvaldo Restrepo"
+translationOf: "kubernetes-production-best-practices"
+tldr: "Kubernetes en producción requiere límites de recursos, contextos de seguridad, health checks apropiados y observabilidad. Usa namespaces para aislamiento, implementa políticas de red y siempre ten estrategias de rollback. Empieza simple y añade complejidad solo cuando sea necesario."
+faqs:
+  - question: "¿Cuándo debería usar Kubernetes?"
+    answer: "Kubernetes tiene sentido cuando tienes múltiples servicios que necesitan escalado, despliegue y gestión de ciclo de vida independientes. Para una sola aplicación o equipo pequeño, plataformas administradas como Heroku, Render o Cloud Run pueden ser más simples y rentables."
+  - question: "¿Qué son requests vs limits de recursos?"
+    answer: "Los requests son los recursos mínimos que un contenedor necesita para ejecutarse—Kubernetes usa esto para scheduling. Los limits son los recursos máximos que un contenedor puede usar. Configura requests basados en uso típico y limits para prevenir que procesos descontrolados afecten otras cargas de trabajo."
+  - question: "¿Cómo manejo secrets en Kubernetes?"
+    answer: "Los Secrets nativos de Kubernetes están codificados en base64 (no encriptados). Para producción, usa gestión externa de secrets como HashiCorp Vault, AWS Secrets Manager o sealed-secrets. Habilita encriptación en reposo para etcd donde se almacenan los secrets."
+  - question: "¿Cuál es la diferencia entre Deployment y StatefulSet?"
+    answer: "Los Deployments son para aplicaciones stateless donde cualquier pod puede manejar cualquier solicitud. Los StatefulSets son para aplicaciones stateful que necesitan identidades de red estables, almacenamiento persistente y despliegue/escalado ordenado (como bases de datos o colas de mensajes)."
+relatedPosts: ["multi-tenant-saas-architecture", "event-driven-data-pipelines"]
+---
+
+Ejecutar Kubernetes en producción es diferente del desarrollo. Después de administrar clústeres sirviendo millones de solicitudes, he aprendido qué prácticas realmente importan y cuáles son sobre-ingeniería. Esta guía se enfoca en lo que mantiene los sistemas confiables.
+
+## Gestión de Recursos
+
+### Configurando Requests y Limits
+
+La configuración de recursos es la configuración de producción más impactante. Si lo haces mal, tendrás pods OOMKilled o problemas de vecino ruidoso.
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: api
+        image: myapp/api:v1.2.3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"      # 0.1 cores de CPU
+          limits:
+            memory: "512Mi"  # Límite duro - exceder causa OOMKill
+            cpu: "500m"      # Límite suave - throttled si se excede
+```
+
+<Callout type="tip" title="Estrategia de Dimensionamiento">
+Empieza con requests al 50-70% de tu uso promedio observado. Configura limits de memoria a 2x requests (los picos de memoria son comunes). Configura limits de CPU a 3-5x requests u omítelos (el CPU es compresible y se throttlea graciosamente).
+</Callout>
+
+### Horizontal Pod Autoscaling
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-server-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-server
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Esperar 5 min antes de escalar hacia abajo
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Escalar hacia arriba inmediatamente
+```
+
+## Health Checks
+
+### Liveness vs Readiness vs Startup Probes
+
+```yaml
+spec:
+  containers:
+  - name: api
+    livenessProbe:
+      # "¿Está vivo este contenedor?" - reinicia si falla
+      httpGet:
+        path: /health/live
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      failureThreshold: 3
+
+    readinessProbe:
+      # "¿Puede este contenedor manejar tráfico?" - remueve del servicio si falla
+      httpGet:
+        path: /health/ready
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 3
+
+    startupProbe:
+      # "¿Ha iniciado este contenedor?" - para contenedores de inicio lento
+      httpGet:
+        path: /health/live
+        port: 8080
+      failureThreshold: 30  # 30 * 5s = 150s tiempo máximo de inicio
+```
+
+<Callout type="warning" title="Error Común">
+No hagas que las probes de liveness verifiquen dependencias externas. Una caída de base de datos no debería reiniciar tus pods—eso empeora las cosas. Liveness verifica si TU contenedor está funcionando.
+</Callout>
+
+## Endurecimiento de Seguridad
+
+### Contexto de Seguridad del Pod
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-pod
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+
+  containers:
+  - name: app
+    image: myapp:v1.0.0
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+```
+
+### Políticas de Red
+
+```yaml
+# Denegar todo el ingress por defecto
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+# Permitir tráfico específico
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-server-policy
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: api-server
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+```
+
+## Estrategias de Despliegue
+
+### Rolling Updates con Cero Downtime
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2        # Puede crear 2 pods extra durante actualización
+      maxUnavailable: 1  # Máximo 1 pod no disponible durante actualización
+  template:
+    spec:
+      containers:
+      - name: api
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]  # Apagado gracioso
+```
+
+### Despliegues Canary
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api-server
+spec:
+  replicas: 10
+  strategy:
+    canary:
+      steps:
+      - setWeight: 10
+      - pause: {duration: 5m}
+      - setWeight: 30
+      - pause: {duration: 5m}
+      - setWeight: 50
+      - pause: {duration: 10m}
+      - setWeight: 100
+```
+
+## Observabilidad
+
+### Logging Estructurado
+
+```python
+import structlog
+
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
+
+logger = structlog.get_logger()
+
+# Log con contexto
+logger.info(
+    "request_processed",
+    request_id="abc-123",
+    user_id="user-456",
+    duration_ms=45,
+    status_code=200
+)
+```
+
+## Checklist de Producción
+
+| Categoría | Item | Prioridad |
+|-----------|------|-----------|
+| **Recursos** | Requests de CPU/Memoria configurados | Crítico |
+| | Limits de memoria configurados | Crítico |
+| | HPA configurado | Alto |
+| **Health** | Probe de liveness configurado | Crítico |
+| | Probe de readiness configurado | Crítico |
+| **Seguridad** | Usuario non-root | Crítico |
+| | Sistema de archivos read-only | Alto |
+| | Políticas de red | Alto |
+| | Secrets externalizados | Crítico |
+| **Observabilidad** | Logging estructurado | Crítico |
+| | Métricas exportadas | Alto |
+
+## Conclusión
+
+Kubernetes en producción requiere disciplina en algunas áreas clave:
+
+1. **Gestión de recursos** - Configura requests y limits basados en datos
+2. **Health checks** - Distingue entre liveness y readiness
+3. **Seguridad** - Principio de mínimo privilegio en todas partes
+4. **Despliegues** - Siempre ten una estrategia de rollback
+5. **Observabilidad** - Logs, métricas y traces son no negociables
+
+Empieza simple, mide todo y añade complejidad solo cuando tengas evidencia de que es necesaria.
+
+---
+
+## Referencias
+
+Kubernetes Authors. (2024). *Production best practices*. https://kubernetes.io/docs/setup/production-environment/
+
+Google Cloud. (2024). *Best practices for running cost-optimized Kubernetes applications on GKE*. https://cloud.google.com/architecture/best-practices-for-running-cost-effective-kubernetes-applications-on-gke
+
+Burns, B., Beda, J., Hightower, K., & Evenson, L. (2022). *Kubernetes: Up and running* (3rd ed.). O'Reilly Media.
+
+---
+
+*¿Ejecutando Kubernetes en producción? [Contáctame](/contact) para discutir estrategias de infraestructura.*

@@ -1,0 +1,389 @@
+---
+title: "Feature Engineering Strategies for Machine Learning"
+description: "A comprehensive guide to feature engineering techniques that improve model performance, covering numerical, categorical, temporal, and text features with practical Python examples."
+date: 2026-01-18
+updated: 2026-01-24
+published: true
+category: "Data Science"
+tags: ["Machine Learning", "Feature Engineering", "Python", "Data Science", "Scikit-learn", "Pandas"]
+author: "Osvaldo Restrepo"
+tldr: "Good features beat complex models. Focus on domain knowledge for feature creation, systematic encoding for categoricals, lag features for time series, and embeddings for text. Always validate feature importance and watch for data leakage."
+faqs:
+  - question: "What is feature engineering?"
+    answer: "Feature engineering is the process of using domain knowledge to create, transform, and select input variables (features) that make machine learning algorithms work better. It bridges raw data and model performance."
+  - question: "Why is feature engineering important?"
+    answer: "Features directly determine what patterns a model can learn. Better features often outperform better algorithms. As Andrew Ng notes, 'Coming up with features is difficult, time-consuming, requires expert knowledge. Applied machine learning is basically feature engineering.'"
+  - question: "How do you handle missing values in features?"
+    answer: "Options include: imputation (mean, median, mode), indicator variables for missingness, model-based imputation (KNN, iterative), or domain-specific values. The best choice depends on why data is missing and the downstream model."
+  - question: "What is feature leakage and how do you prevent it?"
+    answer: "Feature leakage occurs when information from outside the training data influences features, artificially inflating performance. Prevent it by using only data available at prediction time, proper train/test splits before feature creation, and careful temporal handling."
+relatedPosts: ["building-production-rag-systems", "llm-evaluation-pipelines"]
+---
+
+Feature engineering remains the most impactful skill in applied machine learning. While deep learning has automated some feature work, most real-world ML still relies on tabular data where feature engineering dominates. This guide covers practical techniques that consistently improve models.
+
+## The Feature Engineering Mindset
+
+The goal isn't to create many features—it's to create informative features that capture patterns the model can't discover itself.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Feature Engineering Pipeline                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Raw Data → Cleaning → Transformation → Creation → Selection    │
+│                                                                  │
+│   ┌─────────┐  ┌──────────┐  ┌───────────┐  ┌──────────┐       │
+│   │ Missing │  │ Encoding │  │ Domain    │  │ Feature  │       │
+│   │ Values  │→ │ Scaling  │→ │ Features  │→ │ Selection│       │
+│   │ Outliers│  │ Binning  │  │ Interactions│ │ Importance│      │
+│   └─────────┘  └──────────┘  └───────────┘  └──────────┘       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="tip" title="Key Insight">
+Spend time understanding the domain before engineering features. A domain expert's intuition about what matters is often more valuable than automated feature generation.
+</Callout>
+
+## Numerical Features
+
+### Scaling and Normalization
+
+Different models have different requirements:
+
+```python
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+
+# Sample data with outliers
+df = pd.DataFrame({
+    'age': [25, 30, 35, 40, 45, 100],  # 100 is an outlier
+    'income': [30000, 45000, 60000, 75000, 90000, 500000]
+})
+
+# StandardScaler: Mean=0, Std=1 (sensitive to outliers)
+standard_scaler = StandardScaler()
+df['age_standard'] = standard_scaler.fit_transform(df[['age']])
+
+# MinMaxScaler: Range [0,1] (sensitive to outliers)
+minmax_scaler = MinMaxScaler()
+df['income_minmax'] = minmax_scaler.fit_transform(df[['income']])
+
+# RobustScaler: Uses median and IQR (robust to outliers)
+robust_scaler = RobustScaler()
+df['income_robust'] = robust_scaler.fit_transform(df[['income']])
+```
+
+### Transformations for Skewed Distributions
+
+```python
+from scipy import stats
+
+# Log transform (for right-skewed data)
+df['income_log'] = np.log1p(df['income'])  # log1p handles zeros
+
+# Box-Cox transform (requires positive values)
+df['income_boxcox'], lambda_param = stats.boxcox(df['income'] + 1)
+
+# Yeo-Johnson transform (handles negative values)
+from sklearn.preprocessing import PowerTransformer
+pt = PowerTransformer(method='yeo-johnson')
+df['income_yeojohnson'] = pt.fit_transform(df[['income']])
+```
+
+### Binning Strategies
+
+```python
+# Equal-width binning
+df['age_bins_equal'] = pd.cut(df['age'], bins=5, labels=['very_young', 'young', 'middle', 'senior', 'elderly'])
+
+# Quantile-based binning (equal frequency)
+df['income_quartiles'] = pd.qcut(df['income'], q=4, labels=['Q1', 'Q2', 'Q3', 'Q4'])
+
+# Custom domain-based binning
+age_bins = [0, 18, 35, 50, 65, 120]
+age_labels = ['minor', 'young_adult', 'middle_age', 'senior', 'elderly']
+df['age_category'] = pd.cut(df['age'], bins=age_bins, labels=age_labels)
+```
+
+<Callout type="warning" title="Common Mistake">
+Don't fit scalers on your entire dataset before splitting. Fit only on training data, then transform both train and test to prevent data leakage.
+</Callout>
+
+## Categorical Features
+
+### Encoding Strategies
+
+```python
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder
+import category_encoders as ce
+
+df = pd.DataFrame({
+    'color': ['red', 'blue', 'green', 'red', 'blue'],
+    'size': ['S', 'M', 'L', 'XL', 'M'],
+    'city': ['NYC', 'LA', 'Chicago', 'NYC', 'Miami']
+})
+
+# Label Encoding (ordinal categories)
+size_order = {'S': 1, 'M': 2, 'L': 3, 'XL': 4}
+df['size_encoded'] = df['size'].map(size_order)
+
+# One-Hot Encoding (nominal categories with few values)
+df_onehot = pd.get_dummies(df, columns=['color'], prefix='color')
+
+# Target Encoding (high cardinality + target relationship)
+target_encoder = ce.TargetEncoder(cols=['city'])
+df['city_target_encoded'] = target_encoder.fit_transform(df['city'], y)
+
+# Frequency Encoding (useful for tree-based models)
+city_freq = df['city'].value_counts(normalize=True)
+df['city_frequency'] = df['city'].map(city_freq)
+```
+
+### Handling High Cardinality
+
+```python
+def reduce_cardinality(series: pd.Series, threshold: float = 0.01) -> pd.Series:
+    """Group rare categories into 'Other'."""
+    value_counts = series.value_counts(normalize=True)
+    rare_categories = value_counts[value_counts < threshold].index
+    return series.replace(rare_categories, 'Other')
+
+# Example: Reduce categories with less than 1% frequency
+df['city_reduced'] = reduce_cardinality(df['city'], threshold=0.01)
+```
+
+## Temporal Features
+
+Time-based features often contain rich signals. Research by Zheng and Casari (2018) shows temporal features consistently improve forecasting models.
+
+### Date/Time Decomposition
+
+```python
+df = pd.DataFrame({
+    'timestamp': pd.date_range('2024-01-01', periods=100, freq='H')
+})
+
+# Extract components
+df['hour'] = df['timestamp'].dt.hour
+df['day_of_week'] = df['timestamp'].dt.dayofweek
+df['day_of_month'] = df['timestamp'].dt.day
+df['month'] = df['timestamp'].dt.month
+df['quarter'] = df['timestamp'].dt.quarter
+df['year'] = df['timestamp'].dt.year
+df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
+
+# Cyclical encoding for periodic features
+df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
+df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
+df['month_sin'] = np.sin(2 * np.pi * df['month'] / 12)
+df['month_cos'] = np.cos(2 * np.pi * df['month'] / 12)
+```
+
+### Lag Features and Rolling Statistics
+
+```python
+def create_lag_features(df: pd.DataFrame, column: str, lags: list[int]) -> pd.DataFrame:
+    """Create lagged versions of a column."""
+    for lag in lags:
+        df[f'{column}_lag_{lag}'] = df[column].shift(lag)
+    return df
+
+def create_rolling_features(df: pd.DataFrame, column: str, windows: list[int]) -> pd.DataFrame:
+    """Create rolling statistics."""
+    for window in windows:
+        df[f'{column}_rolling_mean_{window}'] = df[column].rolling(window).mean()
+        df[f'{column}_rolling_std_{window}'] = df[column].rolling(window).std()
+        df[f'{column}_rolling_min_{window}'] = df[column].rolling(window).min()
+        df[f'{column}_rolling_max_{window}'] = df[column].rolling(window).max()
+    return df
+
+# Apply to sales data
+df = create_lag_features(df, 'sales', lags=[1, 7, 14, 28])
+df = create_rolling_features(df, 'sales', windows=[7, 14, 28])
+```
+
+## Text Features
+
+### Basic Text Features
+
+```python
+import re
+from collections import Counter
+
+def extract_text_features(text: str) -> dict:
+    """Extract basic statistical features from text."""
+    words = text.split()
+    sentences = re.split(r'[.!?]+', text)
+
+    return {
+        'char_count': len(text),
+        'word_count': len(words),
+        'sentence_count': len([s for s in sentences if s.strip()]),
+        'avg_word_length': np.mean([len(w) for w in words]) if words else 0,
+        'unique_word_ratio': len(set(words)) / len(words) if words else 0,
+        'uppercase_ratio': sum(1 for c in text if c.isupper()) / len(text) if text else 0,
+        'digit_ratio': sum(1 for c in text if c.isdigit()) / len(text) if text else 0,
+        'punctuation_count': sum(1 for c in text if c in '.,!?;:'),
+    }
+```
+
+### TF-IDF and Embeddings
+
+```python
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sentence_transformers import SentenceTransformer
+
+# TF-IDF for traditional ML
+tfidf = TfidfVectorizer(max_features=1000, ngram_range=(1, 2))
+text_features = tfidf.fit_transform(df['text_column'])
+
+# Sentence embeddings for semantic similarity
+model = SentenceTransformer('all-MiniLM-L6-v2')
+embeddings = model.encode(df['text_column'].tolist())
+embedding_df = pd.DataFrame(embeddings, columns=[f'emb_{i}' for i in range(embeddings.shape[1])])
+```
+
+## Feature Interactions
+
+### Polynomial Features
+
+```python
+from sklearn.preprocessing import PolynomialFeatures
+
+# Create interaction features
+poly = PolynomialFeatures(degree=2, interaction_only=True, include_bias=False)
+interaction_features = poly.fit_transform(df[['age', 'income']])
+
+# Manual meaningful interactions
+df['income_per_age'] = df['income'] / df['age']
+df['income_age_product'] = df['income'] * df['age']
+```
+
+### Domain-Specific Interactions
+
+```python
+# E-commerce example
+df['conversion_rate'] = df['purchases'] / df['visits']
+df['avg_order_value'] = df['revenue'] / df['purchases']
+df['pages_per_session'] = df['page_views'] / df['sessions']
+
+# Healthcare example
+df['bmi'] = df['weight_kg'] / (df['height_m'] ** 2)
+df['pulse_pressure'] = df['systolic_bp'] - df['diastolic_bp']
+df['map'] = df['diastolic_bp'] + (df['pulse_pressure'] / 3)  # Mean arterial pressure
+```
+
+## Feature Selection
+
+### Filter Methods
+
+```python
+from sklearn.feature_selection import SelectKBest, f_classif, mutual_info_classif
+
+# Statistical tests
+selector = SelectKBest(score_func=f_classif, k=10)
+X_selected = selector.fit_transform(X, y)
+
+# Get feature scores
+feature_scores = pd.DataFrame({
+    'feature': X.columns,
+    'score': selector.scores_
+}).sort_values('score', ascending=False)
+
+# Correlation-based selection
+def remove_correlated_features(df: pd.DataFrame, threshold: float = 0.95) -> list[str]:
+    """Remove one of each pair of highly correlated features."""
+    corr_matrix = df.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    to_drop = [column for column in upper.columns if any(upper[column] > threshold)]
+    return to_drop
+```
+
+### Model-Based Selection
+
+```python
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import RFECV
+
+# Feature importance from tree models
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
+rf.fit(X_train, y_train)
+
+importance_df = pd.DataFrame({
+    'feature': X_train.columns,
+    'importance': rf.feature_importances_
+}).sort_values('importance', ascending=False)
+
+# Recursive Feature Elimination with CV
+rfecv = RFECV(
+    estimator=rf,
+    step=1,
+    cv=5,
+    scoring='accuracy',
+    min_features_to_select=5
+)
+rfecv.fit(X_train, y_train)
+selected_features = X_train.columns[rfecv.support_]
+```
+
+## Preventing Data Leakage
+
+```python
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+
+# Create preprocessing pipeline
+numeric_transformer = Pipeline([
+    ('scaler', StandardScaler()),
+])
+
+categorical_transformer = Pipeline([
+    ('encoder', OneHotEncoder(handle_unknown='ignore')),
+])
+
+preprocessor = ColumnTransformer([
+    ('num', numeric_transformer, numeric_features),
+    ('cat', categorical_transformer, categorical_features),
+])
+
+# Full pipeline ensures proper fit/transform separation
+full_pipeline = Pipeline([
+    ('preprocessor', preprocessor),
+    ('classifier', RandomForestClassifier()),
+])
+
+# This prevents leakage: fit only on train, transform both
+full_pipeline.fit(X_train, y_train)
+predictions = full_pipeline.predict(X_test)
+```
+
+## Conclusion
+
+Effective feature engineering follows these principles:
+
+1. **Understand the domain** - Domain knowledge guides feature creation
+2. **Transform appropriately** - Match transformations to data distributions and model requirements
+3. **Create meaningful interactions** - Combine features that have domain significance
+4. **Select rigorously** - Remove redundant and irrelevant features
+5. **Prevent leakage** - Use pipelines and proper train/test separation
+
+The best features tell a story about your data that the model can understand.
+
+---
+
+## References
+
+Zheng, A., & Casari, A. (2018). *Feature engineering for machine learning: Principles and techniques for data scientists*. O'Reilly Media.
+
+Kuhn, M., & Johnson, K. (2019). *Feature engineering and selection: A practical approach for predictive models*. CRC Press. http://www.feat.engineering/
+
+Ng, A. (2018). *Machine learning yearning*. https://www.deeplearning.ai/programs/machine-learning-specialization/
+
+Scikit-learn developers. (2024). *Scikit-learn user guide: Preprocessing data*. https://scikit-learn.org/stable/modules/preprocessing.html
+
+---
+
+*Working on a machine learning project? [Get in touch](/contact) to discuss feature engineering strategies.*

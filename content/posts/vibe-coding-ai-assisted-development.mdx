@@ -1,0 +1,308 @@
+---
+title: "Vibe Coding: The New Paradigm of AI-Assisted Development"
+description: "An exploration of vibe coding—the emerging practice of building software through natural language and AI collaboration, covering techniques, tools, best practices, and when it works best."
+date: 2026-01-28
+updated: 2026-01-29
+published: true
+pinned: true
+category: "AI Engineering"
+tags: ["Vibe Coding", "AI", "Claude", "Cursor", "Developer Experience", "Productivity", "LLM"]
+author: "Osvaldo Restrepo"
+tldr: "Vibe coding is programming by describing intent rather than writing syntax. It works best for prototyping, boilerplate, and well-defined patterns. Success requires clear communication, iterative refinement, and knowing when to take back manual control. It's a multiplier for skilled developers, not a replacement for understanding."
+faqs:
+  - question: "What is vibe coding?"
+    answer: "Vibe coding is a development approach where programmers describe what they want in natural language and AI assistants generate the implementation. Instead of writing every line manually, developers guide the AI through high-level intent, iterate on outputs, and focus on architecture and problem-solving rather than syntax."
+  - question: "Is vibe coding just for beginners?"
+    answer: "No. Vibe coding is most effective for experienced developers who understand what good code looks like and can effectively review, guide, and correct AI outputs. Beginners may accept incorrect or suboptimal code they can't evaluate. Senior developers use it to multiply their productivity while maintaining quality."
+  - question: "Will vibe coding replace traditional programming?"
+    answer: "Not entirely. Vibe coding excels at boilerplate, standard patterns, and rapid prototyping. Complex algorithms, performance-critical code, and novel architectures still benefit from manual implementation. The future is likely a hybrid where developers fluidly switch between AI-assisted and manual coding based on context."
+  - question: "What tools support vibe coding?"
+    answer: "Popular tools include Cursor (AI-native IDE), GitHub Copilot, Claude Code (CLI), Windsurf, and various IDE extensions. Each offers different interaction models from inline completions to full agentic coding where AI can read files, run commands, and iterate autonomously."
+relatedPosts: ["prompt-engineering-production-llms", "building-production-rag-systems"]
+---
+
+A new term has entered the developer lexicon: **vibe coding**. Coined by Andrej Karpathy in early 2025, it describes a fundamentally different relationship with code—one where you express intent and let AI handle implementation (Karpathy, 2025). After months of building this way, I want to share what actually works.
+
+## What is Vibe Coding?
+
+Vibe coding shifts the developer's role from "writer of code" to "director of code." Instead of typing syntax, you describe what you want:
+
+```
+Traditional: Write a function that validates email addresses
+             → developer types 20 lines of regex and error handling
+
+Vibe Coding: "I need email validation - check format, verify the domain
+              has MX records, and return detailed error messages"
+             → AI generates implementation
+             → developer reviews, refines, accepts
+```
+
+<Callout type="tip" title="Key Insight">
+Vibe coding isn't about typing less—it's about thinking at a higher level of abstraction. You trade syntax knowledge for communication skills and code review expertise.
+</Callout>
+
+## The Vibe Coding Spectrum
+
+Not all AI-assisted development is the same. There's a spectrum:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   AI-Assisted Development Spectrum               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Autocomplete ──────────────────────────────────────► Agentic   │
+│                                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │  Tab     │  │  Chat    │  │ Composer │  │  Agent   │       │
+│  │ Complete │  │ Sidebar  │  │   Mode   │  │   Mode   │       │
+│  │          │  │          │  │          │  │          │       │
+│  │ Complete │  │ Ask      │  │ Edit     │  │ AI reads │       │
+│  │ current  │  │ questions│  │ multiple │  │ codebase,│       │
+│  │ line     │  │ get code │  │ files    │  │ runs     │       │
+│  │          │  │ snippets │  │ at once  │  │ commands,│       │
+│  │          │  │          │  │          │  │ iterates │       │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │
+│                                                                  │
+│  Low autonomy                              High autonomy         │
+│  High control                              Lower control         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Level 1: Intelligent Autocomplete
+GitHub Copilot-style completions. AI predicts your next few lines. You're still writing code, just faster.
+
+### Level 2: Chat-Based Assistance
+You ask questions, get code snippets, copy-paste what works. More of a conversation, but you're still the assembler.
+
+### Level 3: Composer/Edit Mode
+You describe changes across multiple files. AI makes edits, you review diffs. This is where "vibe coding" really begins.
+
+### Level 4: Agentic Coding
+AI reads your codebase, runs tests, iterates on failures, and proposes complete solutions. You become the reviewer and architect.
+
+## When Vibe Coding Excels
+
+### 1. Boilerplate and CRUD
+```
+Prompt: "Create a REST API endpoint for user management with
+         create, read, update, delete operations. Use Express,
+         validate inputs with Zod, and follow the patterns in
+         our existing endpoints."
+
+→ AI generates 200 lines of well-structured code in seconds
+```
+
+### 2. Rapid Prototyping
+When you're exploring ideas, vibe coding lets you try approaches quickly without committing to implementation details.
+
+### 3. Unfamiliar Territory
+Need to write Kubernetes manifests but you're a frontend developer? Describe what you need, let AI generate it, then learn from the output.
+
+### 4. Test Generation
+```
+Prompt: "Write comprehensive tests for the OrderService class.
+         Cover happy paths, edge cases, and error conditions.
+         Use Jest and follow our existing test patterns."
+```
+
+### 5. Documentation
+```
+Prompt: "Generate JSDoc comments for all exported functions
+         in this file. Include parameter descriptions, return
+         values, and usage examples."
+```
+
+## When to Take Back Control
+
+<Callout type="warning" title="Know When to Switch">
+Vibe coding isn't always the right tool. Recognizing when to drop back to manual coding is a key skill.
+</Callout>
+
+### Complex Algorithms
+When implementing novel algorithms or performance-critical code, manual implementation often beats iteration cycles with AI.
+
+### Security-Sensitive Code
+Authentication, encryption, authorization—these require careful human attention. AI can help, but you need deep review.
+
+### Subtle Bugs
+When debugging race conditions, memory leaks, or subtle logic errors, you often need to trace through code manually.
+
+### Architecture Decisions
+AI can implement patterns, but deciding which patterns to use requires understanding trade-offs that AI may not fully grasp.
+
+## Effective Vibe Coding Techniques
+
+### 1. Context is Everything
+
+```markdown
+❌ Bad: "Add a button"
+
+✓ Good: "Add a 'Export to CSV' button to the DataTable component.
+         It should:
+         - Appear in the toolbar next to the existing filter button
+         - Use the same Button component with variant='secondary'
+         - Call the exportToCsv function from utils/export.ts
+         - Show a loading spinner while exporting
+         - Handle errors with a toast notification"
+```
+
+### 2. Reference Existing Patterns
+
+```markdown
+"Create a new API route for /api/projects following the same
+pattern as /api/users - including error handling, authentication
+middleware, and response formatting."
+```
+
+### 3. Iterate Incrementally
+
+Don't try to build everything at once:
+
+```markdown
+Step 1: "Create the basic component structure"
+Step 2: "Add the form validation logic"
+Step 3: "Connect to the API"
+Step 4: "Add loading and error states"
+Step 5: "Write tests for the component"
+```
+
+### 4. Provide Examples
+
+```markdown
+"Parse the log file and extract error messages. Here's an
+example log line:
+
+2024-01-15 10:23:45 ERROR [UserService] Failed to authenticate:
+invalid token
+
+I want to extract: timestamp, level, service, message"
+```
+
+### 5. Specify Constraints
+
+```markdown
+"Implement the search feature with these constraints:
+- Must work offline (no API calls)
+- Must handle 10,000+ items without lag
+- Must support fuzzy matching
+- Keep bundle size under 5KB"
+```
+
+## The Vibe Coding Workflow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Effective Vibe Coding Loop                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────┐                                                   │
+│   │ Intent  │  "I need X that does Y"                          │
+│   └────┬────┘                                                   │
+│        │                                                         │
+│        ▼                                                         │
+│   ┌─────────┐                                                   │
+│   │ Generate│  AI produces implementation                       │
+│   └────┬────┘                                                   │
+│        │                                                         │
+│        ▼                                                         │
+│   ┌─────────┐   No    ┌─────────────┐                          │
+│   │ Review  │────────►│   Refine    │                          │
+│   │ Output  │         │   Prompt    │                          │
+│   └────┬────┘         └──────┬──────┘                          │
+│        │                     │                                   │
+│        │ Yes                 │                                   │
+│        ▼                     │                                   │
+│   ┌─────────┐                │                                   │
+│   │  Test   │◄───────────────┘                                  │
+│   └────┬────┘                                                   │
+│        │                                                         │
+│        │ Pass                                                    │
+│        ▼                                                         │
+│   ┌─────────┐                                                   │
+│   │ Commit  │                                                   │
+│   └─────────┘                                                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Tools of the Trade
+
+### Cursor
+The AI-native IDE. Built on VS Code with deep AI integration. Composer mode for multi-file edits. Agent mode for autonomous coding.
+
+### Claude Code
+Command-line AI assistant. Reads your codebase, runs commands, edits files. Great for terminal-centric workflows and complex refactoring.
+
+### GitHub Copilot
+The original. Best for inline completions. Copilot Chat adds conversational assistance. Workspace mode understands your full project.
+
+### Windsurf
+Newer entrant focusing on "flows"—guided, multi-step coding sessions. Good for structured tasks.
+
+## Common Pitfalls
+
+### 1. Accepting Without Understanding
+```python
+# AI generated this - what does it do?
+result = reduce(lambda a, b: {**a, **{b[0]: b[1]}},
+                map(lambda x: (x.id, x), items), {})
+
+# If you can't explain it, don't ship it
+```
+
+### 2. Over-Prompting
+Sometimes writing the code is faster than explaining what you want. A 3-line function doesn't need a 10-line prompt.
+
+### 3. Context Window Blindness
+AI has limited context. If your prompt references code the AI can't see, you'll get hallucinated implementations.
+
+### 4. Ignoring the Diff
+Always review AI-generated changes. Hidden modifications, removed error handling, or subtle logic changes can slip through.
+
+### 5. Losing the Learning
+If you never understand what the AI generates, you stop growing as a developer. Use AI-generated code as a learning opportunity.
+
+## The Future of Vibe Coding
+
+The trajectory is clear: AI assistance will become more capable, more context-aware, and more autonomous. But the fundamentals won't change:
+
+- **Human judgment remains essential** - Someone needs to decide what to build and whether it's built correctly
+- **Communication skills matter more** - Clearly expressing intent becomes a core developer skill
+- **Understanding beats typing** - Knowing what good code looks like matters more than producing it character by character
+
+<Callout type="info" title="A New Developer Skill">
+"Prompt engineering for code" is becoming as important as knowing your programming language. The ability to effectively direct AI is a multiplier on all your other skills.
+</Callout>
+
+## Conclusion
+
+Vibe coding isn't magic—it's a tool. Like any tool, its value depends on how you use it:
+
+1. **Use it for leverage** - Boilerplate, tests, documentation, prototypes
+2. **Know when to switch** - Complex logic, security, debugging
+3. **Always review** - AI makes mistakes; you're still responsible
+4. **Keep learning** - Understand what the AI generates
+5. **Communicate clearly** - Better prompts yield better code
+
+The developers who thrive will be those who can fluidly move between directing AI and writing code directly—choosing the right tool for each moment.
+
+The vibe is real. Learn to ride it.
+
+---
+
+## References
+
+Karpathy, A. (2025). *On vibe coding*. Twitter/X. https://twitter.com/karpathy/status/1886192184808149383
+
+Chen, M., et al. (2021). Evaluating large language models trained on code. *arXiv preprint arXiv:2107.03374*. https://arxiv.org/abs/2107.03374
+
+GitHub. (2024). *The state of AI in software development*. GitHub Octoverse. https://github.blog/news-insights/octoverse/
+
+Cursor. (2025). *Cursor documentation*. https://docs.cursor.com/
+
+Anthropic. (2025). *Claude Code documentation*. https://docs.anthropic.com/claude-code/
+
+---
+
+*Exploring AI-assisted development? [Get in touch](/contact) to discuss how vibe coding can fit into your workflow.*

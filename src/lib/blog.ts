@@ -125,17 +125,18 @@ export function getAllPosts(locale: Locale = "en"): Post[] {
 export function getPostTranslation(slug: string, fromLocale: Locale): Post | null {
   const targetLocale = fromLocale === "en" ? "es" : "en";
 
-  // First, try to find a post with the same slug in the other locale
+  // Try to find a post with the same slug in the other locale
   const sameSlugPost = getPostBySlug(slug, targetLocale);
   if (sameSlugPost) {
     return sameSlugPost;
   }
 
-  // Then, look for a post that has translationOf pointing to this slug
-  const allPosts = getAllPosts(targetLocale);
-  const translatedPost = allPosts.find(post => post.frontmatter.translationOf === slug);
-  if (translatedPost) {
-    return translatedPost;
+  // For Spanish posts looking for English, check translationOf field
+  if (fromLocale === "es") {
+    const currentPost = getPostBySlug(slug, "es");
+    if (currentPost?.frontmatter.translationOf) {
+      return getPostBySlug(currentPost.frontmatter.translationOf, "en");
+    }
   }
 
   return null;

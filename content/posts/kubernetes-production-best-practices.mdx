@@ -1,0 +1,548 @@
+---
+title: "Kubernetes Best Practices for Production Deployments"
+description: "A practical guide to running Kubernetes in production, covering resource management, security hardening, observability, and deployment strategies based on real-world experience."
+date: 2026-01-10
+updated: 2026-01-18
+published: true
+category: "DevOps"
+tags: ["Kubernetes", "DevOps", "Cloud", "Docker", "Infrastructure", "Production"]
+author: "Osvaldo Restrepo"
+tldr: "Production Kubernetes requires resource limits, security contexts, proper health checks, and observability. Use namespaces for isolation, implement network policies, and always have rollback strategies. Start simple and add complexity only when needed."
+faqs:
+  - question: "When should I use Kubernetes?"
+    answer: "Kubernetes makes sense when you have multiple services that need independent scaling, deployment, and lifecycle management. For a single application or small team, managed platforms like Heroku, Render, or Cloud Run may be simpler and more cost-effective."
+  - question: "What are resource requests vs limits?"
+    answer: "Requests are the minimum resources a container needs to run—Kubernetes uses this for scheduling. Limits are the maximum resources a container can use. Set requests based on typical usage and limits to prevent runaway processes from affecting other workloads."
+  - question: "How do I handle secrets in Kubernetes?"
+    answer: "Native Kubernetes Secrets are base64-encoded (not encrypted). For production, use external secret management like HashiCorp Vault, AWS Secrets Manager, or sealed-secrets. Enable encryption at rest for etcd where secrets are stored."
+  - question: "What's the difference between Deployment and StatefulSet?"
+    answer: "Deployments are for stateless applications where any pod can handle any request. StatefulSets are for stateful applications needing stable network identities, persistent storage, and ordered deployment/scaling (like databases or message queues)."
+relatedPosts: ["multi-tenant-saas-architecture", "event-driven-data-pipelines"]
+---
+
+Running Kubernetes in production is different from development. After managing clusters serving millions of requests, I've learned which practices actually matter and which are over-engineering. This guide focuses on what keeps systems reliable.
+
+## Resource Management
+
+### Setting Requests and Limits
+
+Resource configuration is the most impactful production setting. Get it wrong, and you'll have OOMKilled pods or noisy neighbor problems.
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: api
+        image: myapp/api:v1.2.3
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"      # 0.1 CPU cores
+          limits:
+            memory: "512Mi"  # Hard limit - exceeding causes OOMKill
+            cpu: "500m"      # Soft limit - throttled if exceeded
+        # Recommended: Set QoS class to Guaranteed for critical services
+        # by setting requests == limits
+```
+
+<Callout type="tip" title="Sizing Strategy">
+Start with requests at 50-70% of your observed average usage. Set memory limits at 2x requests (memory spikes are common). Set CPU limits at 3-5x requests or omit them (CPU is compressible and throttles gracefully).
+</Callout>
+
+### Resource Monitoring
+
+```yaml
+# Use Vertical Pod Autoscaler in recommendation mode first
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: api-server-vpa
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-server
+  updatePolicy:
+    updateMode: "Off"  # Just recommendations, no auto-update
+```
+
+### Horizontal Pod Autoscaling
+
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: api-server-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api-server
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Scale up immediately
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+```
+
+## Health Checks
+
+### Liveness vs Readiness vs Startup Probes
+
+```yaml
+spec:
+  containers:
+  - name: api
+    livenessProbe:
+      # "Is this container alive?" - restarts if failed
+      httpGet:
+        path: /health/live
+        port: 8080
+      initialDelaySeconds: 15
+      periodSeconds: 10
+      failureThreshold: 3
+
+    readinessProbe:
+      # "Can this container handle traffic?" - removes from service if failed
+      httpGet:
+        path: /health/ready
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 3
+
+    startupProbe:
+      # "Has this container started?" - for slow-starting containers
+      httpGet:
+        path: /health/live
+        port: 8080
+      initialDelaySeconds: 0
+      periodSeconds: 5
+      failureThreshold: 30  # 30 * 5s = 150s max startup time
+```
+
+### Implementing Health Endpoints
+
+```python
+# FastAPI example
+from fastapi import FastAPI, Response
+import asyncio
+
+app = FastAPI()
+
+# Track dependencies
+db_healthy = True
+cache_healthy = True
+
+@app.get("/health/live")
+async def liveness():
+    """Is the process alive? Keep this simple."""
+    return {"status": "alive"}
+
+@app.get("/health/ready")
+async def readiness(response: Response):
+    """Can we handle traffic? Check all dependencies."""
+    checks = {
+        "database": await check_database(),
+        "cache": await check_cache(),
+        "external_api": await check_external_api(),
+    }
+
+    all_healthy = all(checks.values())
+
+    if not all_healthy:
+        response.status_code = 503
+
+    return {
+        "status": "ready" if all_healthy else "not_ready",
+        "checks": checks
+    }
+
+async def check_database():
+    try:
+        await db.execute("SELECT 1")
+        return True
+    except Exception:
+        return False
+```
+
+<Callout type="warning" title="Common Mistake">
+Don't make liveness probes check external dependencies. A database outage shouldn't restart your pods—that makes things worse. Liveness checks if YOUR container is working.
+</Callout>
+
+## Security Hardening
+
+### Pod Security Context
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: secure-pod
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+    seccompProfile:
+      type: RuntimeDefault
+
+  containers:
+  - name: app
+    image: myapp:v1.0.0
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+          - ALL
+    volumeMounts:
+    - name: tmp
+      mountPath: /tmp
+    - name: cache
+      mountPath: /var/cache
+
+  volumes:
+  - name: tmp
+    emptyDir: {}
+  - name: cache
+    emptyDir: {}
+```
+
+### Network Policies
+
+```yaml
+# Default deny all ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+# Allow specific traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-server-policy
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: api-server
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:  # Allow DNS
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+```
+
+### Secret Management
+
+```yaml
+# Use External Secrets Operator for production
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: api-secrets
+  namespace: production
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: vault-backend
+  target:
+    name: api-secrets
+    creationPolicy: Owner
+  data:
+  - secretKey: database-url
+    remoteRef:
+      key: production/api
+      property: DATABASE_URL
+  - secretKey: api-key
+    remoteRef:
+      key: production/api
+      property: API_KEY
+```
+
+## Deployment Strategies
+
+### Rolling Updates with Zero Downtime
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+spec:
+  replicas: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2        # Can create 2 extra pods during update
+      maxUnavailable: 1  # At most 1 pod unavailable during update
+  template:
+    spec:
+      containers:
+      - name: api
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/bin/sh", "-c", "sleep 10"]  # Graceful shutdown
+        terminationGracePeriodSeconds: 30
+```
+
+### Blue-Green Deployments with Argo Rollouts
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api-server
+spec:
+  replicas: 5
+  strategy:
+    blueGreen:
+      activeService: api-server-active
+      previewService: api-server-preview
+      autoPromotionEnabled: false  # Manual promotion
+      prePromotionAnalysis:
+        templates:
+        - templateName: success-rate
+        args:
+        - name: service-name
+          value: api-server-preview
+  template:
+    # ... pod template
+```
+
+### Canary Deployments
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: api-server
+spec:
+  replicas: 10
+  strategy:
+    canary:
+      steps:
+      - setWeight: 10
+      - pause: {duration: 5m}
+      - setWeight: 30
+      - pause: {duration: 5m}
+      - setWeight: 50
+      - pause: {duration: 10m}
+      - setWeight: 100
+      analysis:
+        templates:
+        - templateName: success-rate
+        startingStep: 2  # Start analysis at 30%
+        args:
+        - name: service-name
+          value: api-server
+```
+
+## Observability
+
+### Structured Logging
+
+```python
+import structlog
+import json
+
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.JSONRenderer()
+    ]
+)
+
+logger = structlog.get_logger()
+
+# Log with context
+logger.info(
+    "request_processed",
+    request_id="abc-123",
+    user_id="user-456",
+    duration_ms=45,
+    status_code=200,
+    path="/api/users"
+)
+
+# Output (Kubernetes-friendly JSON):
+# {"event": "request_processed", "request_id": "abc-123", "user_id": "user-456",
+#  "duration_ms": 45, "status_code": 200, "path": "/api/users",
+#  "level": "info", "timestamp": "2024-01-15T10:30:00Z"}
+```
+
+### Prometheus Metrics
+
+```python
+from prometheus_client import Counter, Histogram, start_http_server
+
+# Define metrics
+REQUEST_COUNT = Counter(
+    'http_requests_total',
+    'Total HTTP requests',
+    ['method', 'endpoint', 'status']
+)
+
+REQUEST_LATENCY = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request latency',
+    ['method', 'endpoint'],
+    buckets=[0.01, 0.05, 0.1, 0.5, 1.0, 5.0]
+)
+
+# Use in middleware
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+
+    REQUEST_COUNT.labels(
+        method=request.method,
+        endpoint=request.url.path,
+        status=response.status_code
+    ).inc()
+
+    REQUEST_LATENCY.labels(
+        method=request.method,
+        endpoint=request.url.path
+    ).observe(duration)
+
+    return response
+```
+
+### ServiceMonitor for Prometheus Operator
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api-server
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: api-server
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+```
+
+## Production Checklist
+
+| Category | Item | Priority |
+|----------|------|----------|
+| **Resources** | CPU/Memory requests set | Critical |
+| | Memory limits set | Critical |
+| | HPA configured | High |
+| **Health** | Liveness probe configured | Critical |
+| | Readiness probe configured | Critical |
+| | Startup probe (if slow startup) | Medium |
+| **Security** | Non-root user | Critical |
+| | Read-only filesystem | High |
+| | Network policies | High |
+| | Pod Security Standards | High |
+| | Secrets externalized | Critical |
+| **Reliability** | Multiple replicas | Critical |
+| | Pod disruption budget | High |
+| | Anti-affinity rules | High |
+| **Observability** | Structured logging | Critical |
+| | Metrics exported | High |
+| | Distributed tracing | Medium |
+
+## Conclusion
+
+Production Kubernetes requires discipline in a few key areas:
+
+1. **Resource management** - Set requests and limits based on data
+2. **Health checks** - Distinguish between liveness and readiness
+3. **Security** - Principle of least privilege everywhere
+4. **Deployments** - Always have a rollback strategy
+5. **Observability** - Logs, metrics, and traces are non-negotiable
+
+Start simple, measure everything, and add complexity only when you have evidence it's needed.
+
+---
+
+## References
+
+Kubernetes Authors. (2024). *Production best practices*. https://kubernetes.io/docs/setup/production-environment/
+
+Google Cloud. (2024). *Best practices for running cost-optimized Kubernetes applications on GKE*. https://cloud.google.com/architecture/best-practices-for-running-cost-effective-kubernetes-applications-on-gke
+
+Burns, B., Beda, J., Hightower, K., & Evenson, L. (2022). *Kubernetes: Up and running* (3rd ed.). O'Reilly Media.
+
+Hausenblas, M., & Schimanski, S. (2019). *Programming Kubernetes*. O'Reilly Media.
+
+---
+
+*Running Kubernetes in production? [Get in touch](/contact) to discuss infrastructure strategies.*

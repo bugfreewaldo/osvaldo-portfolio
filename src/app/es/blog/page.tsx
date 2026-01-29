@@ -66,7 +66,7 @@ export default function SpanishBlogPage() {
       <section className="relative px-4 pb-16">
         <div className="max-w-4xl mx-auto">
           {posts.length > 0 ? (
-            <BlogPostsList posts={posts} />
+            <BlogPostsList posts={posts} locale="es" />
           ) : (
             <div className="text-center py-16">
               <p className="text-slate-600 dark:text-slate-400 mb-4">
