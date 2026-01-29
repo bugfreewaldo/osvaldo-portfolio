@@ -1,15 +1,20 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Wrench } from "lucide-react";
+import { Wrench, Database } from "lucide-react";
 import Image from "next/image";
+
+// Helper to get icon URL - uses jsdelivr CDN which is more reliable
+const getIconUrl = (slug: string) =>
+  `https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/${slug}.svg`;
 
 interface Tool {
   name: string;
   description: string;
-  logo: string; // Simple Icons slug or custom URL
+  logo: string; // Simple Icons slug
   url: string;
   invertInDark?: boolean; // For logos that need inversion in dark mode
+  useFallback?: boolean; // Use Lucide icon instead of Simple Icons
 }
 
 interface ToolCategory {
@@ -65,6 +70,7 @@ const toolCategories: ToolCategory[] = [
         description: "Vector database for semantic search and RAG",
         logo: "pinecone",
         url: "https://pinecone.io",
+        useFallback: true,
       },
       {
         name: "Hugging Face",
@@ -245,14 +251,18 @@ function ToolCard({ tool, index }: { tool: Tool; index: number }) {
       className="group flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:shadow-lg hover:shadow-indigo-500/5 transition-all duration-300"
     >
       <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center p-2.5 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
-        <Image
-          src={`https://cdn.simpleicons.org/${tool.logo}`}
-          alt={`${tool.name} logo`}
-          width={28}
-          height={28}
-          className={`w-7 h-7 ${tool.invertInDark ? "dark:invert" : ""}`}
-          unoptimized
-        />
+        {tool.useFallback ? (
+          <Database className="w-7 h-7 text-indigo-500" />
+        ) : (
+          <Image
+            src={getIconUrl(tool.logo)}
+            alt={`${tool.name} logo`}
+            width={28}
+            height={28}
+            className={`w-7 h-7 ${tool.invertInDark ? "dark:invert" : ""}`}
+            unoptimized
+          />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">

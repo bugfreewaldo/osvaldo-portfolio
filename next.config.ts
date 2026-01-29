@@ -5,8 +5,8 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "cdn.simpleicons.org",
-        pathname: "/**",
+        hostname: "cdn.jsdelivr.net",
+        pathname: "/npm/simple-icons@latest/**",
       },
     ],
   },
