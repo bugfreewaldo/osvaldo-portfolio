@@ -1,0 +1,252 @@
+---
+title: "Diseñando Arquitectura de Microservicios Escalable"
+description: "Una guía práctica para diseñar, construir y operar microservicios a escala, cubriendo límites de servicio, patrones de comunicación, gestión de datos y excelencia operacional."
+date: 2026-01-05
+updated: 2026-01-14
+published: true
+category: "Diseño de Sistemas"
+tags: ["Microservicios", "Diseño de Sistemas", "Arquitectura", "Sistemas Distribuidos", "Diseño de API", "Escalabilidad"]
+author: "Osvaldo Restrepo"
+translationOf: "scalable-microservices-architecture"
+tldr: "Los microservicios tienen éxito cuando los límites de servicio coinciden con dominios de negocio, la comunicación es resistente a fallos, la propiedad de datos es clara y los equipos pueden desplegar independientemente. Empieza con un monolito modular y extrae servicios solo cuando tengas evidencia clara de necesidad."
+faqs:
+  - question: "¿Cuándo debería usar microservicios en lugar de un monolito?"
+    answer: "Considera microservicios cuando tienes múltiples equipos que necesitan despliegue independiente, diferentes requisitos de escalado para diferentes partes del sistema, o componentes con necesidades tecnológicas drásticamente diferentes. Para equipos pequeños o productos en etapa temprana, un monolito bien estructurado es usualmente mejor."
+  - question: "¿Cómo se definen los límites de servicio?"
+    answer: "Los límites de servicio deben alinearse con dominios de negocio (contextos delimitados de DDD). Cada servicio debe ser dueño de sus datos, tener un propósito claro que pueda describirse en una oración, y ser desplegable independientemente. Evita servicios que requieran despliegues coordinados."
+  - question: "¿Cómo se comunican los microservicios?"
+    answer: "Síncrono (REST, gRPC) para solicitudes en tiempo real, asíncrono (colas de mensajes, eventos) para desacoplamiento. Prefiere async para operaciones no bloqueantes. Siempre diseña para el fallo: implementa timeouts, reintentos y circuit breakers."
+  - question: "¿Cómo manejas la consistencia de datos entre servicios?"
+    answer: "Abraza la consistencia eventual donde sea posible. Usa el patrón Saga para transacciones distribuidas. Cada servicio es dueño de su almacén de datos. Para necesidades de consistencia fuerte, considera si esas operaciones deberían estar en el mismo servicio."
+relatedPosts: ["kubernetes-production-best-practices", "event-driven-data-pipelines"]
+---
+
+La arquitectura de microservicios promete escalado independiente, flexibilidad tecnológica y autonomía de equipos. Pero microservicios mal diseñados crean monolitos distribuidos—toda la complejidad de la distribución sin ninguno de los beneficios. Esta guía comparte patrones que funcionan.
+
+## Cuándo los Microservicios Tienen Sentido
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Marco de Decisión de Microservicios                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Considera Microservicios Cuando:     Quédate con Monolito Si:  │
+│                                                                  │
+│  ✓ Múltiples equipos necesitan       ✗ Equipo pequeño (\<10 devs)│
+│    desplegar independientemente       ✗ Límites de dominio       │
+│  ✓ Diferentes requisitos de escalado   poco claros              │
+│  ✓ Diferentes necesidades tecnológicas✗ Producto en etapa       │
+│  ✓ Límites de dominio claros           temprana                 │
+│  ✓ Independencia organizacional       ✗ Fecha límite ajustada   │
+│    necesaria                          ✗ Requisitos de consistencia│
+│                                         fuerte                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="warning" title="Error Común">
+No empieces con microservicios. Empieza con un monolito bien estructurado, luego extrae servicios cuando tengas evidencia de que los beneficios superan los costos. La descomposición prematura es una causa principal de fallos en microservicios.
+</Callout>
+
+## Principios de Diseño de Servicios
+
+### Límites Orientados al Dominio
+
+Los servicios deben mapear a capacidades de negocio, no a capas técnicas:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ❌ Anti-Patrón: Capas Técnicas                                │
+│                                                                  │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│   │    UI    │  │   API    │  │  Lógica  │  │  Base de │      │
+│   │ Service  │  │ Gateway  │  │ Service  │  │  Datos   │      │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+│                                                                  │
+│   ✓ Buen Patrón: Dominios de Negocio                           │
+│                                                                  │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│   │  Pedido  │  │Inventario│  │   Pago   │  │  Envío   │      │
+│   │ Service  │  │ Service  │  │ Service  │  │ Service  │      │
+│   │          │  │          │  │          │  │          │      │
+│   │ UI+API+  │  │ UI+API+  │  │ UI+API+  │  │ UI+API+  │      │
+│   │Lógica+BD │  │Lógica+BD │  │Lógica+BD │  │Lógica+BD │      │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Dimensionamiento de Servicios
+
+La regla del "equipo de dos pizzas" aplica: un servicio debe ser propiedad de un equipo lo suficientemente pequeño para ser alimentado con dos pizzas. Más prácticamente:
+
+- **Puede ser entendido** por un nuevo miembro del equipo en una semana
+- **Puede ser reescrito** desde cero en unas semanas si es necesario
+- **Puede ser desplegado** independientemente sin coordinar con otros equipos
+- **Tiene un propósito claro** describible en una oración
+
+## Patrones de Comunicación
+
+### Comunicación Síncrona
+
+```python
+# Ejemplo: Cliente gRPC con patrones de resiliencia
+import grpc
+from tenacity import retry, stop_after_attempt, wait_exponential
+from circuitbreaker import circuit
+
+class OrderServiceClient:
+    def __init__(self, host: str, port: int):
+        self.channel = grpc.insecure_channel(f"{host}:{port}")
+        self.stub = OrderServiceStub(self.channel)
+
+    @circuit(failure_threshold=5, recovery_timeout=30)
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10)
+    )
+    def get_order(self, order_id: str, timeout: float = 5.0) -> Order:
+        """
+        Obtener pedido con circuit breaker y reintento.
+
+        - Circuit breaker: Se abre después de 5 fallos, espera 30s antes de reintentar
+        - Reintento: 3 intentos con backoff exponencial
+        - Timeout: deadline de 5 segundos
+        """
+        try:
+            request = GetOrderRequest(order_id=order_id)
+            response = self.stub.GetOrder(request, timeout=timeout)
+            return Order.from_proto(response)
+
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                return None
+            raise ServiceUnavailableError(f"Error del servicio de pedidos: {e.details()}")
+```
+
+### Comunicación Asíncrona
+
+```python
+# Patrón de comunicación orientado a eventos
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class DomainEvent:
+    event_id: str
+    event_type: str
+    aggregate_id: str
+    aggregate_type: str
+    timestamp: datetime
+    version: int
+    data: dict
+
+class EventPublisher:
+    def __init__(self, broker: MessageBroker):
+        self.broker = broker
+
+    async def publish(self, event: DomainEvent):
+        """
+        Publicar evento a topic basado en tipo de agregado.
+        """
+        topic = f"events.{event.aggregate_type}"
+
+        await self.broker.publish(
+            topic=topic,
+            key=event.aggregate_id,  # Asegura ordenamiento por agregado
+            value=event.to_json(),
+            headers={
+                "event_type": event.event_type,
+                "version": str(event.version)
+            }
+        )
+```
+
+## Gestión de Datos
+
+### Base de Datos por Servicio
+
+Cada servicio es dueño de sus datos. Para datos compartidos:
+- **Opción A**: Llamada API (síncrona) - Simple, consistente, crea acoplamiento
+- **Opción B**: Caché local (asíncrona) - Suscríbete a eventos, mantén copia de solo lectura
+
+### Patrón Saga para Transacciones Distribuidas
+
+```python
+class Saga:
+    """Saga orquestada para transacciones distribuidas."""
+
+    def __init__(self, saga_id: str, steps: list[SagaStep]):
+        self.saga_id = saga_id
+        self.steps = steps
+        self.state = SagaState.PENDING
+        self.completed_steps: list[str] = []
+
+    async def execute(self, context: dict) -> bool:
+        """Ejecutar pasos de saga, compensando en caso de fallo."""
+        self.state = SagaState.EXECUTING
+
+        try:
+            for step in self.steps:
+                await step.action(context)
+                self.completed_steps.append(step.name)
+
+            self.state = SagaState.COMPLETED
+            return True
+
+        except Exception as e:
+            # Compensación: revertir pasos completados en orden inverso
+            self.state = SagaState.COMPENSATING
+            await self._compensate(context)
+            self.state = SagaState.FAILED
+            raise SagaFailedError(f"Saga falló: {e}")
+
+    async def _compensate(self, context: dict):
+        """Ejecutar compensación en orden inverso."""
+        for step_name in reversed(self.completed_steps):
+            step = next(s for s in self.steps if s.name == step_name)
+            try:
+                await step.compensation(context)
+            except Exception as e:
+                logger.error(f"Compensación falló para {step_name}: {e}")
+```
+
+## Checklist de Producción
+
+| Categoría | Item | Prioridad |
+|-----------|------|-----------|
+| **Diseño** | Servicios alineados con dominios de negocio | Crítico |
+| | Propiedad de datos clara | Crítico |
+| | Contratos de API documentados | Alto |
+| **Resiliencia** | Circuit breakers implementados | Crítico |
+| | Timeouts configurados | Crítico |
+| | Reintento con backoff | Alto |
+| **Observabilidad** | Trazabilidad distribuida | Crítico |
+| | Logging centralizado | Crítico |
+| | Métricas y dashboards | Alto |
+
+## Conclusión
+
+Una arquitectura de microservicios exitosa requiere:
+
+1. **Límites correctos** - Alinear con dominios de negocio, no capas técnicas
+2. **Comunicación resiliente** - Asumir que todo falla
+3. **Propiedad clara de datos** - Cada servicio es dueño de sus datos
+4. **Despliegue independiente** - Sin releases coordinados
+5. **Observabilidad** - No puedes arreglar lo que no puedes ver
+
+Empieza simple, mide todo, y extrae servicios solo cuando la evidencia lo soporte.
+
+---
+
+## Referencias
+
+Newman, S. (2021). *Building microservices: Designing fine-grained systems* (2nd ed.). O'Reilly Media.
+
+Richardson, C. (2018). *Microservices patterns*. Manning Publications. https://microservices.io/
+
+Fowler, M. (2015). *Microservices: A definition of this new architectural term*. https://martinfowler.com/articles/microservices.html
+
+---
+
+*¿Diseñando una arquitectura de microservicios? [Contáctame](/contact) para discutir estrategias de diseño de sistemas.*

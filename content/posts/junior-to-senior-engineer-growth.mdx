@@ -1,0 +1,316 @@
+---
+title: "Navigating the Tech Industry: From Junior to Senior Engineer"
+description: "A practical roadmap for career growth in software engineering, covering technical skills, soft skills, and strategic career decisions based on real industry experience."
+date: 2026-01-20
+updated: 2026-01-26
+published: true
+category: "Career"
+tags: ["Career Growth", "Software Engineering", "Leadership", "Professional Development", "Tech Industry"]
+author: "Osvaldo Restrepo"
+tldr: "Senior engineering is about impact, not just technical skill. Focus on solving the right problems, multiplying team effectiveness, and building systems that outlast your involvement. Technical depth matters, but so does communication and business acumen."
+faqs:
+  - question: "How long does it take to become a senior engineer?"
+    answer: "Typically 5-8 years of focused experience, but it varies significantly. It depends less on time and more on the breadth of problems you've solved, systems you've built, and the impact you've demonstrated. Some reach it faster; others plateau without deliberate growth."
+  - question: "Should I specialize or be a generalist?"
+    answer: "The most successful path is T-shaped: deep expertise in one area combined with broad knowledge across the stack. Specialization gets you hired; breadth keeps you valuable. In the early career, optimize for learning breadth; mid-career, develop depth."
+  - question: "Is management the only path to senior roles?"
+    answer: "No. Most companies have parallel individual contributor (IC) tracks that go to Staff, Principal, and Distinguished levels. These roles require technical leadership without direct reports. Choose based on whether you want to influence through code and architecture or through people and process."
+  - question: "How important is company size for career growth?"
+    answer: "Both have value. Startups offer breadth—you'll touch everything. Large companies offer depth and mentorship. Early career, optimize for learning and mentorship. Mid-career, consider impact and scope. The best path often alternates between both."
+relatedPosts: ["phd-to-industry", "technical-decision-making"]
+---
+
+I've mentored dozens of engineers from junior to senior levels, and I've made this journey myself. The path isn't always obvious, but certain patterns consistently predict success. This guide shares what I've learned.
+
+## Understanding the Levels
+
+Career levels aren't about years—they're about scope and impact.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Engineering Career Ladder                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Junior Engineer (0-2 years)                                     │
+│  └─ Scope: Tasks → Complete assigned work with guidance          │
+│                                                                  │
+│  Mid-Level Engineer (2-5 years)                                  │
+│  └─ Scope: Features → Own features end-to-end independently      │
+│                                                                  │
+│  Senior Engineer (5-8+ years)                                    │
+│  └─ Scope: Systems → Design systems, mentor others, set standards│
+│                                                                  │
+│  Staff Engineer (8+ years)                                       │
+│  └─ Scope: Organization → Influence technical direction broadly  │
+│                                                                  │
+│  Principal/Distinguished (10+ years)                             │
+│  └─ Scope: Industry → Shape company strategy and industry trends │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="tip" title="Key Insight">
+The transition from mid to senior isn't about writing better code—it's about having broader impact. You move from "I built this" to "I enabled the team to build this."
+</Callout>
+
+## Phase 1: Junior to Mid-Level
+
+This phase is about building your technical foundation and learning to be reliable.
+
+### Core Competencies to Develop
+
+**1. Master Your Core Stack**
+
+Pick a stack and go deep. You should be able to:
+- Debug issues without Stack Overflow
+- Explain how the framework works under the hood
+- Make informed decisions about patterns and libraries
+
+```python
+# Junior approach: Copy-paste pattern
+def get_user(user_id):
+    try:
+        return db.query(User).filter(User.id == user_id).first()
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
+# Mid-level approach: Intentional error handling, typing, logging
+from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_user(user_id: int) -> Optional[User]:
+    """Fetch user by ID with proper error handling."""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            logger.info(f"User {user_id} not found")
+        return user
+    except DatabaseError as e:
+        logger.error(f"Database error fetching user {user_id}: {e}")
+        raise
+```
+
+**2. Learn to Estimate**
+
+Estimation is a skill. Track your estimates vs. actuals:
+
+| Task | Estimated | Actual | Variance | Why? |
+|------|-----------|--------|----------|------|
+| API endpoint | 2 days | 3 days | +50% | Didn't account for auth |
+| Bug fix | 4 hours | 8 hours | +100% | Root cause was different |
+| Feature X | 1 week | 1 week | 0% | Similar to past work |
+
+Over time, you'll calibrate. Senior engineers are good at estimation because they've been wrong enough times to know where complexity hides.
+
+**3. Write Code Others Can Read**
+
+Code is read 10x more than it's written. Optimize for the reader:
+
+```typescript
+// Hard to understand
+const f = (a: any[]) => a.filter(x => x.s === 'a' && x.d > Date.now() - 86400000);
+
+// Clear intent
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
+interface Task {
+  status: 'active' | 'completed' | 'archived';
+  dueDate: number;
+}
+
+function getRecentActiveTasks(tasks: Task[]): Task[] {
+  const oneDayAgo = Date.now() - MILLISECONDS_PER_DAY;
+  return tasks.filter(task =>
+    task.status === 'active' &&
+    task.dueDate > oneDayAgo
+  );
+}
+```
+
+### Behaviors That Accelerate Growth
+
+1. **Ask questions publicly** - Your confusion is shared by others. Questions in team channels help everyone.
+
+2. **Write documentation** - Document what confused you. Future teammates will thank you.
+
+3. **Review code actively** - Even if you can't approve, read PRs and ask questions. You'll learn patterns faster.
+
+4. **Volunteer for the ugly work** - Bug triage, tech debt, documentation. These teach you more than greenfield projects.
+
+## Phase 2: Mid to Senior
+
+This is the hardest transition. Technical skill becomes table stakes; impact becomes the differentiator.
+
+### The Senior Mindset Shift
+
+According to Larson's influential work on staff engineering (Larson, 2021), senior engineers operate differently:
+
+| Mid-Level | Senior |
+|-----------|--------|
+| "How do I build this?" | "Should we build this?" |
+| "My code works" | "My code is maintainable" |
+| "I finished the task" | "I solved the problem" |
+| "I need help" | "Here's my plan, what am I missing?" |
+
+### Multiplier Skills
+
+**1. Technical Decision Making**
+
+Document decisions systematically:
+
+```markdown
+# ADR-001: Choosing a Message Queue
+
+## Context
+We need async processing for email notifications. Currently handling 10k/day, expecting 100k/day in 6 months.
+
+## Options Considered
+
+### Option A: Redis Pub/Sub
+- Pros: Already in stack, simple
+- Cons: No persistence, limited scaling
+
+### Option B: RabbitMQ
+- Pros: Mature, good persistence, routing
+- Cons: Operational overhead, new infrastructure
+
+### Option C: AWS SQS
+- Pros: Managed, scales automatically, cheap
+- Cons: Vendor lock-in, 256KB message limit
+
+## Decision
+AWS SQS. Operational simplicity outweighs lock-in concerns for our scale.
+
+## Consequences
+- Need to design for 256KB limit (use S3 for large payloads)
+- Team needs SQS training
+- Monitoring setup required
+```
+
+**2. System Design Thinking**
+
+Think in terms of systems, not features:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    System Design Checklist                   │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  □ What are the requirements (functional + non-functional)? │
+│  □ What are the failure modes?                               │
+│  □ How does it scale?                                        │
+│  □ How do we monitor it?                                     │
+│  □ How do we deploy and rollback?                            │
+│  □ What's the migration path from current state?             │
+│  □ Who will maintain this in 2 years?                        │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**3. Mentorship**
+
+Your impact multiplies through others. Effective mentorship patterns:
+
+- **Code review as teaching** - Explain the "why," not just the "what"
+- **Pair programming** - 30 minutes pairing > 2 hours of async review
+- **Office hours** - Dedicated time for questions reduces interruptions
+- **Documentation** - Write the guide you wish you had
+
+<Callout type="warning" title="Common Mistake">
+Don't just answer questions—teach people how to find answers. "Have you checked the logs?" is often better than debugging for them.
+</Callout>
+
+### Building Credibility
+
+Senior engineers are trusted. Trust is built through:
+
+1. **Delivering consistently** - Meet commitments. If you can't, communicate early.
+
+2. **Owning failures** - "I broke production" builds more trust than excuses.
+
+3. **Staying calm in crises** - Be the person who thinks clearly when things break.
+
+4. **Having opinions, loosely held** - Strong technical perspectives, but willing to be wrong.
+
+## Phase 3: Senior to Staff and Beyond
+
+Staff+ roles are about organizational impact. Technical skill is necessary but insufficient.
+
+### Working at Scale
+
+Staff engineers think about:
+
+- **Technical strategy** - Where should the architecture be in 2 years?
+- **Cross-team problems** - Issues that span multiple teams
+- **Technical culture** - How does the organization make decisions?
+- **Talent development** - Building the next generation of leaders
+
+### The Glue Work
+
+Tanya Reilly's concept of "glue work" (Reilly, 2019) describes the essential but often invisible work that holds teams together:
+
+- Writing documentation that prevents repeated questions
+- Building tools that save everyone time
+- Facilitating discussions that lead to decisions
+- Identifying and addressing process problems
+
+<Callout type="danger" title="Warning">
+Glue work is essential but often unrewarded. Make sure it's visible and valued in your organization. If not, consider whether you're in the right place.
+</Callout>
+
+## Career Strategy
+
+### Choosing Companies
+
+Different companies offer different growth:
+
+| Company Type | Best For | Trade-offs |
+|--------------|----------|------------|
+| Early Startup (\<20) | Breadth, ownership | Chaos, limited mentorship |
+| Growth Startup (20-200) | Impact + structure | Fast-paced, may pivot |
+| Scale-up (200-1000) | Building at scale | Process overhead |
+| Big Tech | Depth, compensation, brand | Narrow scope, politics |
+| Consulting | Variety, business exposure | Context switching |
+
+### When to Leave
+
+Consider moving when:
+- You've stopped learning
+- Your impact is capped by the organization
+- Better opportunities exist (and you've given your current role a fair shot)
+
+Stay when:
+- You're still learning
+- There's a clear path to more scope
+- You haven't fully explored what's possible
+
+## Conclusion
+
+The path from junior to senior isn't a straight line—it's a series of transitions:
+
+1. **Junior → Mid**: Build technical competence and reliability
+2. **Mid → Senior**: Expand scope from tasks to systems
+3. **Senior → Staff**: Move from team impact to organizational impact
+
+Each transition requires letting go of what made you successful before. The best code you can write is the code you don't write because you found a better solution to the problem.
+
+Focus on impact. Everything else follows.
+
+---
+
+## References
+
+Larson, W. (2021). *Staff Engineer: Leadership beyond the management track*. https://staffeng.com/book
+
+Reilly, T. (2019). *Being glue*. No Idea Blog. https://noidea.dog/glue
+
+Fournier, C. (2017). *The manager's path: A guide for tech leaders navigating growth and change*. O'Reilly Media.
+
+Google. (2024). *Software engineering at Google: Lessons learned from programming over time*. O'Reilly Media. https://abseil.io/resources/swe-book
+
+---
+
+*Want to discuss your career path? [Get in touch](/contact) for mentorship conversations.*

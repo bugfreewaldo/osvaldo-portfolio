@@ -2,159 +2,102 @@
 
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { Briefcase, GraduationCap, ChevronDown, MapPin, Calendar, Bot, Code, Mic, Wrench, Globe, Star } from "lucide-react";
+import { Briefcase, GraduationCap, ChevronDown, MapPin, Calendar, Bot, Code, Mic, Wrench, Globe, Star, Award, Zap } from "lucide-react";
 import Testimonials from "../components/Testimonials";
 
 // ---------- Experience ----------
 const experience = [
   {
-    company: "9Vectors",
-    role: "Senior Full Stack AI & Software Engineer",
+    company: "TheGreyMatterAI",
+    role: "Artificial Intelligence Engineer",
     period: "Nov 2025 - Present",
-    location: "Remote",
+    location: "Orlando, FL (Remote)",
     type: "current",
-    description: "Building and scaling AI-powered assessment platforms that help organizations evaluate talent through intelligent, adaptive testing. Responsible for full-stack development across 4 production platforms, from LLM orchestration to frontend interfaces.",
+    description: "Architect and build core systems across a multi-product AI SaaS ecosystem for leadership assessment, organizational strategy, and decision intelligence.",
     highlights: [
-      "Architecting and maintaining 4 AI assessment platforms serving thousands of users with 99.9% uptime",
-      "Designing RAG pipelines with LangChain, Pinecone, and custom embedding models for contextual question generation",
-      "Building autonomous evaluation agents with multi-step reasoning and tool-calling for adaptive assessments",
-      "Implementing real-time voice AI systems for interview simulations with sub-200ms response latency",
-      "Establishing MLOps practices including CI/CD pipelines, model monitoring, A/B testing, and evaluation frameworks",
-      "Collaborating directly with founders on product strategy and technical roadmap decisions",
+      "Architect and develop GreyMatter 2.0, the central AI brain & identity layer powering Snapshot9, Measurement13, and 9Vectors",
+      "Design and implement token-based federation, multi-tenant auth, and cross-product entitlements",
+      "Build Model Context Protocol (MCP) services enabling safe, real-time AI tool usage",
+      "Develop cloud-native backend services using FastAPI, Azure, Cosmos DB, Redis, Docker, and GitHub Actions",
+      "Integrate LLMs (Claude / AI agents) with guardrails, observability, and production reliability",
+      "Implement background workers, caching, polling/WebSocket strategies, and resilience patterns",
+      "Collaborate with CTO and product leadership on architecture, data models, and scalability",
     ],
-    skills: ["LangChain", "Pinecone", "OpenAI", "Whisper", "Python", "TypeScript", "Next.js", "PostgreSQL"],
+    skills: ["FastAPI", "Azure", "Cosmos DB", "Redis", "Docker", "Claude", "MCP", "Python"],
   },
   {
     company: "Shining Image Of Texas, Inc.",
-    role: "Senior Full Stack AI & Software Engineer",
-    period: "Jul 2025 - Nov 2025",
+    role: "Artificial Intelligence Engineer",
+    period: "Nov 2021 - Nov 2025",
     location: "Austin, TX (Remote)",
-    description: "Led the AI engineering efforts for a multi-location service business, designing and deploying production AI systems that automated customer interactions and streamlined operations. Focused on voice agents, intelligent document retrieval, and system performance optimization.",
+    description: "Design and implement AI-driven solutions focused on real-world LLM applications, voice agents, and AI workflows.",
     highlights: [
-      "Designed and shipped production voice agents using Twilio, Whisper, and GPT-4, handling 200+ daily customer calls with automated transcription to CRM",
-      "Built enterprise RAG stacks with Pinecone and Weaviate, including custom evaluation harnesses measuring retrieval@k and answer correctness",
-      "Reduced p95 API latency by 40% through streaming response paths, prompt optimization, and intelligent caching strategies",
-      "Implemented safe human handoff protocols ensuring seamless escalation from AI to live agents when needed",
-      "Created observability dashboards tracking model performance, cost per interaction, and customer satisfaction metrics",
+      "Built AI-powered voice assistants for real-time and async call handling using Twilio, Whisper, GPT-4, ElevenLabs, and custom LLM pipelines",
+      "Delivered end-to-end systems with LangChain, Python, Node.js, and React; integrated Pinecone/Weaviate for Retrieval-Augmented Generation (RAG)",
+      "Engineered multi-intent call agents (scheduling, lead capture, Q&A, fallback recovery) aligned with production best practices",
+      "Automated customer workflows and backend processes using secure, scalable LLM-powered APIs",
+      "Rapid prototyping + iteration to improve UX and reduce latency in AI-driven interactions",
     ],
-    skills: ["Python", "Node/TS", "React", "LangChain", "Twilio", "Pinecone", "Weaviate", "AWS"],
+    skills: ["Python", "Node.js", "React", "LangChain", "Twilio", "Whisper", "GPT-4", "ElevenLabs", "Pinecone", "Weaviate"],
   },
   {
     company: "Shining Image Of Texas, Inc.",
     role: "Full Stack Software Engineer",
-    period: "Jan 2020 - Jul 2025",
+    period: "Jan 2017 - Nov 2021",
     location: "Austin, TX (Remote)",
-    description: "Sole developer responsible for building and maintaining the company's entire technology stack. Developed custom scheduling, billing, and CRM systems that transformed manual processes into automated workflows, directly contributing to 3x revenue growth over 5 years.",
+    description: "Designed and maintained end-to-end web applications; integrated payments, accounting, and communications tooling.",
     highlights: [
-      "Built a custom scheduling and dispatch system from scratch using Node.js, NestJS, and React, serving 50+ field technicians",
-      "Integrated Stripe payment processing and QuickBooks accounting, reducing monthly billing time from 40 hours to 12 hours (~70% reduction)",
-      "Developed AI-powered sales funnels and chat assistants that increased lead conversion rates by approximately 40%",
-      "Implemented automated SMS/email reminders via Twilio, reducing no-show rates by 60%",
-      "Established CI/CD pipelines with GitHub Actions and comprehensive test suites (Jest, Supertest) achieving 85% code coverage",
-      "Managed AWS infrastructure including EC2, RDS, S3, and CloudFront for production deployments",
+      "Built and maintained full-stack apps with Node.js/Express and React/Next.js with an emphasis on scalability and performance",
+      "Integrated QuickBooks, Stripe, and Twilio to automate invoicing, payment tracking, and communications",
+      "Developed reusable front-end components with Redux and TypeScript to improve maintainability",
+      "Deployed on AWS and Vercel with CI/CD and monitoring; managed multiple environments",
+      "Implemented authentication, validation, and security layers following OWASP best practices",
+      "Automated workflows between Fieldd, QuickBooks, and Stripe, reducing manual accounting work by 70%+",
+      "Conducted code reviews and performance tuning; prototyped internal AI tools and chatbots",
     ],
-    skills: ["TypeScript", "NestJS", "React", "Stripe", "QuickBooks API", "AWS", "PostgreSQL", "Twilio"],
-  },
-  {
-    company: "Shining Image Of Texas, Inc.",
-    role: "Chief Technology Officer",
-    period: "Jan 2019 - Dec 2019",
-    location: "Austin, TX",
-    description: "Promoted to lead the company's digital transformation from paper-based operations to modern cloud systems. Evaluated and implemented technology solutions across all departments while establishing IT governance and security practices.",
-    highlights: [
-      "Led complete digital transformation: migrated from paper to digital field service management (FSM) system",
-      "Integrated QuickBooks Online with custom workflows, eliminating double-entry and reducing accounting errors by 90%",
-      "Implemented modern payment solutions (Square, PayPal) increasing payment collection speed by 50%",
-      "Rolled out Microsoft 365 and Google Workspace for 60+ employees with training programs",
-      "Established security baselines including MFA, endpoint protection, and backup procedures",
-      "Managed $150K annual technology budget and vendor relationships",
-    ],
-    skills: ["Digital Transformation", "QuickBooks", "Microsoft 365", "Google Workspace", "IT Strategy", "Vendor Management"],
-  },
-  {
-    company: "Shining Image Of Texas, Inc.",
-    role: "IT Department Manager",
-    period: "Jan 2018 - Dec 2018",
-    location: "Austin, TX",
-    description: "Managed all IT operations for a growing service company with 50+ employees across multiple locations. Oversaw hardware, software, networking, and support while building the foundation for future digital initiatives.",
-    highlights: [
-      "Managed IT operations including helpdesk support, hardware procurement, and software licensing for 50+ users",
-      "Implemented asset lifecycle management system, reducing equipment costs by 25% through better tracking",
-      "Upgraded network infrastructure across 3 office locations, improving reliability and speed",
-      "Created IT documentation and standard operating procedures for common issues",
-      "Negotiated vendor contracts saving $20K annually on software and services",
-    ],
-    skills: ["IT Operations", "Infrastructure", "Asset Management", "Networking", "Vendor Negotiation"],
-  },
-  {
-    company: "Shining Image Of Texas, Inc.",
-    role: "Junior Web Designer",
-    period: "Aug 2017 - Feb 2018",
-    location: "Austin, TX",
-    description: "First role in the United States after relocating from Panama. Maintained the company's web presence and began learning the business operations that would later inform my development of custom internal systems.",
-    highlights: [
-      "Maintained and updated WordPress website, improving page load times by 40% through optimization",
-      "Managed DNS, SSL certificates, and domain registrations across multiple properties",
-      "Implemented basic SEO improvements that increased organic search traffic by 35%",
-      "Created landing pages for marketing campaigns with A/B testing",
-      "Learned the service business domain, identifying pain points that I later solved through custom software",
-    ],
-    skills: ["WordPress", "DNS", "SEO", "Web Design", "HTML/CSS", "Google Analytics"],
+    skills: ["TypeScript", "Node.js", "Express", "React", "Next.js", "Redux", "Stripe", "QuickBooks API", "AWS", "Vercel", "Twilio"],
   },
   {
     company: "Hyperware Solutions",
     role: "Technical Support Executive",
-    period: "Jan 2015 - Jul 2017",
-    location: "David, Chiriquí, Panama",
-    description: "Started my technology career at a local IT services company, providing technical support to small and medium businesses. Gained hands-on experience with hardware, networking, and customer service that built the foundation for my engineering career.",
+    period: "Jan 2015 - Dec 2016",
+    location: "Chiriquí, Panama",
+    description: "Provided end-to-end support across hardware, software, and networking systems.",
     highlights: [
-      "Provided on-site and remote technical support for 100+ SMB clients across the region",
-      "Diagnosed and repaired hardware issues including desktops, laptops, and servers",
-      "Configured and maintained network infrastructure: routers, switches, firewalls, and VPNs",
-      "Implemented security solutions including antivirus, backup systems, and access controls",
-      "Trained end-users on software applications and security best practices",
-      "Maintained 95% customer satisfaction rating through responsive and thorough support",
+      "Performed diagnostics, malware removal, and data recovery to minimize downtime",
+      "Installed and configured LAN, Wi-Fi, and VoIP systems to improve connectivity",
+      "Delivered remote/on-site support and produced documentation + escalation reports",
+      "Supported IT rollouts including server migrations and device lifecycle management",
     ],
-    skills: ["Technical Support", "Networking", "Security", "Hardware Repair", "Customer Service", "Windows Server"],
+    skills: ["Technical Support", "Networking", "Hardware Diagnostics", "VoIP", "Documentation"],
   },
 ];
 
 // ---------- Education ----------
-const education = [
+interface Education {
+  school: string;
+  degree: string;
+  period: string;
+  location: string;
+  notes: string[];
+  highlight?: string;
+}
+
+const education: Education[] = [
   {
-    school: "Harvard University",
-    degree: "Professional Certificate in Artificial Intelligence with Python (in progress)",
-    period: "2026 - Expected 2027",
-    location: "Cambridge, MA (Online)",
+    school: "Technological University of Panama",
+    degree: "Ph.D. in Artificial Intelligence with focus on Medical Research (in progress)",
+    period: "2024 - Expected 2027",
+    location: "Panama City, Panama",
     notes: [
-      "Advanced AI/ML concepts with hands-on Python implementation",
-      "Focus: neural networks, NLP, computer vision, and reinforcement learning",
+      "Research focus: AI applications in medical diagnostics and healthcare",
+      "Developing AI frameworks for clinical decision support systems",
     ],
   },
   {
-    school: "Universidad Tecnológica de Panamá",
-    degree: "Ph.D. in Software Engineering (in progress)",
+    school: "Technological University of Monterrey",
+    degree: "Master's in Artificial Intelligence (in progress)",
     period: "2025 - Expected 2027",
-    location: "Panama City, Panama",
-    notes: [
-      "Research focus: LLM evaluation methodologies, AI ethics, and software quality for AI systems",
-      "Developing frameworks for measuring reliability and fairness in production AI applications",
-    ],
-  },
-  {
-    school: "Universidad Tecnológica de Panamá",
-    degree: "Master's in Software Engineering",
-    period: "Sep 2023 - Mar 2025",
-    location: "Panama City, Panama",
-    notes: [
-      "Focus: requirements engineering, software architecture, test automation, and DevOps for AI systems",
-      "Capstone: RAG evaluation harness with retrieval@k metrics, factuality checks, and regression suites",
-    ],
-  },
-  {
-    school: "Tecnológico de Monterrey",
-    degree: "Master's in Artificial Intelligence",
-    period: "2023 - 2025",
     location: "Monterrey, Mexico (Online)",
     notes: [
       "Comprehensive AI curriculum: machine learning, deep learning, NLP, and computer vision",
@@ -162,77 +105,105 @@ const education = [
     ],
   },
   {
-    school: "Universidad Latina de Panamá",
+    school: "Technological University of Panama",
+    degree: "Master's in Computer Software Engineering",
+    period: "2023 - 2025",
+    location: "Panama City, Panama",
+    notes: [
+      "Focus: software architecture, requirements engineering, and DevOps practices",
+      "Advanced coursework in software quality and system design",
+    ],
+  },
+  {
+    school: "Latin University of Panama",
     degree: "Master's in Higher Education",
     period: "2022 - 2024",
     location: "Panama City, Panama",
     notes: [
       "Specialized training for university-level teaching and curriculum development",
-      "Focus: instructional design for technical topics, assessment methodologies, and AI literacy education",
+      "Focus: instructional design for technical topics and assessment methodologies",
     ],
   },
   {
     school: "University of the People",
-    degree: "Master's in Computer Science",
-    period: "2021 - 2024",
+    degree: "Bachelor of Science in Computer Science",
+    period: "2019 - 2024",
     location: "Pasadena, CA (Online)",
     notes: [
-      "Advanced topics: algorithms, distributed systems, information retrieval, and NLP",
-      "Research in LLM evaluation and fault-tolerant distributed applications",
+      "Core CS curriculum: algorithms, data structures, and software engineering",
+      "Focus on distributed systems and information retrieval",
     ],
   },
   {
     school: "Institute of Higher Education for Advanced Technical Training",
-    degree: "Associate's in Scientific Investigation",
-    period: "2021 - 2022",
-    location: "Panama City, Panama",
-    notes: [
-      "Research methodology: experimental design, statistical analysis, and literature review",
-      "Developed replicable protocols and research ethics frameworks",
-    ],
-  },
-  {
-    school: "Institute of Higher Education for Advanced Technical Training",
-    degree: "Associate's in Technology with Focus on Medicine",
+    degree: "Associate's in AI with focus on Scientific Research",
     period: "2020 - 2021",
     location: "Panama City, Panama",
     notes: [
-      "Healthcare technology systems and medical informatics fundamentals",
-      "Foundation for later work on MILA patient communication platform",
+      "Research methodology: experimental design and statistical analysis",
+      "AI fundamentals and scientific investigation protocols",
     ],
   },
   {
-    school: "Universidad Latina de Panamá",
-    degree: "Bachelor's in Computer Engineering",
+    school: "Institute of Higher Education for Advanced Technical Training",
+    degree: "Associate's in Pedagogy",
+    period: "2020 - 2021",
+    location: "Panama City, Panama",
+    notes: [
+      "Educational theory and instructional methodologies",
+      "Foundation for technical teaching and curriculum development",
+    ],
+  },
+  {
+    school: "Latin University of Panama",
+    degree: "Bachelor of Science in Computer Science",
     period: "2015 - 2020",
     location: "Panama City, Panama",
-    highlight: "Cum Laude",
     notes: [
       "Core CS: data structures, operating systems, networks, and databases",
-      "Senior project: full-stack application (React/Node/PostgreSQL) with authentication and automated tests",
+      "Senior project: full-stack application with authentication and automated tests",
     ],
   },
 ];
 
 const skills = [
-  { icon: Bot, label: "LLMs & RAG", items: ["GPT-4/Claude", "LangChain", "Pinecone", "Weaviate", "Embeddings"] },
-  { icon: Code, label: "Full-Stack", items: ["TypeScript", "React", "Next.js", "NestJS", "Python", "Flask"] },
+  { icon: Bot, label: "LLM Agents", items: ["Claude", "GPT-4", "LangChain", "MCP", "Guardrails"] },
+  { icon: Code, label: "Full-Stack", items: ["TypeScript", "React", "Next.js", "Python", "FastAPI"] },
   { icon: Mic, label: "Voice AI", items: ["Whisper", "ElevenLabs", "Twilio", "Real-time STT/TTS"] },
-  { icon: Wrench, label: "Infrastructure", items: ["AWS", "Azure", "Docker", "GitHub Actions", "CI/CD"] },
+  { icon: Wrench, label: "Cloud-Native", items: ["Azure", "AWS", "Docker", "Cosmos DB", "Redis"] },
+];
+
+// ---------- Certifications ----------
+const certifications = [
+  {
+    name: "Professional Certificate in Python for Data Science and Machine Learning",
+    issuer: "Harvard University",
+  },
+];
+
+// ---------- AI Tools & Leverage ----------
+const aiTools = [
+  { name: "Claude Code", description: "AI-powered CLI for autonomous coding tasks" },
+  { name: "Cursor", description: "AI-first code editor with deep codebase understanding" },
+  { name: "GitHub Copilot", description: "AI pair programmer for inline suggestions" },
+  { name: "ChatGPT / Codex", description: "OpenAI models for code generation & problem-solving" },
+  { name: "v0 by Vercel", description: "AI-powered UI generation from prompts" },
+  { name: "Ollama", description: "Local LLM inference for private, offline AI workflows" },
+  { name: "Aider", description: "Terminal-based AI pair programming" },
+  { name: "Continue", description: "Open-source AI coding assistant for any IDE" },
 ];
 
 // ---------- Languages ----------
 const languages = [
-  { name: "English", level: "C2 (Fluent)" },
-  { name: "Spanish", level: "Native" },
-  { name: "Italian", level: "Conversational" },
+  { name: "English", level: "Native or Bilingual" },
+  { name: "Spanish", level: "Native or Bilingual" },
 ];
 
 // ---------- Highlights ----------
 const highlights = [
-  "Voice agent containment up to ~68% with safe handoff & transcripts to CRM",
-  "Stripe→QuickBooks payout fee reconciliation; month-end variance $0 across tested months",
-  "RAG evaluation harness with retrieval@k/factuality checks and regression suites",
+  "Architecting GreyMatter 2.0 AI brain & identity layer powering multiple SaaS products",
+  "Built AI-powered voice assistants handling real-time calls with Twilio, Whisper, GPT-4, and ElevenLabs",
+  "Automated workflows reducing manual accounting work by 70%+ through QuickBooks/Stripe integration",
 ];
 
 // Animated background
@@ -248,7 +219,7 @@ function GridBackground() {
 }
 
 // Expandable education card
-function EducationCard({ edu, index }: { edu: typeof education[0]; index: number }) {
+function EducationCard({ edu, index }: { edu: Education; index: number }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -273,7 +244,7 @@ function EducationCard({ edu, index }: { edu: typeof education[0]; index: number
               <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                 {edu.degree}
               </h3>
-              {"highlight" in edu && edu.highlight && (
+              {edu.highlight && (
                 <span className="px-2 py-0.5 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full">
                   {edu.highlight}
                 </span>
@@ -443,8 +414,9 @@ export default function AboutPage() {
               </span>
             </h1>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
-              AI & full-stack engineer building reliable LLM systems, voice agents, and automations that ship to production.
-              Specialized in RAG, tool/agent orchestration, and cloud microservices. Strong focus on latency, quality evals, and cost control.
+              Full Stack Engineer passionate about merging AI and software engineering to build smarter, faster, and more scalable systems.
+              Specialized in developing full-stack solutions that integrate automation, cloud architecture, and intelligent workflows.
+              Currently engaged as a Full Stack AI Engineer at TheGreyMatter.ai, contributing to AI-assisted application development and modern web systems.
             </p>
           </motion.div>
         </div>
@@ -519,6 +491,45 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* AI Tools & Leverage */}
+      <section className="relative py-8 px-4 bg-slate-50/50 dark:bg-slate-900/30">
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="mb-6"
+          >
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500">
+                <Zap className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">AI-Powered Development</h2>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 mt-2">
+              I leverage cutting-edge AI tools to accelerate development, improve code quality, and ship faster. These tools are force multipliers that let me focus on architecture and problem-solving.
+            </p>
+          </motion.div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            {aiTools.map((tool, i) => (
+              <motion.div
+                key={tool.name}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: i * 0.05 }}
+                className="p-4 rounded-xl bg-white/70 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700 hover:border-violet-500/30 transition-colors"
+              >
+                <h3 className="font-semibold text-slate-900 dark:text-white">{tool.name}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{tool.description}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Experience */}
       <section className="relative py-10 px-4">
         <div className="max-w-4xl mx-auto">
@@ -568,6 +579,36 @@ export default function AboutPage() {
           <div className="space-y-4">
             {education.map((edu, i) => (
               <EducationCard key={edu.school + edu.degree} edu={edu} index={i} />
+            ))}
+          </div>
+
+          {/* Certifications */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="flex items-center gap-3 mt-10 mb-4"
+          >
+            <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-500">
+              <Award className="w-5 h-5 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Certifications</h2>
+          </motion.div>
+
+          <div className="space-y-3">
+            {certifications.map((cert, i) => (
+              <motion.div
+                key={cert.name}
+                initial={{ opacity: 0, y: 10 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+                className="p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800"
+              >
+                <h3 className="font-semibold text-slate-900 dark:text-white">{cert.name}</h3>
+                <p className="text-sm text-slate-500 mt-1">{cert.issuer}</p>
+              </motion.div>
             ))}
           </div>
         </div>

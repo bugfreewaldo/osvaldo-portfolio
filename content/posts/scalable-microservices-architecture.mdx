@@ -1,0 +1,496 @@
+---
+title: "Designing Scalable Microservices Architecture"
+description: "A practical guide to designing, building, and operating microservices at scale, covering service boundaries, communication patterns, data management, and operational excellence."
+date: 2026-01-05
+updated: 2026-01-14
+published: true
+category: "System Design"
+tags: ["Microservices", "System Design", "Architecture", "Distributed Systems", "API Design", "Scalability"]
+author: "Osvaldo Restrepo"
+tldr: "Microservices succeed when service boundaries match business domains, communication is resilient to failure, data ownership is clear, and teams can deploy independently. Start with a modular monolith and extract services only when you have clear evidence of need."
+faqs:
+  - question: "When should I use microservices instead of a monolith?"
+    answer: "Consider microservices when you have multiple teams that need independent deployment, different scaling requirements for different parts of the system, or components with drastically different technology needs. For small teams or early-stage products, a well-structured monolith is usually better."
+  - question: "How do you define service boundaries?"
+    answer: "Service boundaries should align with business domains (Domain-Driven Design bounded contexts). Each service should own its data, have a clear purpose that can be described in one sentence, and be deployable independently. Avoid services that require coordinated deployments."
+  - question: "How do microservices communicate?"
+    answer: "Synchronous (REST, gRPC) for real-time requests, asynchronous (message queues, events) for decoupling. Prefer async for non-blocking operations. Always design for failure: implement timeouts, retries, and circuit breakers."
+  - question: "How do you handle data consistency across services?"
+    answer: "Embrace eventual consistency where possible. Use the Saga pattern for distributed transactions. Each service owns its data store. For strong consistency needs, consider if those operations should be in the same service."
+relatedPosts: ["kubernetes-production-best-practices", "event-driven-data-pipelines"]
+---
+
+Microservices architecture promises independent scaling, technology flexibility, and team autonomy. But poorly designed microservices create distributed monoliths—all the complexity of distribution with none of the benefits. This guide shares patterns that work.
+
+## When Microservices Make Sense
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│               Microservices Decision Framework                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Consider Microservices When:          Stick with Monolith When: │
+│                                                                  │
+│  ✓ Multiple teams need to deploy       ✗ Small team (\<10 devs)  │
+│    independently                        ✗ Unclear domain         │
+│  ✓ Different scaling requirements       boundaries               │
+│  ✓ Different technology needs           ✗ Early-stage product   │
+│  ✓ Clear domain boundaries              ✗ Tight deadline         │
+│  ✓ Organizational independence needed   ✗ Strong consistency     │
+│                                           requirements           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="warning" title="Common Mistake">
+Don't start with microservices. Start with a well-structured monolith, then extract services when you have evidence that the benefits outweigh the costs. Premature decomposition is a leading cause of microservices failures.
+</Callout>
+
+## Service Design Principles
+
+### Domain-Driven Boundaries
+
+Services should map to business capabilities, not technical layers:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│   ❌ Anti-Pattern: Technical Layers                             │
+│                                                                  │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│   │    UI    │  │   API    │  │  Logic   │  │Database  │      │
+│   │ Service  │  │ Gateway  │  │ Service  │  │ Service  │      │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+│                                                                  │
+│   ✓ Good Pattern: Business Domains                              │
+│                                                                  │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│   │  Order   │  │ Inventory│  │  Payment │  │ Shipping │      │
+│   │ Service  │  │ Service  │  │ Service  │  │ Service  │      │
+│   │          │  │          │  │          │  │          │      │
+│   │ UI+API+  │  │ UI+API+  │  │ UI+API+  │  │ UI+API+  │      │
+│   │ Logic+DB │  │ Logic+DB │  │ Logic+DB │  │ Logic+DB │      │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Service Sizing
+
+The "two-pizza team" rule applies: a service should be owned by a team small enough to be fed by two pizzas. More practically:
+
+- **Can be understood** by a new team member within a week
+- **Can be rewritten** from scratch in a few weeks if needed
+- **Can be deployed** independently without coordinating with other teams
+- **Has a clear purpose** describable in one sentence
+
+## Communication Patterns
+
+### Synchronous Communication
+
+```python
+# Example: gRPC client with resilience patterns
+import grpc
+from tenacity import retry, stop_after_attempt, wait_exponential
+from circuitbreaker import circuit
+
+class OrderServiceClient:
+    def __init__(self, host: str, port: int):
+        self.channel = grpc.insecure_channel(f"{host}:{port}")
+        self.stub = OrderServiceStub(self.channel)
+
+    @circuit(failure_threshold=5, recovery_timeout=30)
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10)
+    )
+    def get_order(self, order_id: str, timeout: float = 5.0) -> Order:
+        """
+        Get order with circuit breaker and retry.
+
+        - Circuit breaker: Opens after 5 failures, waits 30s before retry
+        - Retry: 3 attempts with exponential backoff
+        - Timeout: 5 second deadline
+        """
+        try:
+            request = GetOrderRequest(order_id=order_id)
+            response = self.stub.GetOrder(
+                request,
+                timeout=timeout
+            )
+            return Order.from_proto(response)
+
+        except grpc.RpcError as e:
+            if e.code() == grpc.StatusCode.NOT_FOUND:
+                return None
+            raise ServiceUnavailableError(f"Order service error: {e.details()}")
+```
+
+### Asynchronous Communication
+
+```python
+# Event-driven communication pattern
+from dataclasses import dataclass
+from datetime import datetime
+import json
+
+@dataclass
+class DomainEvent:
+    event_id: str
+    event_type: str
+    aggregate_id: str
+    aggregate_type: str
+    timestamp: datetime
+    version: int
+    data: dict
+
+    def to_json(self) -> str:
+        return json.dumps({
+            "event_id": self.event_id,
+            "event_type": self.event_type,
+            "aggregate_id": self.aggregate_id,
+            "aggregate_type": self.aggregate_type,
+            "timestamp": self.timestamp.isoformat(),
+            "version": self.version,
+            "data": self.data
+        })
+
+class EventPublisher:
+    def __init__(self, broker: MessageBroker):
+        self.broker = broker
+
+    async def publish(self, event: DomainEvent):
+        """
+        Publish event to topic based on aggregate type.
+        """
+        topic = f"events.{event.aggregate_type}"
+
+        await self.broker.publish(
+            topic=topic,
+            key=event.aggregate_id,  # Ensures ordering per aggregate
+            value=event.to_json(),
+            headers={
+                "event_type": event.event_type,
+                "version": str(event.version)
+            }
+        )
+
+# Usage in Order Service
+class OrderService:
+    async def create_order(self, request: CreateOrderRequest) -> Order:
+        order = Order.create(request)
+        await self.repository.save(order)
+
+        # Publish event for other services
+        await self.events.publish(DomainEvent(
+            event_id=generate_uuid(),
+            event_type="OrderCreated",
+            aggregate_id=order.id,
+            aggregate_type="Order",
+            timestamp=datetime.utcnow(),
+            version=1,
+            data={
+                "customer_id": order.customer_id,
+                "items": [item.to_dict() for item in order.items],
+                "total": str(order.total)
+            }
+        ))
+
+        return order
+```
+
+## Data Management
+
+### Database per Service
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Data Ownership Pattern                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────────────┐    ┌─────────────────┐                   │
+│   │  Order Service  │    │ Customer Service│                   │
+│   │                 │    │                 │                   │
+│   │  ┌───────────┐  │    │  ┌───────────┐  │                   │
+│   │  │  Orders   │  │    │  │ Customers │  │                   │
+│   │  │    DB     │  │    │  │    DB     │  │                   │
+│   │  │(PostgreSQL)│ │    │  │ (MongoDB) │  │                   │
+│   │  └───────────┘  │    │  └───────────┘  │                   │
+│   └────────┬────────┘    └────────┬────────┘                   │
+│            │                      │                             │
+│            │   Customer data      │                             │
+│            │   needed?            │                             │
+│            │                      │                             │
+│            ▼                      │                             │
+│   ┌─────────────────────────────────────────────────┐          │
+│   │   Option A: API Call (sync)                      │          │
+│   │   - Simple, consistent                           │          │
+│   │   - Creates coupling, latency                    │          │
+│   ├─────────────────────────────────────────────────┤          │
+│   │   Option B: Local Cache (async)                  │          │
+│   │   - Subscribe to CustomerUpdated events         │          │
+│   │   - Keep local read-only copy                   │          │
+│   │   - Eventually consistent                        │          │
+│   └─────────────────────────────────────────────────┘          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Saga Pattern for Distributed Transactions
+
+```python
+from enum import Enum
+from dataclasses import dataclass
+from typing import Callable, Awaitable
+
+class SagaState(Enum):
+    PENDING = "pending"
+    EXECUTING = "executing"
+    COMPENSATING = "compensating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+@dataclass
+class SagaStep:
+    name: str
+    action: Callable[..., Awaitable[None]]
+    compensation: Callable[..., Awaitable[None]]
+
+class Saga:
+    """Orchestrated saga for distributed transactions."""
+
+    def __init__(self, saga_id: str, steps: list[SagaStep]):
+        self.saga_id = saga_id
+        self.steps = steps
+        self.state = SagaState.PENDING
+        self.completed_steps: list[str] = []
+        self.current_step = 0
+
+    async def execute(self, context: dict) -> bool:
+        """Execute saga steps, compensating on failure."""
+        self.state = SagaState.EXECUTING
+
+        try:
+            for i, step in enumerate(self.steps):
+                self.current_step = i
+                await step.action(context)
+                self.completed_steps.append(step.name)
+
+            self.state = SagaState.COMPLETED
+            return True
+
+        except Exception as e:
+            # Compensation: rollback completed steps in reverse
+            self.state = SagaState.COMPENSATING
+            await self._compensate(context)
+            self.state = SagaState.FAILED
+            raise SagaFailedError(f"Saga failed at step {self.current_step}: {e}")
+
+    async def _compensate(self, context: dict):
+        """Execute compensation in reverse order."""
+        for step_name in reversed(self.completed_steps):
+            step = next(s for s in self.steps if s.name == step_name)
+            try:
+                await step.compensation(context)
+            except Exception as e:
+                # Log but continue compensating
+                logger.error(f"Compensation failed for {step_name}: {e}")
+
+# Example: Order placement saga
+order_saga = Saga(
+    saga_id="create_order_123",
+    steps=[
+        SagaStep(
+            name="reserve_inventory",
+            action=inventory_service.reserve,
+            compensation=inventory_service.release
+        ),
+        SagaStep(
+            name="process_payment",
+            action=payment_service.charge,
+            compensation=payment_service.refund
+        ),
+        SagaStep(
+            name="create_shipment",
+            action=shipping_service.create,
+            compensation=shipping_service.cancel
+        ),
+    ]
+)
+```
+
+## API Design
+
+### API Gateway Pattern
+
+```yaml
+# Kong API Gateway configuration example
+services:
+  - name: order-service
+    url: http://order-service:8080
+    routes:
+      - name: orders-api
+        paths:
+          - /api/v1/orders
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 100
+              policy: local
+          - name: jwt
+            config:
+              claims_to_verify:
+                - exp
+          - name: request-transformer
+            config:
+              add:
+                headers:
+                  - "X-Request-ID:$(uuid)"
+
+  - name: user-service
+    url: http://user-service:8080
+    routes:
+      - name: users-api
+        paths:
+          - /api/v1/users
+```
+
+### API Versioning
+
+```python
+from fastapi import FastAPI, APIRouter
+
+# Version 1
+v1_router = APIRouter(prefix="/api/v1")
+
+@v1_router.get("/orders/{order_id}")
+async def get_order_v1(order_id: str):
+    """Original endpoint - returns flat structure."""
+    order = await order_repo.get(order_id)
+    return {
+        "id": order.id,
+        "customer_id": order.customer_id,
+        "total": float(order.total),
+        "status": order.status.value
+    }
+
+# Version 2 - Breaking change: nested structure
+v2_router = APIRouter(prefix="/api/v2")
+
+@v2_router.get("/orders/{order_id}")
+async def get_order_v2(order_id: str):
+    """Updated endpoint - returns nested structure."""
+    order = await order_repo.get(order_id)
+    return {
+        "id": order.id,
+        "customer": {
+            "id": order.customer_id,
+            "name": order.customer_name  # New field
+        },
+        "pricing": {
+            "subtotal": float(order.subtotal),
+            "tax": float(order.tax),
+            "total": float(order.total)
+        },
+        "status": order.status.value,
+        "timestamps": {
+            "created": order.created_at.isoformat(),
+            "updated": order.updated_at.isoformat()
+        }
+    }
+
+app = FastAPI()
+app.include_router(v1_router)
+app.include_router(v2_router)
+```
+
+## Observability
+
+### Distributed Tracing
+
+```python
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+tracer = trace.get_tracer(__name__)
+
+class OrderService:
+    @tracer.start_as_current_span("create_order")
+    async def create_order(self, request: CreateOrderRequest) -> Order:
+        span = trace.get_current_span()
+
+        # Add attributes for debugging
+        span.set_attribute("customer_id", request.customer_id)
+        span.set_attribute("item_count", len(request.items))
+
+        try:
+            # Validate inventory (traced automatically via instrumentation)
+            await self._validate_inventory(request.items)
+
+            # Create order
+            order = Order.create(request)
+
+            # Process payment (child span)
+            with tracer.start_as_current_span("process_payment") as payment_span:
+                payment_span.set_attribute("amount", float(order.total))
+                await self.payment_client.charge(order)
+
+            span.set_attribute("order_id", order.id)
+            span.set_status(Status(StatusCode.OK))
+
+            return order
+
+        except Exception as e:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
+            raise
+```
+
+## Production Checklist
+
+| Category | Item | Priority |
+|----------|------|----------|
+| **Design** | Services align with business domains | Critical |
+| | Clear data ownership | Critical |
+| | API contracts documented | High |
+| **Resilience** | Circuit breakers implemented | Critical |
+| | Timeouts configured | Critical |
+| | Retry with backoff | High |
+| | Graceful degradation | High |
+| **Observability** | Distributed tracing | Critical |
+| | Centralized logging | Critical |
+| | Metrics and dashboards | High |
+| | Alerting configured | High |
+| **Operations** | Health checks | Critical |
+| | Automated deployment | Critical |
+| | Rollback capability | Critical |
+
+## Conclusion
+
+Successful microservices architecture requires:
+
+1. **Right boundaries** - Align with business domains, not technical layers
+2. **Resilient communication** - Assume everything fails
+3. **Clear data ownership** - Each service owns its data
+4. **Independent deployment** - No coordinated releases
+5. **Observability** - Can't fix what you can't see
+
+Start simple, measure everything, and extract services only when the evidence supports it.
+
+---
+
+## References
+
+Newman, S. (2021). *Building microservices: Designing fine-grained systems* (2nd ed.). O'Reilly Media.
+
+Richardson, C. (2018). *Microservices patterns*. Manning Publications. https://microservices.io/
+
+Fowler, M. (2015). *Microservices: A definition of this new architectural term*. https://martinfowler.com/articles/microservices.html
+
+Evans, E. (2003). *Domain-driven design: Tackling complexity in the heart of software*. Addison-Wesley.
+
+---
+
+*Designing a microservices architecture? [Get in touch](/contact) to discuss system design strategies.*
