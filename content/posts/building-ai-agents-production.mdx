@@ -1,0 +1,448 @@
+---
+title: "Building AI Agents That Actually Work in Production"
+description: "War stories and hard-won lessons from building AI agents with tool-calling LLMs for production systems. Agent loops, tool design, error recovery, guardrails, observability, and cost control — with real examples from voice agents and business automation, plus all the ways I screwed up along the way."
+date: 2026-02-02
+published: true
+category: "AI Engineering"
+tags: ["AI Agents", "LLM", "Tool Use", "Production", "Reliability", "Claude"]
+author: "Osvaldo Restrepo"
+pinned: false
+tldr: "Production AI agents need deterministic tool interfaces, bounded execution loops, graceful error recovery, and aggressive observability. The gap between a demo agent and a production agent is enormous — and it's filled with failure modes that will ruin your weekend. I've ruined several."
+faqs:
+  - question: "What is an AI agent in the context of LLMs?"
+    answer: "An AI agent is an LLM that can take actions by calling tools (APIs, databases, code execution) in a loop, deciding what to do next based on the results of previous actions. Unlike simple prompt-response, agents reason, act, observe, and iterate."
+  - question: "How do you prevent AI agents from running forever or spiraling out of control?"
+    answer: "Implement hard limits on loop iterations, total token budget, wall-clock time, and tool call count. Use circuit breakers that force the agent to return a partial result or escalate to a human when limits are hit."
+  - question: "What is the biggest challenge with production AI agents?"
+    answer: "Error recovery. Demos work on the happy path. Production agents hit API failures, unexpected data formats, ambiguous user inputs, and tool timeouts constantly. Designing graceful degradation for every failure mode is where most of the engineering effort goes."
+  - question: "How do you control costs for AI agents in production?"
+    answer: "Use smaller models for simple routing decisions, cache tool results aggressively, set per-request token budgets, implement early termination when the agent has enough information, and monitor cost per task to catch regressions."
+relatedPosts: ["prompt-engineering-production-llms", "llm-evaluation-pipelines"]
+---
+
+Every week some dude on Twitter posts "I built an AI agent in 50 lines of code!" with a fire emoji. Cool. Now run it for a thousand users with real money on the line and watch it book someone's grandma a colonoscopy at a car wash. The gap between demo and production is where careers are made — and where I've lost more sleep than I care to admit.
+
+I've been building agent-based systems for the past year — voice agents for healthcare scheduling, RAG-powered assistants, and business automation tools that talk to CRMs and ERPs. And I can tell you with absolute confidence: the gap between a working demo and a production agent is the widest gap I've ever encountered in software engineering. It's not even close. It's the Grand Canyon of engineering gaps, and your demo is standing on one side waving at production on the other side with a telescope.
+
+This post is about what lives in that gap. (Spoiler: it's mostly error handling and regret.)
+
+## What We Mean by "Agent"
+
+Let me be precise here, because half the industry can't agree on what this word means. When I say agent, I mean an LLM that operates in a loop: it receives a task, decides which tool to call, observes the result, and decides what to do next. It keeps going until the task is complete or it hits a limit. That's it. Not sentient AI, not Skynet, just a while loop with an API call and some tools.
+
+The core loop looks like this:
+
+```
+┌─────────────────────────────────┐
+│         User Request            │
+└──────────────┬──────────────────┘
+               │
+               ▼
+┌─────────────────────────────────┐
+│   LLM: Analyze + Plan          │◄──────┐
+└──────────────┬──────────────────┘       │
+               │                          │
+               ▼                          │
+┌─────────────────────────────────┐       │
+│   Select Tool + Parameters      │       │
+└──────────────┬──────────────────┘       │
+               │                          │
+               ▼                          │
+┌─────────────────────────────────┐       │
+│   Execute Tool                  │       │
+└──────────────┬──────────────────┘       │
+               │                          │
+               ▼                          │
+┌─────────────────────────────────┐       │
+│   Observe Result                ├───────┘
+└──────────────┬──────────────────┘
+               │ (done or limit hit)
+               ▼
+┌─────────────────────────────────┐
+│   Return Final Response         │
+└─────────────────────────────────┘
+```
+
+Simple enough, right? Adorable little flowchart. The devil is in every single box of that diagram, and he's brought friends.
+
+## Tool Design Is the Whole Game
+
+Here's the thing nobody tells you about building agents: **the quality of your agent is determined by the quality of your tools, not the quality of your model.** I cannot stress this enough. I've watched people spend weeks prompt-engineering their way around a badly designed tool when they could've spent an afternoon fixing the tool itself.
+
+A well-designed tool with clear inputs, predictable outputs, and good error messages will make a mediocre model look brilliant. A poorly designed tool will make the best model in the world look like it's having a stroke. I've seen both. Multiple times. Sometimes in the same week.
+
+### Good Tools Are Boring
+
+Here's a hot take that shouldn't be a hot take: each tool should do exactly one thing. The function signature should be self-documenting. The return type should be predictable. Basically, design your tools the way your computer science professor told you to design functions — except now it actually matters because the thing calling your function is a probabilistic text generator that will find every ambiguity you left in there.
+
+```python
+from pydantic import BaseModel, Field
+from typing import Literal
+from datetime import datetime
+
+class AppointmentSearchInput(BaseModel):
+    """Search for available appointment slots."""
+    provider_id: str = Field(description="The doctor's unique ID")
+    date_from: datetime = Field(description="Start of search range (ISO 8601)")
+    date_to: datetime = Field(description="End of search range (ISO 8601)")
+    appointment_type: Literal["new_patient", "follow_up", "urgent"] = Field(
+        description="Type of appointment to search for"
+    )
+
+class AppointmentSlot(BaseModel):
+    slot_id: str
+    provider_name: str
+    start_time: datetime
+    end_time: datetime
+    location: str
+
+class AppointmentSearchOutput(BaseModel):
+    slots: list[AppointmentSlot]
+    total_available: int
+    search_metadata: dict
+```
+
+<Callout type="tip" title="Name Your Tools for the LLM">
+Tool names and descriptions are part of the prompt. This sounds obvious but I cannot tell you how many times I've seen tools named `query_db` or `do_thing`. I once saw a 20% improvement in tool selection accuracy just by renaming `query_db` to `search_available_appointments` and writing a one-sentence description that explains when to use it. Twenty percent! From renaming a function! Your college professor would weep with joy.
+</Callout>
+
+### Avoid God Tools
+
+Okay, story time. I once built a tool called `execute_database_query` that accepted raw SQL. The agent could do anything with it. It was powerful, flexible, elegant even. It was also the dumbest thing I've ever shipped (and I once deployed to production on a Friday afternoon, so the bar is high).
+
+Within a day of testing, the agent constructed a query that would have scanned our entire production table. All of it. Every row. On a database that was, shall we say, not small. Thank God for staging environments.
+
+Instead, build narrow tools with guardrails built in:
+
+```python
+# Bad: God tool (ask me how I know)
+def execute_query(sql: str) -> dict:
+    return db.execute(sql)
+
+# Good: Scoped tools with built-in limits
+def search_patients(
+    name: str | None = None,
+    dob: str | None = None,
+    mrn: str | None = None,
+    limit: int = 10
+) -> list[PatientSummary]:
+    """Search patients by name, date of birth, or MRN. Returns max 10 results."""
+    query = build_patient_query(name=name, dob=dob, mrn=mrn)
+    return db.execute(query, limit=min(limit, 50))
+```
+
+The god tool is like giving a toddler a credit card. Sure, technically they *can* buy what they need. They can also buy 47 pounds of gummy bears and a riding lawnmower.
+
+## The Agent Loop: Bounded and Observable
+
+Here's the agent loop pattern I use in production. I want to be really clear about something: **every single piece of this exists because something went wrong without it.** This isn't theoretical best practice. This is scar tissue turned into code.
+
+```python
+import time
+import uuid
+from dataclasses import dataclass, field
+
+@dataclass
+class AgentConfig:
+    max_iterations: int = 10
+    max_tokens_budget: int = 50_000
+    max_wall_time_seconds: float = 30.0
+    max_tool_calls: int = 15
+
+@dataclass
+class AgentState:
+    request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    iteration: int = 0
+    total_tokens: int = 0
+    tool_calls: int = 0
+    start_time: float = field(default_factory=time.time)
+    tool_history: list[dict] = field(default_factory=list)
+
+class AgentLimitExceeded(Exception):
+    def __init__(self, limit_type: str, current: float, maximum: float):
+        self.limit_type = limit_type
+        self.current = current
+        self.maximum = maximum
+        super().__init__(f"{limit_type}: {current}/{maximum}")
+
+def check_limits(state: AgentState, config: AgentConfig):
+    elapsed = time.time() - state.start_time
+    if state.iteration >= config.max_iterations:
+        raise AgentLimitExceeded("iterations", state.iteration, config.max_iterations)
+    if state.total_tokens >= config.max_tokens_budget:
+        raise AgentLimitExceeded("tokens", state.total_tokens, config.max_tokens_budget)
+    if elapsed >= config.max_wall_time_seconds:
+        raise AgentLimitExceeded("wall_time", elapsed, config.max_wall_time_seconds)
+    if state.tool_calls >= config.max_tool_calls:
+        raise AgentLimitExceeded("tool_calls", state.tool_calls, config.max_tool_calls)
+```
+
+<Callout type="warning" title="Always Set Limits">
+An unbounded agent loop is not a theoretical risk. It's a production incident sitting in your codebase with a lit fuse. I have personally witnessed an agent get stuck in a retry loop over a weekend and burn through hundreds of dollars in API calls before anyone noticed on Monday morning. *Hundreds. Of. Dollars.* Over a weekend. Because nobody set a damn ceiling. Every agent needs a hard limit on iterations, tokens, and wall-clock time. No exceptions. I don't care if you're prototyping.
+</Callout>
+
+## Error Recovery: Where Production Agents Are Made
+
+So here's the deal: demo agents assume tools succeed. Production agents assume tools fail. The difference in code volume is roughly 3x, and 100% of that extra code is error handling. Welcome to real engineering, where the happy path is the smallest part of your codebase.
+
+Here's how I structure tool execution with recovery:
+
+```python
+import logging
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+class ToolResultStatus(str, Enum):
+    SUCCESS = "success"
+    RETRYABLE_ERROR = "retryable_error"
+    PERMANENT_ERROR = "permanent_error"
+    TIMEOUT = "timeout"
+
+async def execute_tool_with_recovery(
+    tool_name: str,
+    tool_fn,
+    params: dict,
+    state: AgentState,
+    max_retries: int = 2,
+    timeout_seconds: float = 10.0
+) -> dict:
+    """Execute a tool with retry logic and structured error reporting."""
+    for attempt in range(max_retries + 1):
+        try:
+            result = await asyncio.wait_for(
+                tool_fn(**params),
+                timeout=timeout_seconds
+            )
+            state.tool_calls += 1
+            return {
+                "status": ToolResultStatus.SUCCESS,
+                "data": result,
+                "tool": tool_name,
+                "attempt": attempt + 1
+            }
+        except asyncio.TimeoutError:
+            logger.warning(f"Tool {tool_name} timed out (attempt {attempt + 1})")
+            if attempt == max_retries:
+                return {
+                    "status": ToolResultStatus.TIMEOUT,
+                    "error": f"{tool_name} timed out after {timeout_seconds}s",
+                    "tool": tool_name,
+                    "suggestion": "Try a simpler query or skip this step"
+                }
+        except ToolPermanentError as e:
+            return {
+                "status": ToolResultStatus.PERMANENT_ERROR,
+                "error": str(e),
+                "tool": tool_name,
+                "suggestion": "This operation cannot be completed. Inform the user."
+            }
+        except Exception as e:
+            logger.error(f"Tool {tool_name} failed (attempt {attempt + 1}): {e}")
+            if attempt == max_retries:
+                return {
+                    "status": ToolResultStatus.RETRYABLE_ERROR,
+                    "error": str(e),
+                    "tool": tool_name,
+                    "suggestion": "Consider an alternative approach"
+                }
+
+        await asyncio.sleep(min(2 ** attempt, 8))
+```
+
+The key insight — and let me save you some pain here — is that you need to feed error information back to the LLM in a structured way. See that `suggestion` field? That little string is doing more heavy lifting than you'd think. Without it, the agent will just retry the same failing call over and over like a dog running into a glass door. With it, you're essentially whispering in the model's ear: "hey, that didn't work, here's what to try instead." Night and day difference.
+
+<Callout type="info" title="Error Messages Are Prompts">
+Here's something that blew my mind when I first realized it: every error message your tools return is effectively a prompt. The LLM reads it and decides what to do next based on what it says. So write your error messages the way you'd write instructions for a smart but clueless junior developer. "Connection refused" is useless. "The scheduling API is temporarily unavailable — suggest the user call the office directly at the number on file" is actionable. I started rewriting all my error messages with this framing and our agent's recovery success rate jumped by 35%. Thirty-five percent from better error messages. I almost cried.
+</Callout>
+
+## Guardrails: Preventing Expensive Mistakes
+
+Agents with write access to real systems need guardrails. This is non-negotiable. I don't care how good your model is. I don't care how thorough your testing is. If your agent can book appointments, send emails, or charge credit cards, you need guardrails, because the one time it screws up is the one time it matters most. Murphy's law was written by someone who deployed AI agents to production.
+
+### Action Classification
+
+I classify every tool into tiers, and I recommend you do this before you write a single line of agent logic:
+
+```python
+from enum import Enum
+
+class ActionTier(str, Enum):
+    READ = "read"         # No side effects, always safe
+    WRITE_SAFE = "safe"   # Reversible writes (draft email, add to cart)
+    WRITE_RISKY = "risky"  # Hard to reverse (send email, submit order)
+    DESTRUCTIVE = "destructive"  # Cannot reverse (delete, cancel)
+
+TOOL_TIERS = {
+    "search_appointments": ActionTier.READ,
+    "get_patient_info": ActionTier.READ,
+    "draft_message": ActionTier.WRITE_SAFE,
+    "book_appointment": ActionTier.WRITE_RISKY,
+    "cancel_appointment": ActionTier.DESTRUCTIVE,
+}
+
+def check_action_allowed(
+    tool_name: str,
+    agent_permissions: set[ActionTier],
+    require_confirmation: bool = False
+) -> bool:
+    tier = TOOL_TIERS.get(tool_name, ActionTier.DESTRUCTIVE)  # default to most restrictive
+    if tier not in agent_permissions:
+        raise PermissionError(
+            f"Agent lacks permission for {tier.value} actions (tool: {tool_name})"
+        )
+    return True
+```
+
+Notice that the default tier is `DESTRUCTIVE`. That's intentional. If I forget to classify a new tool, it gets the most restrictive treatment automatically. Yes, I learned this the hard way. No, I don't want to talk about it.
+
+For voice agents, I always require human confirmation before `WRITE_RISKY` or `DESTRUCTIVE` actions. The agent says "I found an appointment on Thursday at 2pm. Shall I book it?" and waits for explicit confirmation. This one pattern alone has saved us from more bad bookings than I can count. And trust me, explaining to a healthcare provider that your AI booked a dermatology patient for a proctology appointment is not a conversation you want to have twice.
+
+### Output Validation
+
+Look, I know you want to trust your agent. I did too. Then I watched it hallucinate a phone number that connected to a pizza place in New Jersey. Never trust agent outputs without validation, especially when they go to users:
+
+```python
+import re
+
+def validate_agent_response(response: str, context: dict) -> str:
+    """Validate and sanitize agent response before sending to user."""
+    # Check for hallucinated phone numbers or URLs
+    phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
+    found_phones = re.findall(phone_pattern, response)
+    known_phones = context.get("valid_phone_numbers", [])
+    for phone in found_phones:
+        normalized = re.sub(r'[-.]', '', phone)
+        if normalized not in [re.sub(r'[-.]', '', p) for p in known_phones]:
+            response = response.replace(phone, "[phone number on file]")
+
+    # Check for PII leakage
+    if context.get("patient_ssn") and context["patient_ssn"] in response:
+        raise SecurityViolation("Agent attempted to include SSN in response")
+
+    return response
+```
+
+<Callout type="warning" title="Hallucinated Contact Info Is Dangerous">
+I have seen agents confidently provide phone numbers that do not exist, with the same confident tone they use for everything else. That's the terrifying part — there's no hesitation, no "I think," just "You can reach them at 555-..." In healthcare, a patient calling a hallucinated number instead of their doctor is a genuine safety issue. Always validate contact information against known-good data. Always. This is a hill I will die on.
+</Callout>
+
+## Observability: You Cannot Fix What You Cannot See
+
+Production agents need more observability than typical applications, and here's why: their behavior is non-deterministic. The same input can produce completely different execution traces on Tuesday versus Wednesday. If you don't have detailed logging, debugging a production issue becomes an exercise in reading tea leaves while crying.
+
+### Structured Logging Per Request
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+def log_agent_step(state: AgentState, step_type: str, details: dict):
+    logger.info(
+        "agent_step",
+        request_id=state.request_id,
+        iteration=state.iteration,
+        step_type=step_type,
+        total_tokens=state.total_tokens,
+        tool_calls=state.tool_calls,
+        elapsed_seconds=round(time.time() - state.start_time, 2),
+        **details
+    )
+```
+
+Every agent request gets a unique ID. Every tool call, every LLM response, every error is logged with that ID. When something goes wrong — and let me be crystal clear, *it will go wrong* — you need to be able to reconstruct the entire execution trace. The first time you debug a production agent issue without structured logging, you'll add it. The second time you won't have to, because you already did. Guess which experience I'm speaking from.
+
+### Key Metrics to Track
+
+These are the dashboards I build for every agent system. Not "nice to haves" — I mean I literally refuse to ship without these:
+
+```
+Agent Metrics Dashboard
+────────────────────────────────────────
+Task Completion Rate     │  92.3%  (target: >90%)
+Avg Iterations/Task      │  3.2    (target: <5)
+Avg Latency              │  4.8s   (target: <10s)
+Avg Cost/Task            │  $0.03  (target: <$0.05)
+Tool Error Rate          │  2.1%   (target: <5%)
+Limit Exceeded Rate      │  0.8%   (target: <2%)
+Human Escalation Rate    │  5.4%   (target: <10%)
+────────────────────────────────────────
+```
+
+The most important metric is **task completion rate** broken down by task type. And here's the trap: a high average can hide that one category of request fails 40% of the time. I learned this when our overall completion rate was a beautiful 93% but appointment rescheduling was silently failing for nearly half of all requests. The average was lying to us. Averages always lie. Break it down by task type or you're flying blind.
+
+## Cost Control: The Silent Killer
+
+Okay, let's talk about money. Agent costs compound in ways that are absolutely not obvious until you get your first real bill and do a spit take with your morning coffee. A single request might trigger 5 LLM calls and 8 tool executions. That's fine. Now multiply by thousands of users and suddenly you're explaining to your CFO why your API bill looks like a car payment.
+
+### Tiered Model Strategy
+
+Here's the thing: not every decision needs your most expensive model. Using Opus to classify user intent is like hiring a surgeon to put on a Band-Aid. It works, sure, but your budget won't survive it.
+
+```python
+MODEL_ROUTING = {
+    "classify_intent": "claude-3-5-haiku-20241022",   # Fast, cheap
+    "select_tool": "claude-sonnet-4-20250514",         # Good balance
+    "generate_response": "claude-sonnet-4-20250514",   # Good balance
+    "complex_reasoning": "claude-opus-4-20250514",     # Only when needed
+}
+
+async def get_completion(task_type: str, messages: list[dict]) -> str:
+    model = MODEL_ROUTING.get(task_type, "claude-sonnet-4-20250514")
+    response = await client.messages.create(
+        model=model,
+        messages=messages,
+        max_tokens=get_max_tokens(task_type)
+    )
+    return response
+```
+
+<Callout type="tip" title="Measure Before Optimizing">
+I track cost per task type weekly. When I first instrumented our voice agent, I discovered that 60% of our costs came from 5% of requests — long, complex scheduling flows where the agent was going back and forth trying to find available slots. Optimizing just those flows (better tools, smarter prompts, caching provider availability) cut our bill by 40%. Forty percent! From looking at the actual data instead of guessing. Imagine that.
+</Callout>
+
+### Early Termination
+
+Anyway, one of the sneakiest cost sinks is an agent that keeps gathering information after it already has what it needs. It's like a student who already knows the answer but keeps researching "just in case." Teach your agent to stop:
+
+```python
+SYSTEM_PROMPT_SUFFIX = """
+Important: Once you have enough information to answer the user's question,
+stop calling tools and respond directly. Do not gather additional information
+"just in case." Every tool call costs time and money.
+
+If you have already found what the user needs, respond immediately.
+"""
+```
+
+This single addition to our system prompt reduced average tool calls per request from 4.7 to 3.1. That's a roughly 34% reduction in tool calls from four sentences of English. Sometimes the best optimization is just telling the damn thing what you want.
+
+## The Demo-to-Production Checklist
+
+After shipping multiple agent systems (and accumulating enough war stories to fill a book that nobody would believe), I keep this checklist for every new project:
+
+1. **Bounded loops** — Max iterations, tokens, time, and tool calls
+2. **Typed tools** — Pydantic models for every input and output
+3. **Error recovery** — Structured errors with actionable suggestions
+4. **Action tiers** — Classify tools by risk, enforce permissions
+5. **Output validation** — Never trust agent text sent to users
+6. **Observability** — Trace every request end-to-end
+7. **Cost tracking** — Per-request cost with alerts on anomalies
+8. **Graceful degradation** — When limits hit, return partial results
+9. **Human escalation** — Clear path to hand off to a person
+10. **Regression tests** — Golden examples that run on every deploy
+
+If you skip any of these for your first release, you will add them after your first production incident. I know this because I've done exactly that, more than once, usually at 2 AM while questioning my life choices. Learn from my suffering. It was not fun and the coffee was bad.
+
+## Conclusion
+
+The tools to build AI agents have gotten remarkably good. Genuinely, impressively good. The gap is no longer in capability — it's in reliability. And here's the uncomfortable truth that nobody in the "vibe coding" crowd wants to hear: an agent that works 95% of the time and fails catastrophically 5% of the time is *worse* than a dumb deterministic system that works 100% of the time. Because users don't remember the 95 times it worked perfectly. They remember the one time it booked the wrong appointment, sent the wrong email, or confidently made up a phone number. Trust is earned in drops and lost in buckets.
+
+The engineering work is in the failure modes. It's in the error recovery, the guardrails, the observability, and the cost controls. It's not glamorous. It won't get you likes on Twitter. It won't look good in a demo. But it's what separates agents that impress your boss in a meeting from agents that actually run in production without waking you up at 3 AM.
+
+And honestly? After enough 3 AM pages, you start to really appreciate boring, reliable code.
+
+---
+
+*Building AI agents for production? [Get in touch](/contact) to discuss architecture, reliability patterns, and cost optimization strategies. Or just to commiserate about the time your agent tried to schedule a root canal on Christmas.*

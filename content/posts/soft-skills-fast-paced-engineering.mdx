@@ -1,0 +1,300 @@
+---
+title: "The Soft Skill That Ships More Code Than Any Framework"
+description: "A brutally honest post about communication, ego, and the soft skills nobody teaches engineers — from a guy who's screwed up, been screwed over, and learned that swallowing your pride ships more code than any AI tool ever will."
+date: 2026-03-04
+published: true
+category: "Engineering Leadership"
+tags: ["Soft Skills", "Communication", "Leadership", "Team Culture", "AI Tools", "Developer Experience"]
+author: "Osvaldo Restrepo"
+tldr: "The fastest way to slow down a dev team isn't bad code — it's bad communication. I've learned this through painful misunderstandings with my own CTO, through shipping broken code because I was too proud to ask, and through watching ego destroy velocity. Whether you're vibe coding with Claude or pair programming with a human, the skill that matters most is the one nobody teaches: communicate clearly, admit when you're wrong, and fix it fast."
+faqs:
+  - question: "Why do soft skills matter in a fast-paced engineering environment?"
+    answer: "Because speed amplifies everything — including miscommunication. When you're shipping daily with AI tools, a misunderstanding about requirements can waste a day of work in an hour. Clear communication prevents rework, builds trust, and lets the team move fast without breaking relationships."
+  - question: "How do you handle disagreements with your CTO or tech lead?"
+    answer: "Assume good intent first. Separate the technical disagreement from the personal feeling. State your position clearly, listen to theirs, and if you're wrong, say so immediately. If they're wrong, give them space to realize it. The goal is the best outcome, not winning the argument."
+  - question: "How do AI coding tools change team communication needs?"
+    answer: "AI tools like Claude Code, Cursor, and Codex let you ship faster, which means misunderstandings surface faster too. You need to over-communicate intent, document decisions, and check in more frequently — because the code is writing itself but the context isn't."
+  - question: "How do you admit you were wrong without losing credibility?"
+    answer: "Admitting you're wrong IS credibility. Say 'I was wrong about X, here's what I should have done, and here's what I'm doing to fix it.' People respect accountability far more than perfection. The engineers who never admit mistakes aren't seen as infallible — they're seen as untrustworthy."
+relatedPosts: ["technical-decision-making", "junior-to-senior-engineer-growth"]
+---
+
+I need to tell you about a fight I had with my CTO.
+
+Not a shouting match — engineers don't do that. We do something worse. We go quiet. We get passive. We push code that "technically meets the requirements" while silently seething that the requirements were wrong. We write commit messages with a little extra edge. We say "per our earlier discussion" in Slack, which is engineer for "I told you so and I have receipts."
+
+I've done all of this. I'm not proud of it. But I'm telling you because if you've been in a fast-paced engineering environment for more than six months, you've probably done it too. And if you haven't — give it time.
+
+Here's what happened: I had a technical approach that I was sure was right. I went heads-down and built it out. Significant time invested. Then my CTO comes back with a flurry of messages: "Why didn't you do this? Why DID you do this? You should have told me before doing this or that."
+
+My first reaction? Defensiveness. I was technically correct! My approach worked!
+
+But here's the thing — he had the whole picture. He'd been working on this project longer than I had. He knew the context I didn't have. And when I stepped back from my ego and actually listened, I realized: *he was right*. Not because my code was wrong, but because my code didn't fit the bigger vision I hadn't fully understood.
+
+That moment of swallowing my pride and thinking "you know what? He's right" taught me more about engineering than any technical book I've ever read.
+
+## The Skill Nobody Teaches You
+
+Computer science programs teach you algorithms, data structures, and system design. Bootcamps teach you React and how to center a div. YouTube teaches you to build a SaaS in a weekend. Nobody — and I mean *nobody* — teaches you what to do when your teammate's code breaks production and you're both looking at each other trying to figure out whose fault it is.
+
+Nobody teaches you how to say "I was wrong."
+
+Nobody teaches you how to hear "you were wrong" without your ego catching fire.
+
+Nobody teaches you that the person who can do both of those things consistently is the most valuable engineer on any team. Not the one who writes the cleanest code. Not the one who knows the most obscure Vim commands. The one who can communicate clearly, admit mistakes quickly, and keep shipping.
+
+<Callout type="info" title="The Uncomfortable Truth">
+In ten years of engineering, I've never seen a project fail because of a technical problem that couldn't be solved. I've seen dozens fail because of communication problems that nobody would address. The technology is never the bottleneck. The people are.
+</Callout>
+
+## When You Screw Up (And You Will)
+
+Let me tell you about the time I screwed up. Not my CTO — me.
+
+I was moving fast. Claude Code was cranking. I was shipping features like a machine. PRs flying, commits stacking, velocity through the roof. I felt invincible. You know that feeling when the AI is just *nailing it* and you're reviewing code faster than you can read it?
+
+Yeah. I shipped a bug. Not a small one. A break-something-visible-to-customers one.
+
+My first instinct — and I'm being honest here because I think a lot of engineers will relate — was to figure out how to frame it as "not entirely my fault." Maybe the requirements were unclear. Maybe the tests should have caught it. Maybe if the sprint had been scoped differently...
+
+You know what? Maybe all of those things were true. But none of them mattered. What mattered was: I shipped it, it broke, and it needed to be fixed.
+
+Here's what I should have done immediately (and what I've trained myself to do now):
+
+### The "I Screwed Up" Protocol
+
+1. **Acknowledge it. Out loud. In public.** Not in a DM. In the team channel. "Hey, I introduced a bug in the payments flow in PR #247. I'm on it."
+2. **Don't explain. Not yet.** Nobody cares about the *why* while the thing is broken. Fix first, postmortem later.
+3. **Roll it back if you can.** Swallow your pride. That beautiful PR you spent four hours on? Revert it. The code doesn't have feelings. Your users do.
+4. **Fix it properly.** Once the fire is out, figure out what actually went wrong and fix the root cause.
+5. **Share what you learned.** Not as a performative mea culpa, but as a genuine "here's what happened so we can all avoid it."
+
+```
+The Bug Response Timeline (What I Do Now)
+───────────────────────────────────────────────────
+
+  0 min   │  Notice the bug
+  1 min   │  Post in team channel: "I see it, I'm on it"
+  5 min   │  Assess: can I hotfix or should I revert?
+  10 min  │  Revert if in doubt (ALWAYS revert if in doubt)
+  15 min  │  Confirm the revert fixed it
+  30 min  │  Start on the proper fix
+  Later   │  Write up what happened (no blame, just facts)
+
+  What I USED to do:
+  0 min   │  Notice the bug
+  0-45 min│  Quietly panic and try to fix it before anyone notices
+  45 min  │  Someone notices
+  46 min  │  Scramble to explain why it's not my fault
+  47 min  │  Realize it's definitely my fault
+  48 min  │  Fix it while sweating
+  Never   │  Talk about it again
+```
+
+The old way is tempting. The new way is better. Not just ethically — *strategically*. When you acknowledge mistakes fast, you build a reputation as someone who's reliable even when things go wrong. And things always go wrong.
+
+<Callout type="tip" title="The Fastest Fix Is the Revert">
+I used to resist reverting my own code. It felt like admitting defeat. Now I see it as the most confident move you can make. "I shipped something broken, I caught it, I reverted it, nobody was affected for more than 10 minutes, and I'll have the proper fix by end of day." That's not weakness. That's engineering maturity.
+</Callout>
+
+## When Someone Else Screws Up
+
+Okay, this is the harder one. Because it's easy to be gracious about your own mistakes (well, after some practice). It's much harder to be gracious when someone else's mistake is costing you time, energy, or sleep.
+
+I've been on both sides of this with my CTO. He's made calls I disagreed with. Some of them turned out great — and I had to eat crow. Some of them didn't — and I had to resist the urge to say "I told you so." (I didn't always resist. I'm working on it.)
+
+Here's what I've learned about being on the receiving end of someone else's mistake:
+
+**Give them the same grace you'd want.** When you screw up, you want understanding, not a lecture. So when your CTO, your teammate, or your junior dev ships something broken, give them that. "Hey, I see the issue. Want to pair on the fix?" is a thousand times more productive than "I knew this would happen."
+
+**Separate the decision from the person.** "That architecture choice didn't work out" is feedback. "You always make bad architecture choices" is an attack. The first one leads to improvement. The second one leads to someone updating their LinkedIn.
+
+**Have the conversation, not the subtweet.** If you disagree with a decision, say so directly. To the person. Not in a passive-aggressive code review comment. Not in a Slack thread they're not tagged in. Not by "well actually"-ing them in a standup. Go talk to them. It takes two minutes and saves two weeks of resentment.
+
+```
+How Engineers Actually Communicate vs How They Should
+──────────────────────────────────────────────────────
+
+  What we do                    What actually works
+  ──────────                    ──────────────────
+  Passive-aggressive PR comment → Direct DM: "can we chat about this?"
+  Silent disagreement           → "I see it differently, here's why"
+  Building in opposite direction → 10-min alignment call BEFORE coding
+  "Per my last message"         → Actually re-explaining clearly
+  Waiting to be proven right    → Committing to the team decision
+  Ignoring the conflict         → Addressing it while it's small
+```
+
+<Callout type="warning" title="The Cost of Silence">
+The most expensive bug I've ever seen wasn't in the code. It was a misunderstanding between two engineers who each assumed the other understood the requirements. Neither asked. Both built. Three weeks of work thrown away. Three weeks! All because nobody said "hey, just to make sure we're on the same page..."
+</Callout>
+
+## Communication in the Age of AI-Assisted Coding
+
+Here's something nobody is talking about enough: AI coding tools have made communication skills *more* important, not less.
+
+When I'm in Claude Code, I can generate a complete feature in an hour that would have taken a day to write manually. That's incredible. It's also incredibly dangerous — because I can now ship misunderstood requirements at 10x speed.
+
+Think about it. If I misunderstand what my CTO wants and I'm coding manually, I might get 30% done before we catch the disconnect. If I'm vibe coding with Claude, I might ship the whole thing, deploy it, and have it running in production before anyone realizes it's solving the wrong problem.
+
+**Speed amplifies everything — including miscommunication.**
+
+### The AI-Era Communication Checklist
+
+Before I start a feature now — especially when I'm about to let Claude Code rip — I run through this:
+
+1. **Do I actually understand what we're building?** Not "do I think I understand." Can I explain it back to the person who asked for it in one sentence?
+2. **Have I confirmed my understanding?** A five-second Slack message: "Just to confirm — we want X that does Y for Z reason. Correct?"
+3. **Are there decisions I'm making that should be shared?** If I'm choosing between two approaches, that's a 30-second conversation now or a 3-hour rewrite later.
+4. **Who needs to know I'm working on this?** Especially in a fast-paced environment, two people building the same thing happens more often than you'd think.
+
+```
+The Communication-Speed Matrix
+────────────────────────────────────────────
+
+  Manual Coding          AI-Assisted Coding
+  ─────────────          ──────────────────
+  Slow to code           Fast to code
+  Slow to misunderstand  Fast to misunderstand
+  Cheap to misalign      EXPENSIVE to misalign
+  Time to course-correct Time EVAPORATES
+
+  Solution: Communicate MORE as speed increases
+            Not less. More.
+```
+
+### Specific Tips for AI-Assisted Workflows
+
+**When using Claude Code / Cursor / Codex:**
+
+- **Commit with clear messages.** The AI doesn't write your commit messages (well, it can, but you should review them). A commit message is a communication to your future self and your teammates. "fix stuff" helps nobody. "Fix payment webhook idempotency — duplicate charges on Stripe retry" helps everyone.
+
+- **PR descriptions are your voice.** When Claude writes 400 lines of code in 10 minutes, your PR description is the only way your reviewer knows what you *intended*. Write it for humans. Explain the why, not just the what.
+
+- **Don't let velocity replace communication.** I've caught myself thinking "I'll just ship it and explain later." Later never comes. Or worse, later comes after someone discovers the feature doesn't match the spec.
+
+- **Flag uncertainty early.** "I'm not 100% sure this is what we discussed — can you take a quick look before I go further?" costs 5 minutes. Shipping the wrong thing and reverting costs a day.
+
+<Callout type="tip" title="The 5-Minute Rule">
+If you're about to spend more than 30 minutes building something and you're even 10% uncertain about the requirements, stop and spend 5 minutes confirming. I can't tell you how many times this rule has saved me. Actually, I can — it's at least once a week. That's 50+ wasted days per year prevented by a habit that takes 5 minutes.
+</Callout>
+
+## Confidence vs Pride (There's a Line and I've Crossed It)
+
+Let me make a distinction that took me embarrassingly long to learn:
+
+**Confidence** is saying "I think approach A is better than approach B, and here's why."
+
+**Pride** is refusing to switch to approach B when the evidence shows you're wrong.
+
+Confidence is a feature. Pride is a bug. And in a fast-paced environment, pride is an *expensive* bug because the longer you hold onto a wrong decision, the more code gets built on top of it, and the more painful the eventual reversal becomes.
+
+I've been on both sides of this. I've been the person stubbornly defending an approach that wasn't working because I'd already invested time in it. (Sunk cost fallacy — I know what it's called, I have a PhD, and I still fell for it.) And I've watched teammates do the same thing, too proud to say "you know what, this isn't working, let's try the other way."
+
+Here's what swallowing your pride actually looks like in practice:
+
+- **"I was wrong about the caching strategy. Your approach is simpler and handles the edge cases better. Let's go with that."** — This sentence takes 5 seconds to say and earns you more respect than any clever code you'll ever write.
+
+- **"I thought this would take two days but it's looking like four. Can we re-scope?"** — This isn't failure. This is *information*. Your team can only plan around reality if you share reality with them.
+
+- **"I don't understand why we're doing it this way. Can you help me see what I'm missing?"** — This is the most powerful question in engineering and the one most engineers are terrified to ask. Because it means admitting you don't know something. But here's the thing: everybody already knows you don't know everything. Pretending otherwise doesn't fool anyone — it just makes them trust you less.
+
+## How This Actually Benefits You
+
+I know what some of you are thinking. "This is soft. Where's the code? Give me a design pattern, not a therapy session."
+
+Fair. Here's the ROI, in engineering terms:
+
+### Faster Debugging
+When the team communicates openly, bugs get found faster. Instead of one person staring at a screen for three hours, someone says "hey, I hit something similar last week — check the webhook handler" and you're fixed in 20 minutes. I've seen teams cut their mean time to resolution by half just by creating a culture where asking for help isn't seen as weakness.
+
+### Less Rework
+The biggest source of wasted engineering time isn't technical debt. It's building the wrong thing. Clear communication about requirements, expectations, and constraints prevents the most expensive kind of waste: doing work that gets thrown away. Every week I don't waste rebuilding something is a week I spend building something new.
+
+### Faster Code Reviews
+When you write clear PR descriptions, explain your decisions, and flag the parts you're unsure about, reviewers can actually review instead of reverse-engineering your intent. I've seen PR review times drop from 2 days to 2 hours by just... writing better descriptions. That's not a process change. That's a communication change.
+
+### Psychological Safety = Velocity
+Teams where people feel safe admitting mistakes, asking questions, and disagreeing openly are faster. Not because they're "nicer" — because they don't waste time on politics, CYA documentation, and silent disagreements that fester into full-blown architectural conflicts. Google's Project Aristotle found this. I've lived it.
+
+### Better AI Collaboration
+This one's meta, but: the same communication skills that make you better with humans make you better at prompting AI. Being precise about requirements, explaining context, flagging constraints — that's literally prompt engineering. The engineers who communicate well with humans write better prompts, get better AI output, and ship faster. It's the same skill.
+
+```
+The Compound Effect of Good Communication
+──────────────────────────────────────────────
+
+  Week 1:  Clear requirements → no rework       +4 hours saved
+  Week 2:  Fast bug resolution via team chat     +3 hours saved
+  Week 3:  Quick PR reviews                      +5 hours saved
+  Week 4:  Avoided building wrong feature        +16 hours saved
+  ─────────────────────────────────────────────
+  Month 1: ~28 hours saved
+
+  That's 3.5 engineering days. Per month. Per person.
+  Scale that across a team of 5 and you've gained
+  a phantom engineer who works 17 days a month
+  just by talking to each other better.
+```
+
+## The Conversation I Wish I'd Had Sooner
+
+Let me come back to my CTO. After that incident where he called me out — the "why didn't you tell me?" messages — we had a real conversation. Not about the architecture. About how we work together.
+
+Here's what I said (roughly):
+
+**Me:** "You're right. I should have checked in before going heads-down. I had a technically sound approach, but I didn't have the full picture, and I should have asked."
+
+**Him:** "And I should give you more context upfront so you're not guessing."
+
+**Both of us:** "We're on the same team. Let's act like it."
+
+That conversation changed everything. Not because we stopped disagreeing — we disagree all the time. We disagree about architecture, priorities, timelines, and occasionally about whether tabs or spaces is the correct answer (it's spaces, fight me). But now we disagree *out loud*. We disagree in the moment, hash it out, make a decision, and move on. No more going heads-down without alignment. No more passive-aggressive commit messages. No more wasted time.
+
+We also made a pact: if either of us is wrong, we say so. Immediately. No ego. No "well technically I wasn't wrong about the specific thing, I was wrong about the adjacent thing." Just: "I was wrong. Here's the fix." And the other person's job is to say "cool, thanks" and move on. Not to gloat. Not to file it away for ammunition later. Just: "cool, thanks."
+
+It sounds simple. It is simple. It's also the hardest thing I've ever consistently done in my career, because ego is a hell of a drug and I am not immune.
+
+<Callout type="info" title="The Rule We Made">
+If either of us realizes we're wrong about something — a technical decision, a priority call, anything — we say it within the hour. Not tomorrow. Not "when the time is right." Within the hour. Because the cost of being wrong for an hour is almost nothing. The cost of being wrong for a week because you were too proud to speak up? That's real money, real time, and real trust damage.
+</Callout>
+
+## Practical Tips (Because I Promised Useful Ones)
+
+Alright, I said I'd give very useful tips. Here they are. Sticky-note-on-your-monitor-worthy tips:
+
+**1. Confirm before you code.** Five-second message: "Building X that does Y — aligned?" Save yourself a day.
+
+**2. Disagree in real-time, not in retrospect.** If you think the approach is wrong, say it NOW. Not after it fails. "I told you so" is the most useless sentence in engineering.
+
+**3. Revert fast, ego slow.** If your code breaks something, revert first, fix second, explain third. The order matters.
+
+**4. Write PR descriptions for humans.** Especially when AI wrote the code. Your reviewer isn't reviewing the code — they're reviewing your *judgment*.
+
+**5. Say "I don't know" more.** It's not weakness. It's the fastest path to the answer, because someone on your team probably does know.
+
+**6. Separate yourself from your code.** A critique of your PR is not a critique of your character. I know it feels that way. It isn't. (Usually.)
+
+**7. Check in before you're stuck.** "I'm 60% done and not sure about this part" is useful. "I spent three days on this and it's all wrong" is expensive.
+
+**8. When using AI tools, over-communicate intent.** Claude doesn't know what your team discussed in standup. YOU are the bridge between the AI and the team context. Document decisions, share context, write things down.
+
+**9. After a conflict, address it.** Not a week later. Not "when things calm down." Today. The longer you wait, the bigger the story becomes in your head, and the harder it is to say "hey, about earlier..."
+
+**10. Assume good intent. Then verify.** Your CTO isn't trying to sabotage you. Your teammate isn't being difficult on purpose. Start from that assumption, and most conflicts dissolve before they start. But verify — because sometimes there ARE process problems that need to be addressed, and confusing a systemic issue with personal intent means neither gets fixed.
+
+## The Point
+
+I'm not writing this because I've figured it all out. I'm writing this because I'm *still* figuring it out. Every week I catch myself falling back into old patterns — going quiet when I disagree, defensiveness when my code gets critiqued, pride when I should be flexible.
+
+But here's what I know for sure: the engineers I admire most aren't the ones who write the most brilliant code. They're the ones who communicate with clarity, admit mistakes with speed, and make everyone around them better. They're the ones who can say "I was wrong" and mean it. They're the ones who can hear "you were wrong" and learn from it.
+
+In a world where Claude Code can write a feature in 10 minutes, the differentiator isn't technical skill anymore. It's everything around the technical skill. The communication. The collaboration. The humility to know that being fast means nothing if you're fast in the wrong direction.
+
+My CTO and I still disagree regularly. We probably always will. But we disagree like teammates now, not like rivals. And our team ships faster because of it. Not because we agreed on the perfect architecture — because we agreed on the perfect process: talk early, talk often, admit when you're wrong, and fix it before it compounds.
+
+That's the soft skill that ships more code than any framework ever will. And it's the one you actually have to practice, because unlike TypeScript or Kubernetes, no AI tool is going to learn it for you.
+
+---
+
+*Working in a fast-paced team and want to talk about building better engineering culture? [Get in touch](/contact). I've made every mistake in this article at least twice, so I'm basically an expert in what not to do.*

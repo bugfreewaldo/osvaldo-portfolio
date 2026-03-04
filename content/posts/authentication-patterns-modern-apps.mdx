@@ -1,0 +1,686 @@
+---
+title: "Authentication Patterns for Modern Apps: What Actually Works"
+description: "A battle-scarred guide to authentication patterns that survive production — covering JWTs, sessions, OAuth 2.0, PKCE, refresh token rotation, NextAuth.js, middleware auth, RBAC, and every security footgun I've stepped on so you don't have to."
+date: 2026-03-02
+published: true
+category: "Web Development"
+tags: ["Authentication", "Security", "JWT", "OAuth", "Next.js", "Full Stack"]
+author: "Osvaldo Restrepo"
+tldr: "There is no single 'best' auth pattern — and anyone who tells you otherwise is selling something. Session-based auth is simpler and safer for server-rendered apps, JWTs work for distributed systems but will bite you if you're careless. Use OAuth 2.0 with PKCE for SPAs, rotate your refresh tokens (please), and for the love of all that is holy, never store tokens in localStorage. Middleware-based auth in Next.js is the cleanest pattern I've found for protecting routes, and I will die on that hill."
+faqs:
+  - question: "Should I use JWTs or session-based authentication?"
+    answer: "It depends on your architecture. Session-based auth is simpler and more secure for monolithic or server-rendered apps because revocation is instant. JWTs work better for distributed systems and microservices where you need stateless verification, but they require refresh token rotation and short expiry times."
+  - question: "Is it safe to store JWTs in localStorage?"
+    answer: "No. localStorage is accessible to any JavaScript running on the page, making it vulnerable to XSS attacks. Store tokens in httpOnly, secure, SameSite cookies instead. If you must use client-side storage, use in-memory storage with refresh tokens in httpOnly cookies."
+  - question: "What is PKCE and why do SPAs need it?"
+    answer: "PKCE (Proof Key for Code Exchange) prevents authorization code interception attacks. SPAs cannot securely store client secrets, so PKCE replaces the secret with a dynamically generated code verifier and challenge, ensuring only the app that initiated the flow can exchange the code for tokens."
+  - question: "How do I handle auth in Next.js middleware?"
+    answer: "Use Next.js middleware to check for valid session cookies on every request. The middleware runs at the edge before the page renders, so unauthenticated users never see protected content. NextAuth.js (Auth.js) integrates cleanly with this pattern."
+relatedPosts: ["react-server-components-architecture", "multi-tenant-saas-architecture"]
+---
+
+I once stored JWTs in localStorage because a Medium article told me to. Three months later, a penetration test found an XSS vulnerability and suddenly every token in the app was compromised. Fun times. I now have a personal vendetta against localStorage for anything security-related.
+
+Authentication is one of those things that every tutorial makes look straightforward. "Just add passport.js!" they say. "Just use JWT!" they say. And then you ship it to production, and at 2 AM on a Saturday you're staring at Datadog alerts because a token rotation edge case you never considered is locking out 15% of your users. The gap between tutorial auth and production auth is not a gap — it is a canyon, and at the bottom of that canyon are the broken dreams of engineers who thought `bcrypt` was all they needed to know.
+
+This post covers what I've learned about authentication patterns that actually hold up — mostly by getting them wrong first.
+
+## The Session vs JWT Debate Is Nuanced (But People Love Yelling About It)
+
+The internet loves a binary debate. "JWTs are terrible!" shouts one camp. "Sessions don't scale!" screams the other. Conference talks have been built entirely around dunking on one approach. I've sat through at least six of them.
+
+The reality? Both camps are right about the other side's weaknesses and wrong about their own side's invincibility. Let me show you the actual flow of each, and then we can have a grown-up conversation.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Session-Based Authentication                    │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Client                    Server                            │
+│    │                         │                               │
+│    │── POST /login ─────────►│                               │
+│    │                         │── Create session in store      │
+│    │◄── Set-Cookie: sid=abc ─│                               │
+│    │                         │                               │
+│    │── GET /api/data ───────►│                               │
+│    │   Cookie: sid=abc       │── Look up session in store     │
+│    │◄── 200 { data } ───────│                               │
+│    │                         │                               │
+│  Revocation: Delete session from store → instant             │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│              JWT-Based Authentication                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Client                    Server                            │
+│    │                         │                               │
+│    │── POST /login ─────────►│                               │
+│    │                         │── Sign JWT with secret         │
+│    │◄── { token: eyJ... } ──│                               │
+│    │                         │                               │
+│    │── GET /api/data ───────►│                               │
+│    │   Authorization: Bearer │── Verify signature (no DB)    │
+│    │◄── 200 { data } ───────│                               │
+│    │                         │                               │
+│  Revocation: Token valid until expiry (or use blocklist)     │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### When Sessions Win
+
+Sessions are simpler. Sessions are safer. Sessions are what you should reach for first unless you have a *specific, articulable reason* not to. I cannot stress this enough. The server controls the session entirely — it's like having the keys to the building instead of handing out copies and hoping nobody makes a duplicate.
+
+Want to log a user out? Delete the session. Done. Instantly. No waiting for token expiry, no maintaining a blocklist, no prayer. Want to limit concurrent sessions? Count them. Want to see who's online right now? Query the session store. Try doing any of that cleanly with JWTs. (Spoiler: you end up building a session store anyway, which rather defeats the point.)
+
+```typescript
+// Express session setup — simple and effective
+import session from 'express-session';
+import RedisStore from 'connect-redis';
+import { createClient } from 'redis';
+
+const redisClient = createClient({ url: process.env.REDIS_URL });
+await redisClient.connect();
+
+app.use(session({
+  store: new RedisStore({ client: redisClient }),
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: true,        // HTTPS only
+    httpOnly: true,      // No JavaScript access
+    sameSite: 'lax',     // CSRF protection
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  },
+}));
+```
+
+I've had junior engineers tell me sessions "don't scale." I've run session-based auth on systems handling millions of active sessions with a Redis cluster that barely broke a sweat. Your app is not going to hit session scaling problems before it hits a dozen other scaling problems first. Trust me on this one.
+
+### When JWTs Make Sense
+
+Okay, so when do JWTs actually earn their complexity? JWTs shine when you have multiple services that need to verify identity without calling a central auth server on every single request. Microservices architectures where Service A needs to trust that Service B's request is legitimate. API gateways. Third-party integrations where you can't share a session store.
+
+These are legitimate use cases. The problem is that people reach for JWTs on a monolithic Next.js app because they saw a YouTube tutorial, and now they've inherited all of JWT's complexity (token rotation, storage security, revocation headaches) without getting any of its benefits. I've reviewed codebases where JWTs were being used for a single-server app with 200 users. That's like using a forklift to move a chair.
+
+```typescript
+// JWT with short expiry + refresh token rotation
+import jwt from 'jsonwebtoken';
+
+function generateTokenPair(user: User) {
+  const accessToken = jwt.sign(
+    { sub: user.id, role: user.role },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' } // Short-lived
+  );
+
+  const refreshToken = jwt.sign(
+    { sub: user.id, tokenFamily: crypto.randomUUID() },
+    process.env.REFRESH_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  return { accessToken, refreshToken };
+}
+```
+
+<Callout type="warning" title="Never Store JWTs in localStorage">
+localStorage is accessible to any JavaScript on the page. A single XSS vulnerability exposes every token. I learned this the hard way — a third-party analytics script we included had a vulnerability, and suddenly our tokens were up for grabs. Use httpOnly cookies for token storage, or keep the access token in memory and the refresh token in an httpOnly cookie. No exceptions. I don't care what that blog post from 2019 told you.
+</Callout>
+
+### The Hybrid Approach (A.K.A. What I Actually Do)
+
+Listen, I know tutorials present this as an either-or choice, but in production you usually end up using both. Here's the pattern I reach for on most projects, and it's served me well across startups and enterprise systems alike:
+
+```
+┌───────────────────────────────────────────────────┐
+│                   Hybrid Auth                      │
+│                                                    │
+│  Browser ──session cookie──► Web App (Next.js)     │
+│                                   │                │
+│                              JWT for internal      │
+│                                   │                │
+│  Mobile App ──JWT──► API Gateway ──► Microservices │
+│                                                    │
+│  Third-party ──API Key──► API Gateway              │
+└───────────────────────────────────────────────────┘
+```
+
+Session cookies for the web app because browsers handle cookies beautifully and you get instant revocation. JWTs for service-to-service communication where stateless verification actually matters. API keys for third-party integrations because they're simple, auditable, and revocable. Each tool for the job it was designed to do. Revolutionary, I know.
+
+## OAuth 2.0 and OIDC: Getting the Flows Right (Finally)
+
+Here's a fun confession: the first time I implemented OAuth 2.0, I confused the Authorization Code flow with the Implicit flow and couldn't figure out why tokens were showing up in my URL bar. (Yes, the Implicit flow literally puts tokens in the URL fragment. Yes, this was considered acceptable at one point in history. No, I'm not over it.)
+
+OAuth 2.0 is an *authorization* framework, not an authentication protocol. OpenID Connect (OIDC) adds the authentication layer on top. This distinction matters way more than most tutorials let on — it's the difference between "this user gave your app permission to read their email" (authorization) and "this user is actually who they say they are" (authentication). Conflating the two is how you end up with security holes that make pen testers smile.
+
+### Authorization Code Flow with PKCE
+
+For SPAs and mobile apps, the Authorization Code flow with PKCE (pronounced "pixy," and yes, that name was chosen by committee) is the standard. The old Implicit flow is deprecated for good reason — exposing tokens in URLs is about as safe as writing your bank PIN on a Post-it note stuck to your monitor.
+
+```typescript
+// PKCE implementation for a SPA
+function generatePKCE() {
+  // Generate a random code verifier (43-128 characters)
+  const verifier = base64URLEncode(crypto.getRandomValues(new Uint8Array(32)));
+
+  // Create the code challenge (SHA-256 hash of verifier)
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  const challenge = base64URLEncode(new Uint8Array(hash));
+
+  return { verifier, challenge };
+}
+
+// Step 1: Start the auth flow
+async function startAuth() {
+  const { verifier, challenge } = await generatePKCE();
+
+  // Store verifier for later (sessionStorage, not localStorage)
+  sessionStorage.setItem('pkce_verifier', verifier);
+
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    scope: 'openid profile email',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+    state: crypto.randomUUID(), // CSRF protection
+  });
+
+  window.location.href = `${AUTH_SERVER}/authorize?${params}`;
+}
+
+// Step 2: Handle the callback
+async function handleCallback(code: string) {
+  const verifier = sessionStorage.getItem('pkce_verifier');
+
+  const response = await fetch(`${AUTH_SERVER}/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      client_id: CLIENT_ID,
+      code_verifier: verifier,
+    }),
+  });
+
+  const tokens = await response.json();
+  // Store tokens securely — NOT in localStorage
+  return tokens;
+}
+```
+
+<Callout type="info" title="Why PKCE Matters">
+Without PKCE, an attacker who intercepts the authorization code (via a malicious browser extension, a compromised redirect, or even just shoulder surfing in a coffee shop) can exchange it for tokens. PKCE ensures only the app that started the flow can complete it, because only that app knows the original code verifier. It's like a secret handshake that's different every time.
+</Callout>
+
+## Refresh Token Rotation (Or: How I Learned to Stop Worrying and Detect Theft)
+
+I learned about refresh token rotation the way most people do — a security audit finding at 4pm on a Friday. The auditor's report was polite but devastating: "Refresh tokens are long-lived and not rotated, enabling persistent access if compromised." Translation: if someone steals a refresh token, they have the keys to the kingdom for seven days.
+
+Refresh token rotation mitigates this beautifully, and the theft detection mechanism is honestly one of my favorite patterns in all of security engineering. Here's how it works:
+
+```typescript
+// Refresh token rotation with reuse detection
+async function rotateRefreshToken(oldRefreshToken: string) {
+  const decoded = jwt.verify(oldRefreshToken, process.env.REFRESH_SECRET);
+
+  // Check if this token has already been used
+  const tokenRecord = await db.refreshToken.findUnique({
+    where: { token: oldRefreshToken },
+  });
+
+  if (!tokenRecord || tokenRecord.used) {
+    // Token reuse detected — possible theft!
+    // Invalidate the ENTIRE token family
+    await db.refreshToken.updateMany({
+      where: { family: decoded.tokenFamily },
+      data: { revoked: true },
+    });
+
+    throw new Error('Refresh token reuse detected. All sessions revoked.');
+  }
+
+  // Mark old token as used
+  await db.refreshToken.update({
+    where: { token: oldRefreshToken },
+    data: { used: true },
+  });
+
+  // Issue new token pair
+  const newTokens = generateTokenPair({ id: decoded.sub });
+
+  // Store new refresh token in the same family
+  await db.refreshToken.create({
+    data: {
+      token: newTokens.refreshToken,
+      userId: decoded.sub,
+      family: decoded.tokenFamily,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  return newTokens;
+}
+```
+
+The key insight — and this is genuinely clever — is that if a refresh token is used twice, *someone stole it*. Think about it: the legitimate user and the attacker both have a copy of the same token. One of them will try to use it first and get new tokens. When the other tries, bam — reuse detected. You nuke the entire token family. The attacker loses access, and the legitimate user has to re-login (a small price for catching a breach in real-time).
+
+I once watched this mechanism catch an actual token theft in production. Our alerting picked up the "token reuse detected" error, we traced it back to a compromised CI/CD pipeline that was leaking environment variables, and we had it patched within hours. Without rotation detection, that attacker would have had persistent access for a week. Instead, they got exactly one API call before the family was revoked.
+
+## NextAuth.js / Auth.js in Next.js
+
+NextAuth.js (now Auth.js) is my go-to for Next.js applications, and I will evangelize it to anyone who will listen. It handles the OAuth complexity, session management, and token rotation out of the box. I've tried rolling my own OAuth implementation exactly once (yes, I've done this), and after spending three weeks handling edge cases that Auth.js handles in a single configuration object, I became a permanent convert.
+
+Here's the thing tutorials don't tell you: OAuth has approximately four thousand edge cases around token refresh timing, provider-specific quirks, and session synchronization. Auth.js has already handled them. Your hand-rolled solution has not. Use the library.
+
+```typescript
+// auth.ts — Auth.js v5 configuration
+import NextAuth from 'next-auth';
+import GitHub from 'next-auth/providers/github';
+import Google from 'next-auth/providers/google';
+import Credentials from 'next-auth/providers/credentials';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import { prisma } from '@/lib/prisma';
+import bcrypt from 'bcryptjs';
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  adapter: PrismaAdapter(prisma),
+  providers: [
+    GitHub({
+      clientId: process.env.GITHUB_ID,
+      clientSecret: process.env.GITHUB_SECRET,
+    }),
+    Google({
+      clientId: process.env.GOOGLE_ID,
+      clientSecret: process.env.GOOGLE_SECRET,
+    }),
+    Credentials({
+      async authorize(credentials) {
+        const user = await prisma.user.findUnique({
+          where: { email: credentials.email as string },
+        });
+        if (!user || !user.hashedPassword) return null;
+
+        const valid = await bcrypt.compare(
+          credentials.password as string,
+          user.hashedPassword
+        );
+        return valid ? user : null;
+      },
+    }),
+  ],
+  callbacks: {
+    async session({ session, token }) {
+      if (token.sub) {
+        session.user.id = token.sub;
+        session.user.role = token.role as string;
+      }
+      return session;
+    },
+    async jwt({ token, user }) {
+      if (user) {
+        token.role = user.role;
+      }
+      return token;
+    },
+  },
+  pages: {
+    signIn: '/auth/signin',
+    error: '/auth/error',
+  },
+});
+```
+
+## Middleware-Based Auth in Next.js (My Favorite Pattern)
+
+This is the pattern I reach for first, and honestly, it's the one I get most excited about when explaining auth to other engineers. (Yes, I get excited about middleware. This is my life now.) Next.js middleware runs at the edge *before* any page renders, which means unauthenticated users never even download your protected page's JavaScript. That's not just a security win — it's a performance win and a data leak prevention mechanism all in one.
+
+Before middleware-based auth became the standard, I used to do auth checks in `getServerSideProps` or at the component level. The problem? The page had already started rendering. The JavaScript bundle had already been sent. If your protected page accidentally fetched data in a `useEffect` before checking auth status... well, let's just say I've seen customer data briefly flash on screen before a redirect kicked in. Not my finest moment.
+
+```typescript
+// middleware.ts
+import { auth } from '@/auth';
+import { NextResponse } from 'next/server';
+
+const publicRoutes = ['/', '/auth/signin', '/auth/signup', '/blog'];
+const adminRoutes = ['/admin', '/admin/users', '/admin/settings'];
+
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  const isAuthenticated = !!req.auth;
+  const userRole = req.auth?.user?.role;
+
+  // Allow public routes
+  if (publicRoutes.some(route => pathname.startsWith(route))) {
+    return NextResponse.next();
+  }
+
+  // Redirect unauthenticated users
+  if (!isAuthenticated) {
+    const signInUrl = new URL('/auth/signin', req.url);
+    signInUrl.searchParams.set('callbackUrl', pathname);
+    return NextResponse.redirect(signInUrl);
+  }
+
+  // Enforce admin role for admin routes
+  if (adminRoutes.some(route => pathname.startsWith(route))) {
+    if (userRole !== 'ADMIN') {
+      return NextResponse.redirect(new URL('/unauthorized', req.url));
+    }
+  }
+
+  return NextResponse.next();
+});
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+<Callout type="tip" title="Middleware Runs at the Edge">
+Next.js middleware executes at the edge before your page code runs. This means unauthenticated users never download protected page JavaScript. It is both a security and performance win. I've seen middleware knock 200ms off page loads for authenticated users compared to client-side auth checks, simply because there's no redirect dance.
+</Callout>
+
+## Role-Based Access Control (Where Simple Gets Complicated Fast)
+
+RBAC sounds simple until your PM walks into standup and says "can editors delete their *own* projects but not other people's projects, and also admins should be able to delete anything except projects that are currently in review?" And suddenly your clean role hierarchy looks like a choose-your-own-adventure book written by a committee.
+
+Here's a pattern that has scaled for me from startup to enterprise without requiring a rewrite. The key insight: separate roles from permissions, and check permissions, not roles. Roles are just bags of permissions. This way, when that PM comes back with another requirement (spoiler: they will), you add a permission, not a new code path.
+
+```typescript
+// lib/permissions.ts
+type Role = 'VIEWER' | 'EDITOR' | 'ADMIN' | 'OWNER';
+
+type Permission =
+  | 'read:projects'
+  | 'write:projects'
+  | 'delete:projects'
+  | 'manage:users'
+  | 'manage:billing';
+
+const rolePermissions: Record<Role, Permission[]> = {
+  VIEWER: ['read:projects'],
+  EDITOR: ['read:projects', 'write:projects'],
+  ADMIN: ['read:projects', 'write:projects', 'delete:projects', 'manage:users'],
+  OWNER: ['read:projects', 'write:projects', 'delete:projects', 'manage:users', 'manage:billing'],
+};
+
+export function hasPermission(role: Role, permission: Permission): boolean {
+  return rolePermissions[role]?.includes(permission) ?? false;
+}
+
+// Usage in API routes
+export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+  const session = await auth();
+  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+  if (!hasPermission(session.user.role as Role, 'delete:projects')) {
+    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  await db.project.delete({ where: { id: params.id } });
+  return Response.json({ success: true });
+}
+```
+
+A mistake I made early in my career: checking roles instead of permissions in application code. `if (user.role === 'ADMIN')` was scattered across 47 files. Then we added a "SUPER_EDITOR" role that needed some admin capabilities but not all. Three days of find-and-replace later, I understood why permission-based checks exist. Don't be me. Check permissions.
+
+## API Key Management (It's Scarier Than You Think)
+
+For machine-to-machine authentication, API keys are the standard. Simple, right? Generate a random string, store it, check it on requests. Except here's the thing — most implementations are *dangerously naive*.
+
+I once audited a codebase where API keys were stored in plain text in the database. No hashing. Just... sitting there. In a table called `api_keys` with a column called `key`. So if anyone got read access to the database — a SQL injection, a leaked backup, a disgruntled DBA — they had every API key in the system. I aged five years that day.
+
+Treat API keys like passwords. Because that's what they are.
+
+```typescript
+// Secure API key generation and storage
+import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
+
+async function createApiKey(userId: string, name: string) {
+  // Generate a cryptographically secure key
+  const rawKey = `sk_live_${crypto.randomBytes(32).toString('hex')}`;
+
+  // Store only the hash — like a password
+  const hashedKey = await bcrypt.hash(rawKey, 12);
+
+  // Store a prefix for identification (non-secret)
+  const prefix = rawKey.substring(0, 12);
+
+  await db.apiKey.create({
+    data: {
+      userId,
+      name,
+      prefix,
+      hashedKey,
+      lastUsedAt: null,
+    },
+  });
+
+  // Return the raw key ONCE — it cannot be recovered
+  return { key: rawKey, prefix };
+}
+
+// Verify an API key
+async function verifyApiKey(rawKey: string) {
+  const prefix = rawKey.substring(0, 12);
+
+  // Find candidates by prefix (fast lookup)
+  const candidates = await db.apiKey.findMany({
+    where: { prefix, revoked: false },
+    include: { user: true },
+  });
+
+  for (const candidate of candidates) {
+    if (await bcrypt.compare(rawKey, candidate.hashedKey)) {
+      // Update last used timestamp
+      await db.apiKey.update({
+        where: { id: candidate.id },
+        data: { lastUsedAt: new Date() },
+      });
+      return candidate.user;
+    }
+  }
+
+  return null;
+}
+```
+
+<Callout type="warning" title="Never Store Raw API Keys">
+Treat API keys like passwords. Hash them before storing. Show the full key to the user exactly once at creation time. If they lose it, they generate a new one. This is the same pattern Stripe uses, and there's a reason — Stripe handles billions in transactions and knows a thing or two about key security. Follow their lead.
+</Callout>
+
+## Secure Cookie Configuration (The Devil Is in the Details)
+
+Getting cookie settings wrong undermines everything else you've built. It's like installing a steel vault door but leaving the window open. I've seen production apps with `secure: false` in production (so cookies transmitted over plain HTTP), `sameSite: 'none'` without understanding the CSRF implications, and my personal favorite: `httpOnly: false` because "the frontend needed to read the session ID." (No. No it didn't.)
+
+Here's the configuration I use, with explanations for why each setting matters:
+
+```typescript
+// Cookie settings for different environments
+function getCookieConfig(env: 'development' | 'production') {
+  const base = {
+    httpOnly: true,      // JavaScript cannot read the cookie
+    path: '/',           // Available on all routes
+  };
+
+  if (env === 'production') {
+    return {
+      ...base,
+      secure: true,        // HTTPS only
+      sameSite: 'lax' as const,  // Sent with top-level navigations
+      domain: '.myapp.com', // Shared across subdomains
+      maxAge: 60 * 60 * 24, // 24 hours
+    };
+  }
+
+  return {
+    ...base,
+    secure: false,         // Allow HTTP in dev
+    sameSite: 'lax' as const,
+    maxAge: 60 * 60 * 24 * 7, // 7 days in dev
+  };
+}
+```
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                Cookie Security Checklist                   │
+├──────────────────────────────────────────────────────────┤
+│                                                           │
+│  httpOnly: true    → Prevents XSS from reading cookie     │
+│  secure: true      → Sent only over HTTPS                 │
+│  sameSite: 'lax'   → Blocks most CSRF attacks             │
+│  path: '/'         → Scoped to your app                   │
+│  maxAge: <short>   → Limits exposure window               │
+│  domain: set       → Controls subdomain sharing           │
+│                                                           │
+│  sameSite values:                                         │
+│    'strict' → Never sent cross-site (breaks OAuth)        │
+│    'lax'    → Sent with top-level navigations (default)   │
+│    'none'   → Always sent (requires secure: true)         │
+│                                                           │
+└──────────────────────────────────────────────────────────┘
+```
+
+Quick story on the `sameSite: 'strict'` option: I once set every cookie to `strict` thinking "more strict = more secure, right?" Wrong. Turns out when a user clicks a link to your app from an email or another website, `strict` cookies don't get sent on that first request. So users would click "Open Dashboard" from a notification email, land on the login page (because the cookie wasn't sent), log in, and then wonder why they were already logged in on the next page. Confused users, confused support team, confused me. `lax` is the sweet spot for almost every application.
+
+## Common Vulnerabilities and How to Prevent Them
+
+Let me walk you through the greatest hits of auth vulnerabilities I've encountered in production. These aren't theoretical — every single one of these has cost me sleep.
+
+### CSRF (Cross-Site Request Forgery)
+
+SameSite cookies handle most CSRF these days, which is wonderful. But for older browsers or `sameSite: 'none'` scenarios (cross-origin iframes, anyone?), you still need explicit CSRF tokens. I learned this when a security researcher demonstrated that they could transfer money from a user's account by embedding an auto-submitting form on a malicious page. The fix took 30 minutes. The postmortem took three hours. The nightmares lasted longer.
+
+```typescript
+// CSRF token middleware
+import csrf from 'csrf';
+const tokens = new csrf();
+
+function csrfMiddleware(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    // Generate token for forms
+    const secret = req.session.csrfSecret || tokens.secretSync();
+    req.session.csrfSecret = secret;
+    res.locals.csrfToken = tokens.create(secret);
+    return next();
+  }
+
+  // Verify token on state-changing requests
+  const token = req.headers['x-csrf-token'] || req.body._csrf;
+  if (!tokens.verify(req.session.csrfSecret, token)) {
+    return res.status(403).json({ error: 'Invalid CSRF token' });
+  }
+
+  next();
+}
+```
+
+### XSS and Token Theft
+
+The best defense against token theft via XSS is to never expose tokens to JavaScript in the first place. This is why I keep beating the httpOnly cookies drum — if your tokens live in httpOnly cookies, XSS can still make authenticated requests (session riding), but it *cannot exfiltrate the tokens themselves*. The attacker can cause mischief during the user's session, but they can't steal credentials for later use. That's a massive reduction in blast radius.
+
+This distinction matters more than people realize. Session riding requires the user to be actively on the compromised page. Token theft gives the attacker persistent, offline access. I'll take the former over the latter every day of the week.
+
+### Token Replay and Session Fixation
+
+Session fixation is one of those attacks that's embarrassingly simple once you understand it. Attacker creates a session on your app, gets a session ID, tricks a victim into using that same session ID (via a crafted URL or injected cookie), victim logs in, and now the attacker's session is authenticated. The fix is equally simple — regenerate the session ID after login — but the number of apps that don't do this would astonish you.
+
+```typescript
+// Regenerate session ID after login to prevent session fixation
+app.post('/login', async (req, res) => {
+  const user = await authenticate(req.body);
+  if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+
+  // Regenerate session to prevent fixation attacks
+  req.session.regenerate((err) => {
+    if (err) return res.status(500).json({ error: 'Session error' });
+
+    req.session.userId = user.id;
+    req.session.role = user.role;
+    req.session.loginAt = Date.now();
+
+    res.json({ user: { id: user.id, name: user.name } });
+  });
+});
+```
+
+## Putting It All Together
+
+Here's the auth architecture I reach for on most Next.js projects. It's not sexy. It's not novel. It's the result of years of building auth systems, getting burned, and slowly converging on something that doesn't wake me up at night.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  Production Auth Architecture                 │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Browser Request                                              │
+│       │                                                       │
+│       ▼                                                       │
+│  ┌─────────────┐                                              │
+│  │  Next.js    │  Checks session cookie                       │
+│  │ Middleware   │  Enforces route-level auth                   │
+│  └──────┬──────┘  Redirects if unauthenticated                │
+│         │                                                     │
+│         ▼                                                     │
+│  ┌─────────────┐                                              │
+│  │  Auth.js    │  Manages sessions in DB                      │
+│  │  (NextAuth) │  Handles OAuth flows                         │
+│  └──────┬──────┘  Rotates tokens                              │
+│         │                                                     │
+│         ▼                                                     │
+│  ┌─────────────┐                                              │
+│  │  API Routes │  Check permissions (RBAC)                    │
+│  │  / Server   │  Validate input                              │
+│  │  Actions    │  Return scoped data                          │
+│  └──────┬──────┘                                              │
+│         │                                                     │
+│         ▼                                                     │
+│  ┌─────────────┐                                              │
+│  │  Database   │  Row-level security                          │
+│  │  (Prisma)   │  Tenant isolation                            │
+│  └─────────────┘  Audit logging                               │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Each layer assumes the others might fail. Middleware checks the session, but API routes double-check permissions anyway. API routes enforce RBAC, but the database has row-level security as a last resort. This isn't paranoia — it's defense in depth, and I've seen every one of these layers individually save the day in production. The middleware caught an expired session that shouldn't have been possible. The RBAC check caught a privilege escalation from a broken role assignment. The database RLS caught a multi-tenant data leak from a missing `WHERE` clause. Three different incidents, three different layers doing their job.
+
+## Lessons From Production (Paid for in Blood, Sweat, and 2 AM Pages)
+
+After years of building auth systems — some elegant, some held together with duct tape and prayers — here's what I keep coming back to:
+
+1. **Start with sessions** unless you have a concrete, specific, written-down reason for JWTs. "It's more modern" is not a reason. "We have 12 microservices that need stateless verification" is a reason.
+2. **Use a library.** Auth.js, Clerk, or Lucia — do not roll your own OAuth implementation. I have seen brilliant engineers spend months building something that's 80% as good as what Auth.js gives you in an afternoon. The edge cases will eat you alive. There are weird browser behaviors, provider-specific quirks, and race conditions that only surface under load. The libraries have already found and fixed them.
+3. **Defense in depth.** Middleware checks the session. API routes check permissions. The database enforces row-level security. Each layer assumes the others might fail. Because in production, at some point, they will.
+4. **Short-lived access, long-lived refresh.** Fifteen-minute access tokens with seven-day refresh tokens and rotation is a good default. I've experimented with shorter and longer durations, and this balance minimizes both the security window and the user friction. If your access tokens live longer than 30 minutes, you're playing with fire.
+5. **Log everything.** Every login, logout, failed attempt, token rotation, and permission denial should be logged with timestamps, IPs, and user agents. When something goes wrong — and something *will* go wrong — you need the audit trail. I've solved auth incidents in 20 minutes with good logs that would have taken days without them.
+
+Authentication is never "done." It's not a feature you ship and forget. It's an ongoing practice of staying ahead of attack vectors while keeping the developer experience sane enough that your team doesn't start cutting corners out of frustration. Build on proven libraries, layer your defenses, never trust the client, and for the love of everything, stop storing tokens in localStorage.
+
+---
+
+## References
+
+Auth.js Team. (2024). *Auth.js documentation*. https://authjs.dev
+
+IETF. (2020). *RFC 7636 — Proof Key for Code Exchange (PKCE)*. https://datatracker.ietf.org/doc/html/rfc7636
+
+OWASP. (2024). *Authentication Cheat Sheet*. https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
+
+Vercel. (2025). *Next.js Middleware documentation*. https://nextjs.org/docs/app/building-your-application/routing/middleware
+
+---
+
+*Building a secure application? [Get in touch](/contact) to discuss authentication architecture.*

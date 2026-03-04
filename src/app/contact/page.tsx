@@ -249,15 +249,15 @@ export default function ContactPage() {
             >
               <div className="flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
                 </span>
-                <span className="text-sm font-medium text-green-700 dark:text-green-400">
-                  Available for new projects
+                <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                  Available only upon request
                 </span>
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Currently accepting freelance and contract work.
+                Currently busy with ongoing projects. Reach out for availability.
               </p>
             </motion.div>
           </motion.div>

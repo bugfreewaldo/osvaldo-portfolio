@@ -1,0 +1,792 @@
+---
+title: "The Complete Guide to Streaming LLM Responses"
+description: "Everything I learned (the hard way) about streaming LLM responses to the browser. War stories about SSE vs WebSockets, the time a user said my AI 'throws up text,' and why you absolutely need an abort button."
+date: 2026-02-28
+published: true
+category: "Tutorial"
+tags: ["LLM", "Streaming", "SSE", "WebSockets", "React", "Next.js", "AI"]
+author: "Osvaldo Restrepo"
+tldr: "The first time I shipped an LLM feature without streaming, a user filed a bug report that said 'your AI is loading forever and then throws up text.' He wasn't wrong. Use Server-Sent Events — they're simpler than WebSockets and purpose-built for this. Pipe the SDK stream into a ReadableStream, consume it with a custom React hook, handle errors mid-stream with structured events, and for the love of everything holy, give users an abort button."
+faqs:
+  - question: "Should I use SSE or WebSockets for LLM streaming?"
+    answer: "Use Server-Sent Events (SSE) for most LLM streaming use cases. LLM responses are inherently one-directional (server to client), which is exactly what SSE is designed for. WebSockets add unnecessary complexity unless you need bidirectional communication like real-time collaboration or multi-turn streaming with interrupts."
+  - question: "How do I handle errors that occur mid-stream?"
+    answer: "Send a structured error event through the stream before closing it. On the client, parse each chunk and check for error markers. Use a try-catch around the stream reader loop and surface errors in the UI without losing the partial response that was already rendered."
+  - question: "How do I implement an abort/cancel button for streaming?"
+    answer: "Use an AbortController on the client side. Pass its signal to the fetch request. When the user clicks cancel, call controller.abort(). On the server, listen for the request being closed and clean up the upstream LLM connection to avoid wasting tokens."
+  - question: "Can I stream LLM responses that include tool calls?"
+    answer: "Yes. Both OpenAI and Anthropic support streaming with tool use. You receive tool call deltas as they stream in, execute the tool when complete, then send the tool result back and stream the final response. This requires managing a state machine to track whether you are in a text block or tool call block."
+relatedPosts: ["building-realtime-websocket-apps", "prompt-engineering-production-llms"]
+---
+
+The first time I shipped an LLM feature without streaming, users thought the app was broken. And honestly? I can't blame them. They'd click a button, stare at a blank screen for eight seconds — eight *agonizing* seconds of absolutely nothing happening — and then BOOM, a novel appears. All at once. Like the AI had been holding its breath and then just word-vomited everywhere.
+
+One user literally filed a bug report that said "your AI is loading forever and then throws up text." He wasn't wrong. That was exactly what was happening from a UX perspective. I printed that bug report and taped it to my monitor. It's still there.
+
+Streaming changes everything. Users see the first token in under 200ms. They can read as the model "thinks." They can cancel if the response is going sideways. It transforms the experience from "is this thing broken?" to "oh cool, it's working on it." This guide covers everything you need to implement streaming properly — including all the stuff that the happy-path tutorials conveniently leave out.
+
+## SSE vs WebSockets: The Decision That's Simpler Than You Think
+
+This is the first architectural decision, and I'm going to save you the three days I spent going back and forth on it: use Server-Sent Events. Done. Next section.
+
+Okay fine, let me explain *why*, because I know some of you are already reaching for the WebSocket library. I was too. WebSockets feel more "serious," right? More "real-time." More "I'm a real engineer and I make real architectural decisions." I get it. I've been there. But here's the thing:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              SSE vs WebSockets for LLM Streaming                │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Server-Sent Events (SSE)          WebSockets                   │
+│  ────────────────────────          ──────────                   │
+│  Unidirectional (server → client)  Bidirectional                │
+│  Built on HTTP                     Custom protocol (ws://)      │
+│  Auto-reconnection built in        Manual reconnection needed   │
+│  Works with HTTP/2 multiplexing    One connection per socket    │
+│  Simple to implement               More complex setup           │
+│  Native EventSource API            Requires library or raw API  │
+│  Text-based (UTF-8)               Binary and text support       │
+│                                                                  │
+│  Best for: LLM streaming,          Best for: Chat apps,         │
+│  live feeds, notifications         gaming, collaborative tools  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+LLM responses flow in one direction: from server to client. The client sends a prompt, and then the server streams back tokens. That's it. It's a one-way street. This is *exactly* what SSE was designed for. It's literally in the name — **Server-Sent** Events. The server sends. The client receives. Match made in heaven.
+
+WebSockets are for when you need bidirectional communication — like a chat app where multiple users interact in real time, or a collaborative editor, or a multiplayer game. For "server sends text to client one chunk at a time"? That's SSE's entire reason for existing.
+
+I once built an LLM streaming feature with WebSockets because I thought I might "need the bidirectional capability later." (Narrator: I did not need it later.) I spent two extra days handling reconnection logic, heartbeats, and connection state that SSE gives you for free. Don't be past me.
+
+<Callout type="tip" title="The Simple Answer">
+For 90% of LLM streaming use cases, Server-Sent Events are the right choice. They're simpler to implement, work through proxies and CDNs, and handle reconnection automatically. Save WebSockets for when you actually need to send data from client to server during the stream. You probably don't.
+</Callout>
+
+## Server-Side: Streaming with Next.js API Routes
+
+Alright, let's build this thing. The core pattern is beautifully straightforward: call the LLM SDK with `stream: true`, pipe the chunks into a `ReadableStream`, and return it as the response. Once you see it, you'll wonder why anyone makes it sound complicated. (They make it sound complicated to sell courses. I'm giving you this for free because I'm a generous soul. And also because I already made all the mistakes so you don't have to.)
+
+### Streaming OpenAI Responses
+
+```typescript
+// app/api/chat/route.ts
+import OpenAI from "openai";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+
+  const stream = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages,
+    stream: true,
+  });
+
+  // Create a ReadableStream that pipes OpenAI chunks to the client
+  const encoder = new TextEncoder();
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of stream) {
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) {
+            // SSE format: "data: <content>\n\n"
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+          }
+        }
+        // Signal stream completion
+        controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+        controller.close();
+      } catch (error) {
+        // Send error through the stream before closing
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ error: "Stream interrupted" })}\n\n`)
+        );
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+```
+
+Look at that. That's the whole server-side for OpenAI streaming. The `for await...of` loop is doing the heavy lifting — it reads chunks from the OpenAI SDK as they arrive and immediately shoves them into our `ReadableStream`. The client gets each token as soon as the model produces it. No buffering. No waiting. Just vibes. (And data. Mostly data.)
+
+### Streaming Anthropic Responses
+
+Anthropic's SDK uses a slightly different streaming interface, because of course every SDK has to be *just* different enough to make you rewrite things. But the pattern is the same:
+
+```typescript
+// app/api/chat/anthropic/route.ts
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+export async function POST(req: Request) {
+  const { messages, system } = await req.json();
+
+  const encoder = new TextEncoder();
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      try {
+        const stream = anthropic.messages.stream({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4096,
+          system: system ?? "You are a helpful assistant.",
+          messages,
+        });
+
+        for await (const event of stream) {
+          if (
+            event.type === "content_block_delta" &&
+            event.delta.type === "text_delta"
+          ) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`)
+            );
+          }
+        }
+
+        // Include usage info at the end
+        const finalMessage = await stream.finalMessage();
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              done: true,
+              usage: {
+                input_tokens: finalMessage.usage.input_tokens,
+                output_tokens: finalMessage.usage.output_tokens,
+              },
+            })}\n\n`
+          )
+        );
+        controller.close();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ error: message })}\n\n`)
+        );
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+```
+
+<Callout type="info" title="Unified Interface — This Is Intentional">
+Notice that both implementations produce the same SSE format: `data: {"content": "..."}\n\n`. This means your client-side code works identically regardless of which LLM provider you're using. This is very much on purpose — decouple your frontend from your provider. I've swapped providers mid-project three times now. If your client code has `if (provider === "openai")` checks in it, you're doing it wrong. Ask me how I know. (I was doing it wrong.)
+</Callout>
+
+## Client-Side: Consuming the Stream in React
+
+Now for the fun part. The client needs to read the stream chunk by chunk and update the UI as tokens arrive. This is where most tutorials show you a basic `fetch` with a reader loop and call it a day. I'm going to give you a proper custom hook that handles the real-world stuff — cancellation, error states, the works — because I've shipped the "basic" version to production and regretted it every single time.
+
+```typescript
+// hooks/useStreamingChat.ts
+import { useState, useCallback, useRef } from "react";
+
+interface StreamingMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface UseStreamingChatOptions {
+  apiUrl: string;
+  onError?: (error: string) => void;
+  onComplete?: (fullResponse: string) => void;
+}
+
+export function useStreamingChat({ apiUrl, onError, onComplete }: UseStreamingChatOptions) {
+  const [messages, setMessages] = useState<StreamingMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const sendMessage = useCallback(
+    async (userMessage: string) => {
+      // Add user message to the list
+      const updatedMessages = [...messages, { role: "user" as const, content: userMessage }];
+      setMessages(updatedMessages);
+      setIsStreaming(true);
+
+      // Create abort controller for cancellation
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      // Add empty assistant message that we'll stream into
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: updatedMessages }),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let fullResponse = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const text = decoder.decode(value, { stream: true });
+          const lines = text.split("\n");
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6); // Remove "data: " prefix
+
+            if (data === "[DONE]") continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              if (parsed.error) {
+                onError?.(parsed.error);
+                continue;
+              }
+
+              if (parsed.content) {
+                fullResponse += parsed.content;
+                // Update the last message (the assistant's streaming response)
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = {
+                    role: "assistant",
+                    content: fullResponse,
+                  };
+                  return updated;
+                });
+              }
+            } catch {
+              // Skip malformed JSON lines (can happen with chunked encoding)
+            }
+          }
+        }
+
+        onComplete?.(fullResponse);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          // User cancelled — not an error
+          return;
+        }
+        onError?.(err instanceof Error ? err.message : "Stream failed");
+      } finally {
+        setIsStreaming(false);
+        abortControllerRef.current = null;
+      }
+    },
+    [messages, apiUrl, onError, onComplete]
+  );
+
+  const abort = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setIsStreaming(false);
+  }, []);
+
+  return { messages, isStreaming, sendMessage, abort };
+}
+```
+
+That `AbortController` is doing more work than you might think. When a user clicks "Stop," it doesn't just hide the loading spinner — it actually cancels the fetch request, which triggers the server to close the upstream LLM connection, which stops generating tokens, which stops costing you money. Every token you don't generate is money you don't spend. I once forgot the abort button on an internal tool and someone let a hallucinating response run for 8,000 tokens before they just... closed the tab. That was a fun invoice to explain.
+
+And the component that uses it:
+
+```tsx
+// components/ChatInterface.tsx
+"use client";
+
+import { useState } from "react";
+import { useStreamingChat } from "@/hooks/useStreamingChat";
+
+export function ChatInterface() {
+  const [input, setInput] = useState("");
+  const { messages, isStreaming, sendMessage, abort } = useStreamingChat({
+    apiUrl: "/api/chat",
+    onError: (err) => console.error("Stream error:", err),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isStreaming) return;
+    sendMessage(input.trim());
+    setInput("");
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.map((msg, i) => (
+          <div
+            key={i}
+            className={`p-3 rounded-lg ${
+              msg.role === "user" ? "bg-blue-100 ml-auto max-w-[80%]" : "bg-gray-100 max-w-[80%]"
+            }`}
+          >
+            <p className="whitespace-pre-wrap">{msg.content}</p>
+            {msg.role === "assistant" && isStreaming && i === messages.length - 1 && (
+              <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-1" />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-4 border-t flex gap-2">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type a message..."
+          className="flex-1 p-2 border rounded"
+          disabled={isStreaming}
+        />
+        {isStreaming ? (
+          <button type="button" onClick={abort} className="px-4 py-2 bg-red-500 text-white rounded">
+            Stop
+          </button>
+        ) : (
+          <button type="submit" className="px-4 py-2 bg-blue-500 text-white rounded">
+            Send
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}
+```
+
+That little pulsing cursor (`animate-pulse`) is a tiny detail that makes a huge UX difference. Without it, users can't tell if the stream is still going or if it's done. I shipped without it once and got three "is it still thinking?" messages in the first hour. Tiny things matter.
+
+## Handling Errors Mid-Stream (The Part Everyone Gets Wrong)
+
+Here's something that will trip you up if you've only built traditional request-response APIs: errors during streaming are *fundamentally* different. The response has already started. The HTTP status code is already 200. You can't change it. The train has left the station. You're committed.
+
+So how do you tell the client something went wrong? You send a structured error event *through the stream itself*. It's like passing a note that says "actually, things are on fire" in the middle of an otherwise normal conversation.
+
+```typescript
+// Server-side: structured error events
+function createErrorEvent(code: string, message: string): string {
+  return `data: ${JSON.stringify({ error: { code, message } })}\n\n`;
+}
+
+// Common error scenarios during streaming
+const streamErrors = {
+  RATE_LIMITED: createErrorEvent("RATE_LIMITED", "Too many requests. Please wait and try again."),
+  CONTEXT_LENGTH: createErrorEvent("CONTEXT_LENGTH", "Conversation too long. Please start a new chat."),
+  CONTENT_FILTER: createErrorEvent("CONTENT_FILTER", "Response filtered by content policy."),
+  UPSTREAM_ERROR: createErrorEvent("UPSTREAM_ERROR", "LLM provider error. Please retry."),
+  TIMEOUT: createErrorEvent("TIMEOUT", "Response generation timed out."),
+};
+```
+
+I have personally encountered every single one of these in production. The `CONTEXT_LENGTH` one is especially fun because it usually happens mid-response — the model is happily generating text and then just... stops. Because it ran out of context window. If you don't handle this, the user sees a response that ends mid-sentence and thinks the AI had a stroke. (It kind of did, honestly.)
+
+<Callout type="warning" title="Don't Swallow Mid-Stream Errors (I Did This. It Was Bad.)">
+A common mistake — and I made it, so I'm allowed to call it common — is catching errors on the server and silently closing the stream. The client sees the stream end and assumes the response is complete. The user reads a half-finished answer and doesn't know anything went wrong. Always send an explicit error event before closing so the UI can show an appropriate message. "Something went wrong" is infinitely better than a response that just stops.
+</Callout>
+
+## Backpressure: When the Client Can't Keep Up
+
+Backpressure happens when the server produces data faster than the client can consume it. For LLM streaming, this is rare — models generate tokens slower than networks transmit them. But it *does* happen when you're doing heavy post-processing on each chunk. Like, say, running a Markdown parser on every single token. (Yes, I tried this. No, it was not performant. We'll talk about it.)
+
+```typescript
+// Server-side: respect backpressure with WritableStream
+const readableStream = new ReadableStream({
+  async start(controller) {
+    for await (const chunk of llmStream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        // controller.enqueue will throw if the internal queue is full
+        // This happens when the client isn't reading fast enough
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+        } catch (err) {
+          // Client disconnected or queue full — stop streaming
+          console.log("Client disconnected, stopping stream");
+          break;
+        }
+      }
+    }
+    controller.close();
+  },
+  cancel() {
+    // Client closed the connection — clean up upstream resources
+    // This is crucial to avoid wasting LLM tokens
+    console.log("Stream cancelled by client");
+  },
+});
+```
+
+That `cancel()` callback is crucial and I see people forget it constantly. When a client disconnects — tab closed, WiFi dropped, user got bored — you need to stop the upstream LLM generation. Every token you generate after the client disconnects is money thrown directly into the void. I once discovered we were burning $40/day on orphaned streams where users had closed the tab. Forty dollars a day. On text nobody was reading. The `cancel()` callback paid for itself in about six hours.
+
+## Abort Controllers: Letting Users Cancel (Please Do This, I'm Begging You)
+
+Users *must* be able to cancel a streaming response. This is both a UX requirement and a cost-saving measure — and I'm going to keep hammering this point because I've seen so many production LLM features without a cancel button that it physically hurts me.
+
+Think about it from the user's perspective: they ask a question, the model starts answering, and within two seconds they realize the response is going in completely the wrong direction. Without a cancel button, they just have to... sit there. Watching tokens they don't want. Paying for tokens they don't want. It's like being trapped in a conversation you can't escape at a party, except the conversation is costing you fractions of a cent per word.
+
+```typescript
+// Server-side: handle client disconnection
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+
+  // Track whether the client is still connected
+  let clientDisconnected = false;
+
+  // Listen for client disconnect
+  req.signal.addEventListener("abort", () => {
+    clientDisconnected = true;
+  });
+
+  const stream = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages,
+    stream: true,
+  });
+
+  const encoder = new TextEncoder();
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of stream) {
+          // Stop generating if client disconnected
+          if (clientDisconnected) {
+            controller.close();
+            return;
+          }
+
+          const content = chunk.choices[0]?.delta?.content;
+          if (content) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`));
+          }
+        }
+        controller.close();
+      } catch (error) {
+        if (!clientDisconnected) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ error: "Stream failed" })}\n\n`)
+          );
+        }
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+```
+
+That `req.signal.addEventListener("abort", ...)` is the server-side half of the abort story. The client calls `controller.abort()`, the fetch request is cancelled, the server sees the abort signal, and we stop iterating over the LLM stream. Clean. Efficient. No wasted tokens. This is one of those patterns that's simple to implement but makes a huge difference in production costs. I've seen it save 15-20% on LLM API costs for chat applications. That's not nothing.
+
+## Streaming with Tool Calls (Here Be Dragons)
+
+Okay, buckle up. This is where things get genuinely complex, and I mean that in the "I spent three days debugging this and questioned my career choices" sense.
+
+When an LLM needs to call a tool (function calling), the stream contains a mix of text content and tool call deltas. Tokens come in, and you don't know if the next one is going to be regular text or the beginning of a tool call. You need a state machine to handle this properly. And if the phrase "state machine" doesn't make you slightly nervous, you haven't built enough of them.
+
+```typescript
+// Server-side: streaming with tool calls
+import OpenAI from "openai";
+
+const tools: OpenAI.ChatCompletionTool[] = [
+  {
+    type: "function",
+    function: {
+      name: "get_weather",
+      description: "Get current weather for a location",
+      parameters: {
+        type: "object",
+        properties: {
+          location: { type: "string", description: "City name" },
+        },
+        required: ["location"],
+      },
+    },
+  },
+];
+
+// Execute a tool call and return the result
+async function executeTool(name: string, args: Record<string, unknown>): Promise<string> {
+  switch (name) {
+    case "get_weather":
+      // Call your weather API
+      return JSON.stringify({ temp: 72, condition: "sunny", location: args.location });
+    default:
+      return JSON.stringify({ error: `Unknown tool: ${name}` });
+  }
+}
+
+export async function POST(req: Request) {
+  const { messages } = await req.json();
+  const encoder = new TextEncoder();
+
+  const readableStream = new ReadableStream({
+    async start(controller) {
+      let currentMessages = [...messages];
+      let continueLoop = true;
+
+      while (continueLoop) {
+        const stream = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: currentMessages,
+          tools,
+          stream: true,
+        });
+
+        let toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
+
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta;
+
+          // Stream text content to client immediately
+          if (delta?.content) {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ content: delta.content })}\n\n`)
+            );
+          }
+
+          // Accumulate tool call deltas
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const existing = toolCalls.get(tc.index) ?? { id: "", name: "", arguments: "" };
+              if (tc.id) existing.id = tc.id;
+              if (tc.function?.name) existing.name = tc.function.name;
+              if (tc.function?.arguments) existing.arguments += tc.function.arguments;
+              toolCalls.set(tc.index, existing);
+            }
+          }
+        }
+
+        // If there were tool calls, execute them and continue
+        if (toolCalls.size > 0) {
+          // Notify client that tools are being executed
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                tool_calls: Array.from(toolCalls.values()).map((tc) => tc.name),
+              })}\n\n`
+            )
+          );
+
+          // Add assistant message with tool calls
+          currentMessages.push({
+            role: "assistant",
+            tool_calls: Array.from(toolCalls.values()).map((tc) => ({
+              id: tc.id,
+              type: "function" as const,
+              function: { name: tc.name, arguments: tc.arguments },
+            })),
+          });
+
+          // Execute each tool and add results
+          for (const [, tc] of toolCalls) {
+            const args = JSON.parse(tc.arguments);
+            const result = await executeTool(tc.name, args);
+
+            currentMessages.push({
+              role: "tool",
+              tool_call_id: tc.id,
+              content: result,
+            });
+          }
+
+          toolCalls = new Map();
+          // Loop continues — model will generate a response using tool results
+        } else {
+          continueLoop = false;
+        }
+      }
+
+      controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+      controller.close();
+    },
+  });
+
+  return new Response(readableStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
+```
+
+See that `while (continueLoop)` loop? That's the part that took me the longest to get right. The model might make a tool call, get the result, and then decide it needs to make *another* tool call based on that result. It's a loop that keeps going until the model finally decides to respond with text. I originally wrote this as a single pass and was very confused when multi-step tool use just... didn't work. The model would call a tool, I'd send back the result, and then nothing would happen. Because I wasn't calling the model again with the tool result. Three hours of debugging for a missing `while` loop. Classic.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│            Streaming with Tool Calls — Flow Diagram             │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Client         Server              LLM                         │
+│    │               │                  │                          │
+│    │──── prompt ──►│                  │                          │
+│    │               │── stream req ──►│                          │
+│    │               │                  │                          │
+│    │               │◄─ text chunks ──│ (streamed to client)     │
+│    │◄─ text ───────│                  │                          │
+│    │               │◄─ tool_call ────│ (accumulated)            │
+│    │◄─ "thinking" ─│                  │                          │
+│    │               │                  │                          │
+│    │               │── execute tool ──┤                          │
+│    │               │◄─ tool result ───┤                          │
+│    │               │                  │                          │
+│    │               │── stream req ──►│ (with tool result)       │
+│    │               │◄─ text chunks ──│ (final answer)           │
+│    │◄─ text ───────│                  │                          │
+│    │◄─ [DONE] ─────│                  │                          │
+│    │               │                  │                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+That "thinking" event I send to the client when tools are executing? That was a UX suggestion from a friend, and it was brilliant. Without it, there's a weird pause in the stream while the tool runs — the user sees text stop and doesn't know why. A little "Checking the weather..." message bridges the gap and keeps the experience feeling responsive. Small detail, big impact. This is a theme you'll notice in streaming work: it's 50% engineering and 50% carefully managing what the user *perceives* is happening.
+
+<Callout type="info" title="Tool Call Costs — Real Talk">
+Each tool call round-trip adds latency and token cost. The model sends its thinking, you execute the tool, then the model generates a final response using the tool result. For time-sensitive applications, consider pre-fetching data that the model is likely to need and including it in the system prompt instead. I've seen tool calls add 2-4 seconds of latency each. If you're making three tool calls per request, that's 6-12 seconds of waiting, which kind of defeats the purpose of streaming in the first place.
+</Callout>
+
+## Token-by-Token Rendering Tips (Don't Re-render 100 Times Per Second)
+
+Here's a fun performance bug I shipped to production: updating React state on every single token. For a response with 500 tokens arriving 50 per second, that's 500 state updates, 500 re-renders, and one very sad browser. Users on older phones reported that the app "got really laggy when the AI was typing." Because I was making React re-render the entire message list ten times per second. Whoops.
+
+The fix is to batch updates using `requestAnimationFrame`:
+
+```typescript
+// Smooth rendering: batch updates to avoid excessive re-renders
+import { useRef, useCallback } from "react";
+
+function useThrottledUpdate(delay: number = 16) {
+  const bufferRef = useRef("");
+  const rafRef = useRef<number | null>(null);
+  const callbackRef = useRef<((text: string) => void) | null>(null);
+
+  const flush = useCallback(() => {
+    if (callbackRef.current && bufferRef.current) {
+      callbackRef.current(bufferRef.current);
+    }
+    rafRef.current = null;
+  }, []);
+
+  const append = useCallback(
+    (text: string, onUpdate: (fullText: string) => void) => {
+      bufferRef.current += text;
+      callbackRef.current = onUpdate;
+
+      // Use requestAnimationFrame to batch updates to ~60fps
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(flush);
+      }
+    },
+    [flush]
+  );
+
+  return { append };
+}
+```
+
+Sixteen milliseconds. That's 60fps. Your users don't need to see every individual token the millisecond it arrives — they just need it to *feel* smooth. Batching to 60fps gives you that without melting their phone. The difference in perceived performance is actually zero (humans can't read that fast anyway), but the difference in actual performance is dramatic. CPU usage dropped from "my fan is screaming" to "barely noticeable."
+
+<Callout type="warning" title="Markdown Rendering During Streaming — A Horror Story">
+If you're rendering streamed Markdown (which you probably are, because every LLM loves to respond in Markdown), be very careful with partial syntax. A half-formed code block like ` ```type ` without the closing fence will break most Markdown renderers. I once shipped this and the entire chat UI would flash and jump every time the model started a code block. Buffer content and only render complete Markdown blocks, or use a streaming-aware Markdown renderer like `react-markdown` with a custom parser that handles incomplete blocks gracefully. Trust me on this one — I lost an afternoon to it.
+</Callout>
+
+## Production Checklist (The Stuff You'll Forget Until It Bites You)
+
+Before shipping streaming to production, go through this list. I built it from personal experience, which is a polite way of saying "each unchecked item represents a bug I shipped to production at some point":
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Streaming Production Checklist                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Server Side                                                    │
+│  ───────────                                                    │
+│  [ ] Rate limiting per user/session                             │
+│  [ ] Request authentication before streaming                    │
+│  [ ] Input validation and sanitization                          │
+│  [ ] Maximum response length / token budget                     │
+│  [ ] Timeout for stalled streams                                │
+│  [ ] Clean up upstream connections on client disconnect          │
+│  [ ] Log token usage for cost monitoring                        │
+│  [ ] Error events sent through stream (not swallowed)           │
+│                                                                  │
+│  Client Side                                                    │
+│  ───────────                                                    │
+│  [ ] Abort controller for user cancellation                     │
+│  [ ] Loading state while waiting for first token                │
+│  [ ] Error handling for mid-stream failures                     │
+│  [ ] Reconnection logic for dropped connections                 │
+│  [ ] Smooth rendering without excessive re-renders              │
+│  [ ] Accessibility: announce streaming status to screen readers │
+│  [ ] Mobile: handle app backgrounding during stream             │
+│                                                                  │
+│  Infrastructure                                                 │
+│  ──────────────                                                 │
+│  [ ] Proxy/CDN configured to not buffer SSE responses           │
+│  [ ] Load balancer timeout > max stream duration                │
+│  [ ] CORS headers if API is on a different domain               │
+│  [ ] Monitoring for stream duration and error rates             │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+That "mobile: handle app backgrounding" one? That was a fun day. Turns out, when a user switches apps on their phone, the browser can suspend the tab and kill the streaming connection. When they switch back, the stream is dead, the response is half-finished, and there's no error message because the client never got one. The fix is reconnection logic with the ability to resume from where you left off, or at minimum, a "connection lost" message so the user knows to retry. I found this bug because my own mom was using the app and texted me "why does it always stop in the middle when I check my texts?" Thanks, Mom. Best QA tester I've ever had.
+
+And here's the one that catches *everyone* off guard, even people who should know better (me — I should have known better): many reverse proxies and CDNs buffer responses by default. If you're behind Nginx, Cloudflare, or similar, you need to disable response buffering for your streaming endpoints. Otherwise, the client receives the entire response at once — defeating the *entire* purpose of streaming. You've done all this work to stream tokens one by one, and Nginx is sitting in the middle going "nah, I'll just hold onto these for a bit and send them all together." Cool. Great. Very helpful.
+
+```nginx
+# Nginx: disable buffering for SSE endpoints
+location /api/chat {
+    proxy_pass http://upstream;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_set_header Connection '';
+    proxy_http_version 1.1;
+    chunked_transfer_encoding off;
+}
+```
+
+I once spent an entire day debugging why streaming "worked in dev but not in production." The code was identical. The API was returning chunks. Everything looked right. Turns out, the staging Nginx config had `proxy_buffering on` (the default). One line of config. An entire day. I aged visibly.
+
+## The Bottom Line
+
+Streaming LLM responses well is one of those things that seems simple until you actually build it. The happy path? An afternoon. Error handling, cancellation, tool calls, backpressure, proxy configuration, mobile edge cases, and all the stuff that makes it *production-ready*? A week. Maybe more.
+
+But the difference in user experience is enormous — truly, genuinely enormous. It transforms an AI feature from feeling sluggish and opaque to feeling fast and responsive. It turns "is this thing broken?" into "oh wow, it's already answering." That first-token latency of 200ms versus 8 seconds of nothing is the difference between a user who trusts your product and a user who closes the tab.
+
+It's worth getting right. Your users will thank you. Your API bill will thank you. And you won't get any more bug reports about your AI "throwing up text."
+
+(Though if you do, I'd recommend printing them out and taping them to your monitor. Very motivating.)

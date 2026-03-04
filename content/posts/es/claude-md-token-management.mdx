@@ -1,0 +1,413 @@
+---
+title: "Tu CLAUDE.md Se Está Comiendo Tus Tokens (Y Probablemente No Lo Sabes)"
+description: "Cómo un archivo CLAUDE.md inflado drena silenciosamente tu presupuesto de tokens en cada interacción, y las estrategias prácticas que uso para mantenerlo delgado, efectivo y barato. Historias de guerra de alguien que aprendió por las malas."
+date: 2026-03-04
+published: true
+category: "Ingeniería de IA"
+tags: ["Claude Code", "CLAUDE.md", "Herramientas de IA", "Gestión de Tokens", "Experiencia de Desarrollador"]
+author: "Osvaldo Restrepo"
+translationOf: "claude-md-token-management"
+tldr: "Tu archivo CLAUDE.md se carga en cada conversación con Claude Code, lo que significa que cada token que contiene se consume en cada mensaje — incluso un simple 'sí' o 'gracias.' Quemé mi ventana de contexto vergonzosamente rápido antes de aprender a mantener CLAUDE.md por debajo de 500 tokens, descargar detalles a archivos de memoria separados y escribir prompts concisos. Pequeños cambios en cómo estructuras tus instrucciones pueden ahorrarte miles de tokens por sesión."
+faqs:
+  - question: "¿Qué es un archivo CLAUDE.md y por qué importa para el uso de tokens?"
+    answer: "CLAUDE.md es un archivo de configuración que Claude Code carga en el contexto al inicio de cada conversación. Contiene instrucciones del proyecto, estándares de código y preferencias. Como se inyecta en cada interacción, cada token que contiene cuenta contra tu ventana de contexto y presupuesto de tokens en cada mensaje que envías."
+  - question: "¿Cuántos tokens usa un archivo CLAUDE.md típico?"
+    answer: "Varía enormemente. Un CLAUDE.md delgado y bien estructurado puede usar 200-500 tokens. Uno inflado con guías de estilo completas, documentación de arquitectura y código de ejemplo puede alcanzar fácilmente 3,000-5,000+ tokens. Como esto se carga en cada mensaje, un CLAUDE.md de 5,000 tokens en una sesión de 50 mensajes te cuesta 250,000 tokens solo en instrucciones repetidas."
+  - question: "¿Qué debería poner en CLAUDE.md versus archivos separados?"
+    answer: "CLAUDE.md debería contener solo instrucciones de alta prioridad que sean siempre relevantes: esenciales de estilo de código, convenciones críticas del proyecto y decisiones arquitectónicas clave. Guías de estilo detalladas, documentación de API, contexto de onboarding y material de referencia deberían ir en archivos separados que Claude Code puede leer bajo demanda."
+  - question: "¿Los mensajes cortos como 'sí' o 'gracias' realmente desperdician tokens?"
+    answer: "Sí. Cada mensaje que envías — incluso una respuesta de una sola palabra — dispara una recarga completa del contexto que incluye tu CLAUDE.md, historial de conversación y prompts del sistema. Un 'gracias' que se siente gratis en realidad cuesta cientos o miles de tokens dependiendo de tu contexto acumulado. Agrupa tus confirmaciones con tu siguiente instrucción real."
+relatedPosts: ["claude-code-context-limits", "building-ai-agents-production"]
+---
+
+Tengo que confesar algo. Hace unas semanas, revisé mis estadísticas de uso de Claude Code y casi me ahogo con el café. Estaba quemando tokens a un ritmo que no tenía absolutamente ningún sentido dado el trabajo que estaba haciendo. No estaba construyendo nada complejo. No estaba haciendo refactors masivos. Solo estaba... chateando. Haciendo pequeñas ediciones. Diciendo "se ve bien" y "sí, hazlo" y "gracias."
+
+Y ahí fue cuando me di cuenta: **mi archivo CLAUDE.md era un monstruo de 4,000 tokens, y se estaba cargando en cada mensaje que enviaba.** Cada "sí." Cada "gracias." Cada "continúa." Cuatro mil tokens de preámbulo, cada maldita vez.
+
+Me sentí como el tipo que descubre que ha estado pagando tres suscripciones de Netflix que olvidó cancelar. Excepto que en vez de $45 al mes, estaba desangrando mi ventana de contexto.
+
+## ¿Qué Es CLAUDE.md y Por Qué Debería Importarte?
+
+Si estás usando Claude Code (la herramienta CLI de Anthropic), probablemente has visto o creado un archivo `CLAUDE.md`. Vive en la raíz de tu proyecto y actúa como instrucciones persistentes — piensa en él como un system prompt que le dice a Claude sobre tu proyecto, tus preferencias, tus estándares de código y cómo te gusta que se hagan las cosas.
+
+Aquí viene la parte importante que la documentación menciona pero tu cerebro ignora: **CLAUDE.md se carga en el contexto al inicio de cada conversación.** Cada. Una. De. Ellas.
+
+```
+┌─────────────────────────────────────────────────────┐
+│           Lo que pasa en CADA mensaje                │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  ┌──────────────┐                                   │
+│  │  System      │  ~500 tokens (propios de Claude)  │
+│  │  Prompt      │                                   │
+│  ├──────────────┤                                   │
+│  │  Contenido   │  ??? tokens (TU responsabilidad)  │
+│  │  CLAUDE.md   │                                   │
+│  ├──────────────┤                                   │
+│  │  Historial   │  Crece con cada mensaje...        │
+│  │  de Chat     │                                   │
+│  ├──────────────┤                                   │
+│  │  Tu Último   │  "sí" (1 token)                   │
+│  │  Mensaje     │                                   │
+│  └──────────────┘                                   │
+│                                                      │
+│  Total: Sistema + CLAUDE.md + Historial + Tu mensaje │
+│  Facturado: TODO. Cada vez. Sí, incluso por "sí."   │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+¿Ves eso? Tu "sí" de un token viaja montado en una ola gigante de contexto que incluye todo tu CLAUDE.md. Es como tomar un jet privado para ir al buzón de correo.
+
+## El Día Que Descubrí Mi Fuga de Tokens
+
+Déjame pintarte el cuadro. Es un martes. Estoy en la onda con Claude Code, construyendo una funcionalidad para un proyecto personal. Estoy en ese estado de flow donde solo chateas de ida y vuelta con la IA, iterando rápido. Mensajes cortos. Confirmaciones rápidas. "Hazlo." "Se ve bien." "Sí, agrega tests." "Gracias."
+
+Estaba siendo *educado* con la IA. Mi mamá estaría orgullosa. Mi presupuesto de tokens no.
+
+Abrí mi CLAUDE.md por curiosidad y encontré esta obra maestra de la sobreingeniería:
+
+```markdown
+# Proyecto: Mi Proyecto Personal
+
+## Resumen de Arquitectura
+Esta es una aplicación Next.js 14 usando el App Router con TypeScript,
+Tailwind CSS y Prisma ORM conectado a PostgreSQL. El proyecto sigue
+una estructura de carpetas basada en features con componentes compartidos
+en /components y utilidades en /lib...
+
+[150 palabras más de descripción de arquitectura]
+
+## Estándares de Código
+- Usar modo estricto de TypeScript
+- Preferir exports nombrados sobre exports por defecto
+- Usar Zod para toda validación en tiempo de ejecución
+- Manejo de errores: siempre usar clases de error personalizadas
+- Nombres: camelCase para variables, PascalCase para componentes...
+
+[200 palabras más de estándares de código]
+
+## Patrones de Componentes
+Al crear componentes de React, siempre seguir este patrón:
+[plantilla completa de componente con 30 líneas de código]
+
+## Patrones de API Routes
+Al crear API routes, siempre seguir este patrón:
+[plantilla completa de API route con 40 líneas de código]
+
+## Estándares de Testing
+Usamos Vitest con React Testing Library...
+[100 palabras más sobre testing]
+
+## Convenciones de Git
+[50 palabras más sobre commits]
+
+## Convenciones de Base de Datos
+[80 palabras más sobre patrones de Prisma]
+
+## Notas de Deployment
+[60 palabras que nadie necesita en cada conversación]
+```
+
+Básicamente había copiado y pegado la mitad de la documentación de mi proyecto en CLAUDE.md. ¡Era exhaustivo! ¡Era completo! También eran aproximadamente 4,200 tokens que se cargaban en el contexto cada vez que escribía "ok."
+
+<Callout type="warning" title="La Matemática Que Duele">
+Hagamos unas cuentas en la servilleta. Si tu CLAUDE.md tiene 4,000 tokens y intercambias 40 mensajes en una sesión, eso son 160,000 tokens gastados *solo en cargar repetidamente tus instrucciones.* No en trabajo real. No en generación de código. En leer las mismas instrucciones una y otra vez como un pez dorado con una nota adhesiva.
+</Callout>
+
+## Mensajes Pequeños, Costos Ocultos Masivos
+
+Aquí está lo que realmente me pegó, y creo que es la conclusión más importante de todo este artículo: **los mensajes pequeños, incluso solo para decir "gracias," consumen tu contexto completo cada vez.**
+
+Hice un experimento informal conmigo mismo. Rastreé una sesión de código típica y categoricé mis mensajes:
+
+```
+Análisis de Mensajes (una sesión de una tarde):
+──────────────────────────────────────────
+"sí"                           × 8
+"hazlo"                        × 5
+"se ve bien"                   × 4
+"gracias"                      × 3
+"continúa"                     × 6
+"sí, y también agrega tests"   × 2
+[prompts realmente sustanciales]× 12
+──────────────────────────────────────────
+Total de mensajes: 40
+Mensajes de relleno: 28 (¡70%!)
+```
+
+El setenta por ciento de mis mensajes eran esencialmente confirmaciones de una palabra. Cada uno disparaba una carga completa de contexto. Estaba siendo *conversacional* con una herramienta que cobra por token. Estaba tratando a Claude Code como un compañero de trabajo en el escritorio de al lado cuando debería haberlo tratado como un operador de telégrafo en 1880 — cada palabra cuesta plata, así que hazlas contar.
+
+<Callout type="info" title="El Impuesto de la Cortesía">
+No estoy diciendo que no seas amable con tus herramientas de IA. (Bueno, quizás lo estoy diciendo un poquito.) Pero hay un costo real en las interacciones charlatanas. En vez de "¡Sí, eso se ve genial! ¿Puedes también agregar manejo de errores?" intenta: "Agrega manejo de errores a la función anterior." Te saltas las cortesías, ahorras tokens, y Claude no tiene sentimientos que herir. Probablemente. Espero.
+</Callout>
+
+## Mi Detox de CLAUDE.md: Antes y Después
+
+Después de mi rudo despertar, me puse a dieta de CLAUDE.md. Esto es lo que hice.
+
+### Antes: La Enciclopedia (4,200 tokens)
+
+```markdown
+# Proyecto: MiApp
+
+## Arquitectura
+[200 palabras describiendo todo el stack tecnológico]
+
+## Estándares de Código
+[300 palabras de reglas detalladas]
+
+## Plantilla de Componentes
+[ejemplo de código de 30 líneas]
+
+## Plantilla de API
+[ejemplo de código de 40 líneas]
+
+## Estándares de Testing
+[100 palabras]
+
+## Convenciones de Git
+[50 palabras]
+
+## Patrones de Base de Datos
+[80 palabras]
+
+## Deployment
+[60 palabras]
+```
+
+### Después: Lo Esencial (~350 tokens)
+
+```markdown
+# MiApp
+
+Next.js 14 App Router, TypeScript estricto, Tailwind, Prisma/PostgreSQL.
+
+## Reglas Clave
+- Exports nombrados, validación con Zod, clases de error personalizadas
+- Seguir patrones existentes en el codebase (revisar archivos similares primero)
+- Vitest + React Testing Library para tests
+
+## Estilo
+camelCase variables, PascalCase componentes, kebab-case archivos.
+
+## Importante
+- Nunca modificar /lib/auth/* sin confirmación explícita
+- Todas las API routes necesitan middleware de auth
+- Ejecutar `pnpm typecheck` antes de sugerir PR
+```
+
+Eso es todo. Trescientos cincuenta tokens. Abajo de 4,200. Eliminé las plantillas completas de código (Claude puede mirar archivos existentes), las notas de deployment (irrelevantes para tareas de código), el documento exhaustivo de estándares (Claude ya sabe la mayoría de esto si solo dices "sigue los patrones existentes"), y todo lo que no era crítico para *cada interacción.*
+
+¿El resultado? Mis sesiones se sintieron exactamente igual en calidad, pero mi consumo de tokens bajó drásticamente. Mismo output, mucho menos input. Fue como descubrir que mi carro rinde más sin los 90 kilos de cosas "por si acaso" en la cajuela.
+
+## Qué Va Dónde: El Framework de Decisión para CLAUDE.md
+
+Este es el framework que ahora uso para decidir si algo pertenece a CLAUDE.md:
+
+```
+┌─────────────────────────────────────────────────────┐
+│        ¿Esto pertenece a CLAUDE.md?                  │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  ¿Se necesita en CADA conversación?                  │
+│  ├── SÍ: Mantenlo en CLAUDE.md (pero sé breve)      │
+│  └── NO:                                             │
+│       │                                              │
+│       ¿Se necesita frecuentemente?                   │
+│       ├── SÍ: Ponlo en un archivo separado que       │
+│       │        Claude pueda leer bajo demanda         │
+│       └── NO:  Solo menciónalo en tu prompt          │
+│                cuando sea relevante                   │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Pertenece a CLAUDE.md (Contexto Siempre Activo)
+- Stack tecnológico del proyecto (una línea)
+- Convenciones críticas que previenen bugs
+- Reglas duras (archivos que nunca modificar, checks requeridos)
+- Preferencias de estilo que difieren de los defaults
+
+### Pertenece a Archivos de Memoria Separados
+- Estándares detallados de código → `.claude/standards.md`
+- Documentación de arquitectura → `.claude/architecture.md`
+- Plantillas de componentes/API → `.claude/templates.md`
+- Contexto de onboarding → `.claude/context.md`
+- Patrones específicos del proyecto → `.claude/patterns.md`
+
+### Pertenece a Tu Prompt (Ad-Hoc)
+- Contexto específico de la tarea
+- Requisitos puntuales
+- Instrucciones temporales
+
+<Callout type="tip" title="La Estrategia de Archivos Separados">
+Claude Code puede leer archivos cuando se le pide. En vez de poner tu plantilla completa de componentes en CLAUDE.md, solo agrega una nota de una línea: "Para patrones de componentes, ver `.claude/templates.md`." Claude lo leerá cuando lo necesite — y solo cuando lo necesite. Esta es la diferencia entre cargar una enciclopedia en la mochila y saber dónde queda la biblioteca.
+</Callout>
+
+## Estructurando CLAUDE.md para Mínimos Tokens, Máximo Valor
+
+Después de optimizar docenas de archivos CLAUDE.md (los míos y de equipos con los que trabajo), esta es mi plantilla:
+
+```markdown
+# [Nombre del Proyecto]
+
+[Una línea: framework, lenguaje, base de datos. Eso es todo.]
+
+## Reglas
+- [Regla crítica 1]
+- [Regla crítica 2]
+- [Regla crítica 3]
+(Máximo 5-7 reglas. Si necesitas más, tu codebase tiene problemas más grandes.)
+
+## Estilo
+[Una línea para nombres. Una línea para formato. Listo.]
+
+## Referencias
+- Estándares: .claude/standards.md
+- Arquitectura: .claude/architecture.md
+- Plantillas: .claude/templates.md
+```
+
+El objetivo es **menos de 500 tokens.** Si tu CLAUDE.md tiene más de 500 tokens, probablemente estás incluyendo cosas que no necesitan estar ahí en cada mensaje. Audítalo. Sé despiadado. Cada token que cortas te ahorra ese token multiplicado por cada mensaje en cada sesión por el resto de la vida de tu proyecto. Es ahorro compuesto.
+
+## Presupuesto de Tokens: Piensa Como un Contador
+
+Empecé a pensar en el uso de tokens de la misma manera que pienso en un presupuesto mensual. Tienes una ventana de contexto fija. Todo compite por espacio en ella. Así es como lo desgloso:
+
+```
+Presupuesto de Ventana de Contexto (ejemplo de 200K):
+──────────────────────────────────────────
+Overhead del sistema:   ~2,000 tokens     (fijo, no lo controlas)
+CLAUDE.md:              ~350 tokens       (mantén esto PEQUEÑO)
+Historial de chat:      ~150,000 tokens   (esto crece — es tu pista)
+Memoria de trabajo:     ~47,650 tokens    (archivos, código, output)
+──────────────────────────────────────────
+
+Si CLAUDE.md fuera de 4,000 tokens en vez:
+──────────────────────────────────────────
+Overhead del sistema:   ~2,000 tokens
+CLAUDE.md:              ~4,000 tokens     (auch)
+Historial de chat:      ~150,000 tokens   (igual)
+Memoria de trabajo:     ~44,000 tokens    (acabas de perder 3,650
+                                           tokens de espacio de trabajo)
+──────────────────────────────────────────
+```
+
+Esos 3,650 tokens podrían no sonar como mucho, pero se acumulan. Son menos líneas de código que Claude puede mantener en memoria de trabajo. Es la diferencia entre que Claude vea tu componente completo y que Claude vea el 80% y alucine el resto. He visto que pase. No es divertido depurar código que fue generado a partir de una imagen incompleta.
+
+## El Arte del Prompt Conciso
+
+Ya que estamos en el tema de ahorrar tokens, hablemos de cómo escribes tus mensajes. Aquí es donde los ahorros diarios se acumulan.
+
+### No Narres, Instruye
+
+```markdown
+❌ "Oye Claude, estaba pensando que sería bueno si pudiéramos
+    agregar algo de manejo de errores a la función de login.
+    Ahora mismo si la llamada a la API falla simplemente se
+    crashea. ¿Podrías echarle un ojo y agregar unos try-catch
+    o algo así? ¡Gracias!"
+    (53 tokens)
+
+✓  "Agrega try-catch a loginUser(). En fallo de API: loguear
+    error, mostrar notificación toast, retornar null."
+    (19 tokens)
+```
+
+Mismo resultado. Sesenta y cuatro por ciento menos tokens. Y honestamente, la versión concisa también es más clara. Claude no necesita la historia de fondo. No necesita saber que estabas "pensando." Necesita la tarea.
+
+### Agrupa Tus Instrucciones
+
+```markdown
+❌ Mensaje 1: "Agrega un estado de carga"
+   Mensaje 2: "Sí, se ve bien"
+   Mensaje 3: "Ahora agrega manejo de errores"
+   Mensaje 4: "Perfecto"
+   Mensaje 5: "¿Puedes agregar tests también?"
+   Mensaje 6: "¡Gracias!"
+   (6 mensajes × carga completa de contexto cada uno)
+
+✓  Mensaje 1: "Agrega estado de carga, manejo de errores y
+               tests al componente UserProfile. Para errores,
+               mostrar notificación toast."
+   (1 mensaje × una carga de contexto)
+```
+
+Seis mensajes se convirtieron en uno. Eso no es solo menos tokens en tus prompts — son cinco cargas completas de contexto menos incluyendo tu CLAUDE.md, historial de conversación y prompts del sistema.
+
+<Callout type="tip" title="El Hábito del 'Un Solo Disparo'">
+Antes de enviar un mensaje, ahora me pregunto: "¿Puedo combinar esto con mi siguiente mensaje?" Si sé que voy a aprobar el output y luego pedir tests, simplemente pido ambas cosas de entrada. Me tomó un tiempo romper el hábito conversacional, pero mi consumo de tokens me lo agradeció inmediatamente.
+</Callout>
+
+### Sáltate las Cortesías
+
+Sé que esto suena frío. Soy una persona educada. Digo por favor y gracias en la vida real. Pero Claude Code no es la vida real. Es una llamada a una API. Cada "¡gracias!" y "¡buen trabajo!" y "¡eso se ve increíble!" son tokens que estás pagando y que producen cero valor.
+
+Si absolutamente debes ser cortés con la máquina (lo entiendo, yo también lucho con esto), al menos combínalo con tu siguiente instrucción: "Gracias — ahora agrega validación de input al formulario." No envíes "gracias" como su propio mensaje. Ese "gracias" solitario con un CLAUDE.md de 4,000 tokens es la expresión de gratitud más cara en la historia de la humanidad.
+
+## Avanzado: El Flujo de Trabajo Consciente de Tokens
+
+Este es el flujo de trabajo en el que me he asentado después de meses de optimización:
+
+1. **Empieza ligero.** CLAUDE.md por debajo de 500 tokens. Archivos de referencia para detalles.
+2. **Agrupa instrucciones.** Piensa antes de escribir. Combina solicitudes relacionadas.
+3. **Sáltate el relleno.** Nada de "sí," "ok," "gracias" como mensajes independientes.
+4. **Carga el contexto al inicio.** Dale a Claude todo lo que necesita en el primer mensaje para que haya menos ida y vuelta.
+5. **Usa prompts compactos.** Instruye, no narres. Sé específico, no verboso.
+6. **Inicia sesiones nuevas.** Cuando el historial de conversación se pone largo, empieza de nuevo en vez de cargar 100K tokens de contexto viejo.
+
+```
+Sesión Eficiente en Tokens:
+──────────────────────────────────────────
+Mensaje 1: [Tarea detallada con todo el contexto]  → Grande pero vale la pena
+Mensaje 2: [Ajuste de seguimiento específico]       → Dirigido
+Mensaje 3: [Siguiente tarea, instrucciones agrupadas]→ Eficiente
+──────────────────────────────────────────
+
+Sesión Desperdiciadora de Tokens:
+──────────────────────────────────────────
+Mensaje 1:  "Oye, ¿me puedes ayudar?"              → Cero valor
+Mensaje 2:  "Necesito agregar un botón"             → Vago
+Mensaje 3:  "Un botón de enviar"                    → Todavía vago
+Mensaje 4:  "En la página del formulario"           → Dando info a gotas
+Mensaje 5:  "Sí, ese"                               → Confirmación
+Mensaje 6:  "Se ve bien"                            → Relleno
+Mensaje 7:  "¿Puedes agregar validación también?"   → Podía ser el msg 1
+Mensaje 8:  "Sí"                                    → Relleno
+Mensaje 9:  "¡Gracias!"                             → Impuesto de cortesía
+Mensaje 10: "Ah espera, también agrega tests"       → Pensamiento tardío
+──────────────────────────────────────────
+```
+
+El primer flujo de trabajo hace en 3 mensajes lo que el segundo hace en 10. Son 7 cargas de contexto menos. Con un CLAUDE.md de 350 tokens, ahorras alrededor de 2,450 tokens solo por CLAUDE.md. Con el historial de conversación incluido, los ahorros son mucho mayores.
+
+## El ROI de Ser Consciente de los Tokens
+
+Mira, lo entiendo. Rastrear tokens se siente tedioso. Solo quieres programar. Yo me sentía igual. Pero aquí está la cosa: una vez que construyes estos hábitos, son automáticos. Escribir prompts concisos no es más difícil que escribir verbosos — de hecho es más fácil. Mantener CLAUDE.md delgado no es un sacrificio — te obliga a clarificar qué realmente importa. Iniciar sesiones nuevas cuando el contexto se pone pesado no es una molestia — de hecho te da mejores resultados porque Claude no está nadando entre 150K tokens de conversación vieja para encontrar lo que es relevante.
+
+Ser consciente de los tokens me hizo un mejor comunicador con herramientas de IA. Y aquí viene lo bueno: me hizo más rápido. Menos mensajes significa menos espera. Prompts más claros significan menos ciclos de revisión. Un CLAUDE.md delgado significa más espacio para código real en la ventana de contexto.
+
+<Callout type="info" title="El Cambio de Mentalidad">
+Deja de pensar en Claude Code como una conversación y empieza a pensarlo como una interfaz de comandos. No le harías small talk a `bash`. No le dirías "por favor" a `git`. Dale a Claude Code el mismo respeto: instrucciones claras, directas y eficientes. Tu presupuesto de tokens — y tu productividad — te lo van a agradecer.
+</Callout>
+
+## Referencia Rápida: La Lista de Verificación Token-Inteligente
+
+Para los que se saltaron hasta el final (no los juzgo, yo también lo hago), aquí está el resumen:
+
+- **CLAUDE.md por debajo de 500 tokens.** Audítalo hoy. Ahora mismo. Yo espero.
+- **Descarga detalles a archivos `.claude/`.** Plantillas, estándares, documentación de arquitectura.
+- **Nunca envíes mensajes de una palabra.** Agrupa confirmaciones con tu siguiente instrucción.
+- **Escribe prompts como telegramas.** Cada palabra debería ganarse sus tokens.
+- **Inicia sesiones frescas** cuando el contexto se ponga pesado.
+- **Carga tus solicitudes al inicio.** Da todo el contexto de entrada, reduce el ida y vuelta.
+- **Mide tu uso.** No puedes optimizar lo que no mides.
+
+La diferencia entre un desarrollador consciente de los tokens y uno charlatán no es inteligencia ni habilidad — es conciencia. Ahora eres consciente. Ve a revisar tu CLAUDE.md. Apuesto a que es más grande de lo que necesita ser.
+
+El mío lo era. Y admitirlo es el primer paso.
+
+---
+
+*¿Quieres hablar sobre flujos de trabajo con Claude Code, optimización de tokens o desarrollo asistido por IA? [Escríbeme](/contact) — prometo mantener mi respuesta por debajo de 500 tokens. Viejas costumbres.*

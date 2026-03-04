@@ -1,0 +1,412 @@
+---
+title: "Your CLAUDE.md Is Eating Your Tokens (And You Probably Don't Know It)"
+description: "How a bloated CLAUDE.md file silently drains your token budget on every single interaction, and the practical strategies I use to keep it lean, effective, and cheap. War stories from someone who learned the hard way."
+date: 2026-03-04
+published: true
+category: "AI Engineering"
+tags: ["Claude Code", "CLAUDE.md", "AI Tools", "Token Management", "Developer Experience"]
+author: "Osvaldo Restrepo"
+tldr: "Your CLAUDE.md file gets loaded into every single conversation with Claude Code, meaning every token in it is consumed on every message — even a simple 'yes' or 'thanks.' I burned through my context window embarrassingly fast before learning to keep CLAUDE.md under 500 tokens, offload details to separate memory files, and write concise prompts. Small changes in how you structure your instructions can save thousands of tokens per session."
+faqs:
+  - question: "What is a CLAUDE.md file and why does it matter for token usage?"
+    answer: "CLAUDE.md is a configuration file that Claude Code loads into context at the start of every conversation. It contains project instructions, coding standards, and preferences. Because it's injected into every interaction, every token in it counts against your context window and token budget on every single message you send."
+  - question: "How many tokens does a typical CLAUDE.md file use?"
+    answer: "It varies wildly. A lean, well-structured CLAUDE.md might use 200-500 tokens. A bloated one with full style guides, architecture docs, and example code can easily hit 3,000-5,000+ tokens. Since this is loaded on every message, a 5,000-token CLAUDE.md in a 50-message session costs you 250,000 tokens just in repeated instructions."
+  - question: "What should I put in CLAUDE.md versus separate files?"
+    answer: "CLAUDE.md should contain only high-priority, always-relevant instructions: coding style essentials, critical project conventions, and key architectural decisions. Detailed style guides, API documentation, onboarding context, and reference material should go in separate files that Claude Code can read on demand."
+  - question: "Do short messages like 'yes' or 'thanks' really waste tokens?"
+    answer: "Yes. Every message you send — even a one-word reply — triggers a full context reload that includes your CLAUDE.md, conversation history, and system prompts. A 'thanks' that feels free actually costs hundreds or thousands of tokens depending on your accumulated context. Batch your confirmations with your next real instruction instead."
+relatedPosts: ["claude-code-context-limits", "building-ai-agents-production"]
+---
+
+I need to confess something. A few weeks ago, I looked at my Claude Code usage stats and nearly choked on my coffee. I was burning through tokens at a rate that made absolutely no sense given the work I was doing. I wasn't building anything complex. I wasn't doing massive refactors. I was just... chatting. Making small edits. Saying "looks good" and "yes, do that" and "thanks."
+
+And that's when I realized: **my CLAUDE.md file was a 4,000-token monster, and it was loading into every single message I sent.** Every "yes." Every "thanks." Every "continue." Four thousand tokens of preamble, every single time.
+
+I felt like the guy who discovers he's been paying for three Netflix subscriptions he forgot about. Except instead of $45 a month, I was hemorrhaging context window.
+
+## What Is CLAUDE.md and Why Should You Care?
+
+If you're using Claude Code (Anthropic's CLI tool), you've probably seen or created a `CLAUDE.md` file. It sits in your project root and acts as persistent instructions — think of it as a system prompt that tells Claude about your project, your preferences, your coding standards, and how you like things done.
+
+Here's the important bit that the docs mention but your brain glosses over: **CLAUDE.md gets loaded into context at the start of every single conversation.** Every. Single. One.
+
+```
+┌─────────────────────────────────────────────────────┐
+│              What happens on EVERY message           │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  ┌──────────────┐                                   │
+│  │  System      │  ~500 tokens (Claude's own)       │
+│  │  Prompt      │                                   │
+│  ├──────────────┤                                   │
+│  │  CLAUDE.md   │  ??? tokens (YOUR responsibility) │
+│  │  Contents    │                                   │
+│  ├──────────────┤                                   │
+│  │  Conversation│  Growing with every message...    │
+│  │  History     │                                   │
+│  ├──────────────┤                                   │
+│  │  Your Latest │  "yes" (1 token)                  │
+│  │  Message     │                                   │
+│  └──────────────┘                                   │
+│                                                      │
+│  Total: System + CLAUDE.md + History + Your message  │
+│  Billed: ALL OF IT. Every time. Yes, even for "yes." │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+See that? Your one-token "yes" is riding on a tidal wave of context that includes your entire CLAUDE.md. It's like taking a private jet to the mailbox.
+
+## The Day I Discovered My Token Leak
+
+Let me paint you a picture. It's a Tuesday. I'm vibing with Claude Code, building out a feature for a side project. I'm in that flow state where you're just chatting back and forth with the AI, iterating quickly. Short messages. Quick confirmations. "Do it." "Looks good." "Yes, add tests." "Thanks."
+
+I was being *polite* to the AI. My mother would be proud. My token budget was not.
+
+I opened my CLAUDE.md out of curiosity and found this masterpiece of overengineering:
+
+```markdown
+# Project: My Side Project
+
+## Architecture Overview
+This is a Next.js 14 application using the App Router with TypeScript,
+Tailwind CSS, and Prisma ORM connected to PostgreSQL. The project follows
+a feature-based folder structure with shared components in /components
+and utilities in /lib...
+
+[150 more words of architecture description]
+
+## Coding Standards
+- Use TypeScript strict mode
+- Prefer named exports over default exports
+- Use Zod for all runtime validation
+- Error handling: always use custom error classes
+- Naming: camelCase for variables, PascalCase for components...
+
+[200 more words of coding standards]
+
+## Component Patterns
+When creating React components, always follow this pattern:
+[full component template with 30 lines of code]
+
+## API Route Patterns
+When creating API routes, always follow this pattern:
+[full API route template with 40 lines of code]
+
+## Testing Standards
+We use Vitest with React Testing Library...
+[100 more words about testing]
+
+## Git Conventions
+[50 more words about commits]
+
+## Database Conventions
+[80 more words about Prisma patterns]
+
+## Deployment Notes
+[60 more words nobody needs in every conversation]
+```
+
+I had essentially copy-pasted half my project's documentation into CLAUDE.md. It was thorough! It was comprehensive! It was also approximately 4,200 tokens that were being loaded into context every time I typed "ok."
+
+<Callout type="warning" title="The Math That Hurts">
+Let's do some napkin math. If your CLAUDE.md is 4,000 tokens and you exchange 40 messages in a session, that's 160,000 tokens spent *just on repeatedly loading your instructions.* Not on actual work. Not on code generation. On reading the same instructions over and over like a goldfish with a sticky note.
+</Callout>
+
+## Small Messages, Massive Hidden Costs
+
+Here's the thing that really got me, and I think this is the most important takeaway from this entire article: **small messages, even just to say "thank you," consume your full context every time.**
+
+I ran an informal experiment on myself. I tracked a typical coding session and categorized my messages:
+
+```
+Message Analysis (one afternoon session):
+──────────────────────────────────────────
+"yes"                          × 8
+"do it"                        × 5
+"looks good"                   × 4
+"thanks"                       × 3
+"continue"                     × 6
+"yes, and also add tests"      × 2
+[actual substantive prompts]   × 12
+──────────────────────────────────────────
+Total messages: 40
+Filler messages: 28 (70%!)
+```
+
+Seventy percent of my messages were essentially one-word acknowledgments. Each one triggered a full context load. I was being *conversational* with a tool that charges by the token. I was treating Claude Code like a coworker at the next desk when I should have been treating it like a telegraph operator in 1880 — every word costs money, so make them count.
+
+<Callout type="info" title="The Politeness Tax">
+I'm not saying don't be nice to your AI tools. (Okay, maybe I am saying that a little.) But there's a real cost to chatty interactions. Instead of "Yes, that looks great! Can you also add error handling?" try: "Add error handling to the above function." You skip the pleasantries, save tokens, and Claude doesn't have feelings to hurt. Probably. I hope.
+</Callout>
+
+## My CLAUDE.md Detox: Before and After
+
+After my rude awakening, I went on a CLAUDE.md diet. Here's what I did.
+
+### Before: The Encyclopedia (4,200 tokens)
+
+```markdown
+# Project: MyApp
+
+## Architecture
+[200 words describing the entire tech stack]
+
+## Coding Standards
+[300 words of detailed rules]
+
+## Component Template
+[30-line code example]
+
+## API Template
+[40-line code example]
+
+## Testing Standards
+[100 words]
+
+## Git Conventions
+[50 words]
+
+## Database Patterns
+[80 words]
+
+## Deployment
+[60 words]
+```
+
+### After: The Essentials (~350 tokens)
+
+```markdown
+# MyApp
+
+Next.js 14 App Router, TypeScript strict, Tailwind, Prisma/PostgreSQL.
+
+## Key Rules
+- Named exports, Zod validation, custom error classes
+- Follow existing patterns in codebase (check similar files first)
+- Vitest + React Testing Library for tests
+
+## Style
+camelCase vars, PascalCase components, kebab-case files.
+
+## Important
+- Never modify /lib/auth/* without explicit confirmation
+- All API routes need auth middleware
+- Run `pnpm typecheck` before suggesting PR
+```
+
+That's it. Three hundred and fifty tokens. Down from 4,200. I removed the full code templates (Claude can look at existing files), the deployment notes (irrelevant to coding tasks), the exhaustive standards doc (Claude already knows most of this if you just say "follow existing patterns"), and everything that wasn't critical for *every single interaction.*
+
+The result? My sessions felt exactly the same quality-wise, but my token usage dropped dramatically. Same output, way less input. It was like discovering my car gets better mileage without the 200 pounds of "just in case" stuff in the trunk.
+
+## What Goes Where: The CLAUDE.md Decision Framework
+
+Here's the framework I now use to decide if something belongs in CLAUDE.md:
+
+```
+┌─────────────────────────────────────────────────────┐
+│          Does this belong in CLAUDE.md?              │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  Is it needed in EVERY conversation?                 │
+│  ├── YES: Keep in CLAUDE.md (but keep it brief)     │
+│  └── NO:                                             │
+│       │                                              │
+│       Is it needed frequently?                       │
+│       ├── YES: Put in a separate file Claude         │
+│       │        can read on demand                    │
+│       └── NO:  Just mention it in your prompt        │
+│                when relevant                         │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Belongs in CLAUDE.md (Always-On Context)
+- Project tech stack (one line)
+- Critical conventions that prevent bugs
+- Hard rules (files never to modify, required checks)
+- Style preferences that differ from defaults
+
+### Belongs in Separate Memory Files
+- Detailed coding standards → `.claude/standards.md`
+- Architecture documentation → `.claude/architecture.md`
+- Component/API templates → `.claude/templates.md`
+- Onboarding context → `.claude/context.md`
+- Project-specific patterns → `.claude/patterns.md`
+
+### Belongs in Your Prompt (Ad-Hoc)
+- Task-specific context
+- One-off requirements
+- Temporary instructions
+
+<Callout type="tip" title="The Separate File Strategy">
+Claude Code can read files when asked. Instead of putting your full component template in CLAUDE.md, just add a one-line note: "For component patterns, see `.claude/templates.md`." Claude will read it when it needs it — and only when it needs it. This is the difference between carrying an encyclopedia in your backpack and knowing where the library is.
+</Callout>
+
+## Structuring CLAUDE.md for Minimum Tokens, Maximum Value
+
+After optimizing dozens of CLAUDE.md files (my own and for teams I work with), here's my template:
+
+```markdown
+# [Project Name]
+
+[One line: framework, language, database. That's it.]
+
+## Rules
+- [Critical rule 1]
+- [Critical rule 2]
+- [Critical rule 3]
+(Max 5-7 rules. If you need more, your codebase has bigger problems.)
+
+## Style
+[One line for naming. One line for formatting. Done.]
+
+## References
+- Standards: .claude/standards.md
+- Architecture: .claude/architecture.md
+- Templates: .claude/templates.md
+```
+
+The goal is **under 500 tokens.** If your CLAUDE.md is over 500 tokens, you're probably including stuff that doesn't need to be there on every message. Audit it. Be ruthless. Every token you cut saves you that token multiplied by every message in every session for the rest of your project's life. It's compound savings.
+
+## Token Budgeting: Think Like an Accountant
+
+I started thinking about token usage the way I think about a monthly budget. You have a fixed context window. Everything competes for space in it. Here's how I break it down:
+
+```
+Context Window Budget (200K example):
+──────────────────────────────────────────
+System overhead:        ~2,000 tokens     (fixed, not yours to control)
+CLAUDE.md:              ~350 tokens       (keep this TINY)
+Conversation history:   ~150,000 tokens   (this grows — it's your runway)
+Working memory:         ~47,650 tokens    (files, code, output)
+──────────────────────────────────────────
+
+If CLAUDE.md were 4,000 tokens instead:
+──────────────────────────────────────────
+System overhead:        ~2,000 tokens
+CLAUDE.md:              ~4,000 tokens     (ouch)
+Conversation history:   ~150,000 tokens   (same)
+Working memory:         ~44,000 tokens    (you just lost 3,650 tokens
+                                           of working space)
+──────────────────────────────────────────
+```
+
+That 3,650 tokens might not sound like much, but it adds up. It's fewer lines of code Claude can hold in working memory. It's the difference between Claude seeing your whole component and Claude seeing 80% of it and hallucinating the rest. I've seen this happen. It's not fun debugging code that was generated from an incomplete picture.
+
+## The Art of the Concise Prompt
+
+While we're on the topic of saving tokens, let's talk about how you write your actual messages. This is where the daily savings add up.
+
+### Don't Narrate, Instruct
+
+```markdown
+❌ "Hey Claude, I was thinking that it would be nice if we could
+    add some error handling to the login function. Right now if
+    the API call fails it just kind of crashes. Could you maybe
+    take a look at that and add some try-catch blocks or something?
+    Thanks!"
+    (53 tokens)
+
+✓  "Add try-catch to loginUser(). On API failure: log error,
+    show toast notification, return null."
+    (19 tokens)
+```
+
+Same result. Sixty-four percent fewer tokens. And honestly, the concise version is clearer too. Claude doesn't need the backstory. It doesn't need to know you were "thinking." It needs the task.
+
+### Batch Your Instructions
+
+```markdown
+❌ Message 1: "Add a loading state"
+   Message 2: "Yes, looks good"
+   Message 3: "Now add error handling"
+   Message 4: "Perfect"
+   Message 5: "Can you add tests too?"
+   Message 6: "Thanks!"
+   (6 messages × full context load each)
+
+✓  Message 1: "Add loading state, error handling, and tests
+               to the UserProfile component. For errors, show
+               a toast notification."
+   (1 message × one context load)
+```
+
+Six messages became one. That's not just fewer tokens in your prompts — it's five fewer full context loads including your CLAUDE.md, conversation history, and system prompts.
+
+<Callout type="tip" title="The 'One Shot' Habit">
+Before I send a message, I now ask myself: "Can I combine this with my next message?" If I know I'm going to approve the output and then ask for tests, I just ask for both upfront. It took me a while to break the conversational habit, but my token usage thanked me immediately.
+</Callout>
+
+### Skip the Pleasantries
+
+I know this sounds cold. I'm a polite person. I say please and thank you in real life. But Claude Code is not real life. It's an API call. Every "thanks!" and "great job!" and "that looks awesome!" is tokens you're paying for that produce zero value.
+
+If you absolutely must be polite to the machine (I get it, I struggle with this too), at least combine it with your next instruction: "Thanks — now add input validation to the form." Don't send "thanks" as its own message. That standalone "thanks" with a 4,000-token CLAUDE.md is the most expensive expression of gratitude in human history.
+
+## Advanced: The Token-Aware Workflow
+
+Here's the workflow I've settled into after months of optimization:
+
+1. **Start lean.** CLAUDE.md under 500 tokens. Reference files for details.
+2. **Batch instructions.** Think before you type. Combine related requests.
+3. **Skip filler.** No "yes," "ok," "thanks" as standalone messages.
+4. **Front-load context.** Give Claude everything it needs in the first message so there's less back-and-forth.
+5. **Use compact prompts.** Instruct, don't narrate. Be specific, not verbose.
+6. **Start new sessions.** When conversation history gets long, start fresh rather than carrying 100K tokens of old context.
+
+```
+Token-Efficient Session:
+──────────────────────────────────────────
+Message 1: [Detailed task with all context]    → Big but worthwhile
+Message 2: [Specific follow-up adjustment]     → Targeted
+Message 3: [Next task, batched instructions]   → Efficient
+──────────────────────────────────────────
+
+Token-Wasteful Session:
+──────────────────────────────────────────
+Message 1:  "Hey can you help me?"              → Zero value
+Message 2:  "I need to add a button"            → Vague
+Message 3:  "A submit button"                   → Still vague
+Message 4:  "On the form page"                  → Drip-feeding
+Message 5:  "Yes that one"                      → Confirmation
+Message 6:  "Looks good"                        → Filler
+Message 7:  "Can you also add validation?"      → Could've been msg 1
+Message 8:  "Yes"                               → Filler
+Message 9:  "Thanks!"                           → Politeness tax
+Message 10: "Oh wait, also add tests"           → Afterthought
+──────────────────────────────────────────
+```
+
+The first workflow does in 3 messages what the second does in 10. That's 7 fewer context loads. With a 350-token CLAUDE.md, you save about 2,450 tokens just from CLAUDE.md alone. With conversation history factored in, the savings are much larger.
+
+## The ROI of Being Token-Conscious
+
+Look, I get it. Tracking tokens feels tedious. You just want to code. I felt the same way. But here's the thing: once you build these habits, they're automatic. Writing concise prompts isn't harder than writing verbose ones — it's actually easier. Keeping CLAUDE.md lean isn't a sacrifice — it forces you to clarify what actually matters. Starting new sessions when context gets heavy isn't a hassle — it actually gives you better results because Claude isn't swimming through 150K tokens of old conversation to find what's relevant.
+
+Being token-conscious made me a better communicator with AI tools. And here's the kicker: it made me faster. Fewer messages means less waiting. Clearer prompts mean fewer revision cycles. A lean CLAUDE.md means more room for actual code in the context window.
+
+<Callout type="info" title="The Mindset Shift">
+Stop thinking of Claude Code as a conversation and start thinking of it as a command interface. You wouldn't small-talk with `bash`. You wouldn't say "please" to `git`. Give Claude Code the same respect: clear, direct, efficient instructions. Your token budget — and your productivity — will thank you.
+</Callout>
+
+## Quick Reference: The Token-Smart Checklist
+
+For those of you who skimmed to the end (no judgment, I do it too), here's the cheat sheet:
+
+- **CLAUDE.md under 500 tokens.** Audit it today. Right now. I'll wait.
+- **Offload details to `.claude/` files.** Templates, standards, architecture docs.
+- **Never send one-word messages.** Batch confirmations with your next instruction.
+- **Write prompts like telegrams.** Every word should earn its tokens.
+- **Start fresh sessions** when context gets heavy.
+- **Front-load your requests.** Give all context upfront, reduce back-and-forth.
+- **Measure your usage.** You can't optimize what you don't track.
+
+The difference between a token-conscious developer and a chatty one isn't intelligence or skill — it's awareness. Now you're aware. Go check your CLAUDE.md. I bet it's bigger than it needs to be.
+
+Mine was. And admitting that is the first step.
+
+---
+
+*Want to talk about Claude Code workflows, token optimization, or AI-assisted development? [Get in touch](/contact) — I promise I'll keep my response under 500 tokens. Old habits.*

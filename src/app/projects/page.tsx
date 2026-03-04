@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Droplets, Car } from "lucide-react";
+import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Baby, Car, TrendingUp, Search, Award, Link2, DoorOpen } from "lucide-react";
 
 export default function ProjectsPage() {
   return (
@@ -146,6 +146,7 @@ const projects = [
     icon: Brain,
     gradient: "from-purple-500 to-indigo-500",
     stack: ["Python", "LangChain", "Pinecone", "FastAPI", "OpenAI"],
+    external: "https://mila-drab.vercel.app/",
   },
   {
     slug: "ai-voice-agent",
@@ -212,6 +213,61 @@ const projects = [
     external: "https://thegreymatter.ai",
   },
   {
+    slug: "forecast9",
+    title: "Forecast9.ai",
+    subtitle: "AI Forecasting Platform",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. AI-driven forecasting that turns historical data and market signals into accurate business projections for confident planning.",
+    icon: TrendingUp,
+    gradient: "from-amber-500 to-orange-500",
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    external: "https://forecast9.thegreymatter.ai",
+  },
+  {
+    slug: "duediligence9",
+    title: "DueDiligence9.ai",
+    subtitle: "AI Due Diligence Platform",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Accelerates deal evaluation by automatically analyzing financials, risks, and opportunities across target companies.",
+    icon: Search,
+    gradient: "from-teal-500 to-cyan-500",
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    external: "https://duediligence9.thegreymatter.ai",
+  },
+  {
+    slug: "benchmarkedoutcomes",
+    title: "BenchmarkedOutcomes.ai",
+    subtitle: "Hiring & Talent Benchmarking",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. AI-powered hiring benchmarking that evaluates candidates against role-specific standards to help companies make better, faster talent decisions.",
+    icon: Award,
+    gradient: "from-lime-500 to-green-500",
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    external: "https://benchmark.thegreymatter.ai",
+  },
+  {
+    slug: "integration9",
+    title: "Integration9.ai",
+    subtitle: "AI Integration Platform",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Streamlines post-merger and system integration by mapping dependencies, identifying risks, and tracking progress.",
+    icon: Link2,
+    gradient: "from-fuchsia-500 to-pink-500",
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    external: "https://integration9.thegreymatter.ai",
+  },
+  {
+    slug: "exitready9",
+    title: "ExitReady9.ai",
+    subtitle: "Exit Readiness Platform",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Helps companies prepare for acquisition or IPO by identifying gaps, strengthening value drivers, and building exit narratives.",
+    icon: DoorOpen,
+    gradient: "from-indigo-500 to-violet-500",
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    external: "https://exitready9.thegreymatter.ai",
+  },
+  {
     slug: "budgetcopilot",
     title: "BudgetCopilot",
     subtitle: "AI Financial Agent",
@@ -234,15 +290,15 @@ const projects = [
     external: "https://waldoscodelab.com",
   },
   {
-    slug: "clearchoiceboquete",
-    title: "Clear Choice Boquete",
-    subtitle: "Booking Engine & Website",
+    slug: "babybloom",
+    title: "BabyBloom",
+    subtitle: "Smart Baby Tracker",
     description:
-      "Full-stack website and booking engine for Clear Choice Window Cleaning. Customers can browse services, check availability, and book appointments seamlessly.",
-    icon: Droplets,
-    gradient: "from-sky-500 to-blue-500",
-    stack: ["Next.js", "TypeScript", "Tailwind", "PostgreSQL", "Vercel"],
-    external: "https://clearchoiceboquete.com",
+      "AI-powered baby tracking app for families. Log feedings, sleep, diapers, milestones, and growth with natural language input. Generates pediatrician-ready reports.",
+    icon: Baby,
+    gradient: "from-pink-500 to-rose-500",
+    stack: ["Next.js", "TypeScript", "OpenAI", "Tailwind", "Vercel"],
+    external: "https://baby-tracking-app-silk.vercel.app",
   },
   {
     slug: "shining-image-platform",

@@ -1,0 +1,638 @@
+---
+title: "Modelado de Datos para el Mundo Real: Más Allá de los Ejemplos de Tutorial"
+description: "Los patrones de modelado de datos que los tutoriales convenientemente omiten — datos temporales, eliminación lógica, asociaciones polimórficas, registros de auditoría, máquinas de estado, manejo de múltiples monedas, y los momentos en que te das cuenta de que tu hermoso esquema normalizado necesita ensuciarse las manos. Aprendido por las malas para que tú no tengas que hacerlo."
+date: 2026-03-02
+published: true
+category: "Diseño de Sistemas"
+tags: ["Modelado de Datos", "Base de Datos", "PostgreSQL", "Diseño de Esquemas", "Arquitectura"]
+author: "Osvaldo Restrepo"
+translationOf: "data-modeling-real-world"
+tldr: "Los esquemas de tutorial se desmoronan en produccion mas rapido que un castillo de arena en marea alta. Los datos reales tienen dimensiones temporales que tu PM preguntara en el dia 30, requisitos de auditoria que compliance exigira en el dia 60, y polimorfismo desordenado que hace llorar a tu bonito ERD. Usa columnas de valid-time para datos historicos, implementa eliminacion logica solo cuando realmente la necesites (no 'por si acaso'), evita EAV como la peste que es, modela maquinas de estado explicitamente en tu esquema, y desnormaliza deliberadamente — no accidentalmente. Tu base de datos es tu ultima linea de defensa contra datos malos, asi que hazla ganarse el sueldo."
+faqs:
+  - question: "¿Debería usar eliminación lógica o eliminación física?"
+    answer: "Usa eliminación lógica solo cuando tengas un requisito de negocio concreto para recuperación de datos o pistas de auditoría. De lo contrario, la eliminación física con una tabla de archivo es más simple y evita la sobrecarga de rendimiento y complejidad de consultas al filtrar registros eliminados en todas partes."
+  - question: "¿Qué es el anti-patrón EAV y qué debería usar en su lugar?"
+    answer: "Entity-Attribute-Value almacena pares clave-valor arbitrarios por entidad. Mata el rendimiento de consultas, hace imposible la validación y elude las restricciones de la base de datos. Usa columnas JSONB para atributos verdaderamente dinámicos, o tablas separadas por tipo de entidad para datos estructurados."
+  - question: "¿Cuándo debería desnormalizar mi base de datos?"
+    answer: "Desnormaliza cuando hayas medido un problema de rendimiento real causado por la normalización, no como una optimización prematura. Los casos válidos comunes incluyen dashboards de lectura intensiva, páginas de resultados de búsqueda y tablas de reportes. Siempre mantén la fuente de verdad normalizada y sincroniza las copias desnormalizadas."
+  - question: "¿Cómo manejo las migraciones de esquema de forma segura en producción?"
+    answer: "Usa migraciones de expandir y contraer: agrega la nueva columna o tabla primero, despliega código que escriba en ambas ubicaciones, rellena datos históricos, despliega código que lea de la nueva ubicación y luego elimina la columna antigua. Nunca renombres ni elimines columnas en un solo despliegue."
+relatedPosts: ["postgres-beyond-basics", "multi-tenant-saas-architecture"]
+---
+
+Cada tutorial te enseña usuarios-posts-comentarios. Hermoso. Normalizado. Tres tablas, dos claves foráneas, un `JOIN` que prácticamente se escribe solo. Te sientes como un arquitecto de bases de datos. Haces push a producción con confianza.
+
+Luego tu PM pregunta "¿podemos ver cuál era el precio cuando hicieron el pedido, no cuál es ahora?" y tu hermoso esquema se desmorona como un castillo de arena en marea alta.
+
+He modelado bases de datos para sistemas de salud donde un tipo de dato equivocado podía literalmente afectar los resultados de pacientes, plataformas financieras donde un error de redondeo de punto flotante a través de millones de transacciones se convirtió en *dinero real que faltaba*, y productos SaaS multi-tenant donde los datos de un cliente filtrándose en los resultados de consulta de otro es un evento que termina con la empresa. Los patrones que importan en producción rara vez son los que se enseñan en los tutoriales, y la distancia entre un ERD de libro de texto de ciencias de la computación y un esquema que sobrevive el contacto con usuarios reales es aproximadamente la distancia entre un avión de papel y un 747.
+
+Este post cubre los patrones a los que sigo recurriendo — los que desearía que alguien me hubiera enseñado antes de aprenderlos a las 2 AM mirando fijamente una base de datos en producción que estaba perdiendo datos silenciosamente.
+
+## Datos Temporales: Tus Datos Tienen una Dimensión de Tiempo (Y Ya Te Está Mordiendo)
+
+Una historia. Al principio de mi carrera, construí un sistema de e-commerce. Los productos tenían precios. Columna simple: `price NUMERIC(10,2)`. Hermoso. Luego un cliente llamó a soporte y dijo "me cobraron $49.99 pero la página del producto dice $39.99." Ambos tenían razón — habíamos actualizado el precio después de su pedido, y no había registro de cuál era el precio cuando realmente lo compraron. El `UPDATE` había destruido alegremente esa información para siempre.
+
+La mayoría de los tutoriales tratan los datos como si existieran en un presente eterno. Una fila tiene un valor, actualizas el valor, el valor anterior deja de existir. En realidad, casi todo dominio de negocio necesita responder: "¿Cuál era el valor en un punto específico del tiempo?" Y si no planificaste para esa pregunta, la respuesta es: "No tenemos idea, y no podemos averiguarlo."
+
+Hay dos dimensiones temporales que importan, y entender la diferencia entre ellas te salvará de construir lo incorrecto:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   Temporal Dimensions                         │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Valid Time (business time):                                  │
+│    When was the fact TRUE in the real world?                   │
+│    "This employee's salary was $80k from Jan to March"        │
+│                                                               │
+│  Transaction Time (system time):                              │
+│    When was the fact RECORDED in the database?                │
+│    "We recorded this salary change on January 5th at 3pm"     │
+│                                                               │
+│  Bitemporal:                                                  │
+│    Both dimensions tracked together                           │
+│    "On Jan 5 we recorded that the salary was $80k             │
+│     effective from Jan 1"                                     │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+La distinción entre valid time y transaction time parece académica hasta que la necesitas. Una vez pasé una semana depurando una discrepancia de nómina que se reducía a: sabíamos cuándo el salario *fue cambiado en el sistema* (transaction time), pero no sabíamos cuándo se *suponía que el salario tomara efecto* (valid time). RRHH había ingresado un aumento el 15 de enero que se suponía retroactivo al 1 de enero. Nuestro esquema no podía representar eso. El workaround fue feo. La lección fue permanente.
+
+### Patrón de Valid-Time
+
+El patrón más común, y el que probablemente deberías estar usando ahora mismo si no lo estás. Rastrea cuándo un hecho es verdadero en el dominio de negocio.
+
+```sql
+-- Instead of a single row that gets updated:
+-- BAD: UPDATE employees SET salary = 90000 WHERE id = 1;
+-- (Previous salary is lost forever)
+
+-- Use a temporal table:
+CREATE TABLE employee_salaries (
+  id          BIGSERIAL PRIMARY KEY,
+  employee_id BIGINT NOT NULL REFERENCES employees(id),
+  salary      NUMERIC(12, 2) NOT NULL,
+  currency    VARCHAR(3) NOT NULL DEFAULT 'USD',
+  valid_from  TIMESTAMPTZ NOT NULL,
+  valid_to    TIMESTAMPTZ, -- NULL means "current"
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Prevent overlapping periods for the same employee
+  EXCLUDE USING gist (
+    employee_id WITH =,
+    tstzrange(valid_from, valid_to) WITH &&
+  )
+);
+
+-- What is the current salary?
+SELECT salary FROM employee_salaries
+WHERE employee_id = 1 AND valid_to IS NULL;
+
+-- What was the salary on March 15?
+SELECT salary FROM employee_salaries
+WHERE employee_id = 1
+  AND valid_from <= '2026-03-15'
+  AND (valid_to IS NULL OR valid_to > '2026-03-15');
+```
+
+<Callout type="tip" title="Tipos Range de PostgreSQL">
+La restricción EXCLUDE con tstzrange previene períodos de salario superpuestos para el mismo empleado a nivel de base de datos. No se necesita código de aplicación — la base de datos hace la validación por ti. Esta es una de las características más subutilizadas de PostgreSQL, y genuinamente me emociono un poco cada vez que la uso. Es hermosa. Otras bases de datos desearían tener esto. Tu código de aplicación *va* a tener bugs que dejen colarse períodos superpuestos. La restricción EXCLUDE no.
+</Callout>
+
+Esa restricción `EXCLUDE USING gist` está haciendo más trabajo del que parece. Sin ella, estás dependiendo de tu código de aplicación para asegurar que un empleado nunca tenga dos registros de salario concurrentes. Tu código de aplicación va a tener casos extremos alrededor de race conditions, importaciones masivas, y ese desarrollador que escribe un script de migración que no verifica superposiciones. La restricción de base de datos no tiene casos extremos. Simplemente dice no.
+
+### Patrón de Transaction-Time (Pista de Auditoría)
+
+Rastrea cuándo los cambios fueron registrados en el sistema. Esto es esencial para cumplimiento normativo ("muéstrame exactamente qué cambió y cuándo"), depuración ("¿cómo se veía este registro antes de que alguien lo 'arreglara'?"), y mi favorito personal: demostrarle a un stakeholder enojado que su equipo hizo el cambio, no el tuyo.
+
+```sql
+-- Automatic audit trail using triggers
+CREATE TABLE employees_audit (
+  audit_id     BIGSERIAL PRIMARY KEY,
+  employee_id  BIGINT NOT NULL,
+  operation    VARCHAR(10) NOT NULL, -- INSERT, UPDATE, DELETE
+  old_data     JSONB,
+  new_data     JSONB,
+  changed_by   TEXT NOT NULL,
+  changed_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION audit_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO employees_audit (
+    employee_id, operation, old_data, new_data, changed_by
+  ) VALUES (
+    COALESCE(NEW.id, OLD.id),
+    TG_OP,
+    CASE WHEN TG_OP != 'INSERT' THEN to_jsonb(OLD) END,
+    CASE WHEN TG_OP != 'DELETE' THEN to_jsonb(NEW) END,
+    current_setting('app.current_user', true)
+  );
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER employees_audit_trigger
+AFTER INSERT OR UPDATE OR DELETE ON employees
+FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+```
+
+Pongo triggers de auditoría en cada tabla que contiene datos críticos del negocio. En cada. Una. De. Ellas. El costo de almacenamiento es despreciable comparado con el costo de no poder responder "¿quién cambió esto y cuándo?" He estado en reuniones donde una pista de auditoría convirtió una sesión de cuatro horas de señalarse con el dedo en un "ah, fue el script de importación masiva del martes" de dos minutos. Vale cada byte.
+
+## Eliminación Lógica vs Eliminación Física (También Conocida Como La Gran Sobreingeniería)
+
+La eliminación lógica es uno de los patrones más sobreplicados en toda la ingeniería de software. He visto equipos agregar una columna `deleted_at` a absolutamente cada tabla de su esquema "por si acaso," y luego pasar los siguientes dos años lidiando con las consecuencias. Déjame pintarte el panorama de cómo lucen esas consecuencias.
+
+Primero, cada consulta ahora necesita `WHERE deleted_at IS NULL`. Cada. Una. De. Ellas. Te falta una, y estás mostrando datos eliminados a los usuarios. ¿El scope predeterminado de tu ORM lo maneja? Genial, hasta que alguien escribe una consulta raw para un reporte. O usa un ORM diferente. O se le olvida aplicar el scope en un script de migración. He visto cuentas de usuario "eliminadas" aparecer en dashboards de admin, productos "eliminados" aparecer en resultados de búsqueda, y pedidos "eliminados" siendo enviados. (Sí, eso último realmente pasó. No, no lo he superado.)
+
+```
+┌────────────────────────────────────────────────────────────┐
+│              Soft Delete Trade-offs                          │
+├────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Pros:                         Cons:                        │
+│  ✓ Data recovery possible      ✗ Every query needs          │
+│  ✓ Audit trail preserved         WHERE deleted_at IS NULL   │
+│  ✓ Referential integrity       ✗ Unique constraints break   │
+│    maintained                  ✗ Performance degrades over   │
+│                                  time as table grows         │
+│                                ✗ GDPR "right to be          │
+│                                  forgotten" gets harder      │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+```
+
+Ah, y las restricciones unique. ¿Tenías `UNIQUE(email)` en tu tabla de usuarios? Bueno, ahora un usuario elimina su cuenta, y luego intenta registrarse de nuevo con el mismo email. Bloqueado. El registro eliminado lógicamente todavía ocupa la restricción unique. Así que lo cambias a un índice parcial unique: `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL`. Excepto que ahora tu ORM no sabe sobre índices parciales y valida la unicidad incorrectamente. Son tortugas sobre tortugas hasta el infinito.
+
+### Mi Enfoque: Tablas de Archivo
+
+Para la mayoría de los casos, prefiero eliminación física con una tabla de archivo. Obtienes la pista de auditoría completa sin contaminar cada consulta de tu aplicación. La tabla de archivo es una preocupación separada que no interfiere con tus operaciones normales.
+
+```sql
+-- Archive table mirrors the structure with metadata
+CREATE TABLE orders_archive (
+  -- Original columns
+  id          BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL,
+  total       NUMERIC(12, 2) NOT NULL,
+  status      VARCHAR(20) NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL,
+
+  -- Archive metadata
+  archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived_by TEXT NOT NULL,
+  archive_reason TEXT
+);
+
+-- Archive before delete
+CREATE OR REPLACE FUNCTION archive_order()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO orders_archive (
+    id, customer_id, total, status, created_at,
+    archived_by, archive_reason
+  ) VALUES (
+    OLD.id, OLD.customer_id, OLD.total, OLD.status, OLD.created_at,
+    current_setting('app.current_user', true),
+    current_setting('app.archive_reason', true)
+  );
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER orders_archive_trigger
+BEFORE DELETE ON orders
+FOR EACH ROW EXECUTE FUNCTION archive_order();
+```
+
+La belleza de este patrón: tu tabla principal se mantiene limpia. Sin registros fantasma. Sin cláusulas `WHERE` olvidadas. Sin degradación de rendimiento de una tabla que solo crece y nunca se reduce. Las restricciones unique funcionan normalmente. El cumplimiento GDPR es directo — controlas exactamente qué va al archivo y puedes purgarlo independientemente. Y si alguna vez necesitas "des-eliminar" algo, tienes el registro completo ahí en la tabla de archivo.
+
+<Callout type="warning" title="Cuándo la Eliminación Lógica Realmente Es lo Correcto">
+Usa eliminación lógica cuando la entidad eliminada todavía es referenciada por registros activos y necesitas mostrar sus datos (por ejemplo, un usuario eliminado cuyos comentarios siguen siendo visibles), o cuando tu dominio requiere una funcionalidad de "deshacer" con una ventana de tiempo corta. Estos son casos de uso reales. "Quizás lo necesitemos algún día" no es un caso de uso real. He eliminado más columnas `deleted_at` de esquemas de las que he agregado.
+</Callout>
+
+## Asociaciones Polimórficas: La Forma Correcta (Después de Hacerlo Mal Tres Veces)
+
+Las asociaciones polimórficas — donde una tabla referencia múltiples otras tablas — son uno de esos patrones donde la solución fácil está mal y la solución correcta se siente como exceso. Comentarios en posts, fotos y eventos. Notificaciones sobre pedidos, mensajes y eventos del sistema. Feeds de actividad que abarcan cada tipo de entidad en tu sistema.
+
+La primera vez que necesité esto, hice lo que todo desarrollador de Rails hace. Dos columnas: `commentable_type` (¡un string!) y `commentable_id` (un entero que podía referirse a cualquier tabla). Funcionó. Se desplegó. Y luego seis meses después, alguien renombró el modelo `Photo` a `Image`, y de repente cada referencia polimórfica a fotos estaba rota porque la columna de tipo todavía decía "Photo." Ninguna restricción de clave foránea atrapó esto. Ninguna migración advirtió sobre ello. Nos enteramos por reportes de bugs de usuarios. (Sí, he hecho esto.)
+
+```sql
+-- BAD: The Rails-style polymorphic association
+-- No foreign key constraints, no type safety
+CREATE TABLE comments (
+  id              BIGSERIAL PRIMARY KEY,
+  commentable_type VARCHAR(50),  -- 'Post', 'Photo', 'Event'
+  commentable_id   BIGINT,       -- Could be any table's ID
+  body            TEXT NOT NULL
+  -- Can't add: FOREIGN KEY (commentable_id) REFERENCES ???
+);
+
+-- BETTER: Shared table with nullable FKs (works for few types)
+CREATE TABLE comments (
+  id       BIGSERIAL PRIMARY KEY,
+  post_id  BIGINT REFERENCES posts(id),
+  photo_id BIGINT REFERENCES photos(id),
+  event_id BIGINT REFERENCES events(id),
+  body     TEXT NOT NULL,
+
+  -- Exactly one must be set
+  CONSTRAINT exactly_one_parent CHECK (
+    (post_id IS NOT NULL)::int +
+    (photo_id IS NOT NULL)::int +
+    (event_id IS NOT NULL)::int = 1
+  )
+);
+
+-- BEST for many types: Intermediate join tables
+CREATE TABLE post_comments (
+  comment_id BIGINT PRIMARY KEY REFERENCES comments(id),
+  post_id    BIGINT NOT NULL REFERENCES posts(id)
+);
+
+CREATE TABLE photo_comments (
+  comment_id BIGINT PRIMARY KEY REFERENCES comments(id),
+  photo_id   BIGINT NOT NULL REFERENCES photos(id)
+);
+```
+
+El enfoque de tablas intermedias preserva la integridad referencial, permite claves foráneas adecuadas y escala a cualquier número de tipos padre sin modificar la tabla de comentarios. Sí, son más tablas. Sí, son más joins. Pero tu base de datos realmente *prevendrá* datos inválidos en lugar de almacenar alegremente referencias a filas que no existen en tablas que quizás fueron renombradas. Me quedo con el `JOIN` extra sobre la incertidumbre de "me pregunto si este comentario todavía tiene un padre válido" absolutamente siempre.
+
+El enfoque de FK nullable (la opción "MEJOR") funciona bien cuando tienes 2-4 tipos padre y no esperas más. Una vez que llegas a 5+, la restricción CHECK se vuelve difícil de manejar y agregar un nuevo tipo padre requiere un ALTER TABLE. El enfoque de tablas intermedias escala indefinidamente — simplemente creas una nueva tabla de unión.
+
+## El Anti-Patrón EAV (También Conocido Como El Camino al Infierno Está Pavimentado con Esquemas Flexibles)
+
+Entity-Attribute-Value. Tres palabras inocentes que han causado más sufrimiento que cualquier otro patrón en diseño de bases de datos. EAV es el patrón donde almacenas atributos arbitrarios como filas de clave-valor, y parece brillante la primera vez que lo ves. "¡Podemos agregar cualquier atributo sin cambiar el esquema! ¡Flexibilidad total!"
+
+He heredado dos sistemas EAV en mi carrera. El primero tenía 47 millones de filas en la tabla de atributos para 200,000 productos. Una consulta para encontrar todos los productos con peso mayor a 5kg tardaba 45 segundos. El segundo había estado en producción por cuatro años, y para ese punto, el mismo nombre de atributo estaba escrito de tres formas diferentes a través de distintos registros ("color", "Color", "colour"), había precios almacenados como strings con símbolos de moneda incrustados ("$49.99"), y alguien había almacenado un blob JSON como un solo valor de atributo. Flexibilidad total, sin duda.
+
+```sql
+-- The EAV anti-pattern — DO NOT DO THIS
+CREATE TABLE product_attributes (
+  product_id  BIGINT REFERENCES products(id),
+  attr_name   VARCHAR(100),
+  attr_value  TEXT, -- Everything is a string. Validation? What validation?
+  PRIMARY KEY (product_id, attr_name)
+);
+
+-- "What products have weight > 5kg?"
+-- This query is a nightmare:
+SELECT p.* FROM products p
+JOIN product_attributes pa ON p.id = pa.product_id
+WHERE pa.attr_name = 'weight'
+  AND CAST(pa.attr_value AS NUMERIC) > 5;
+-- No index can help. No type safety. No constraints.
+```
+
+El problema fundamental de EAV es que toma todo en lo que la base de datos relacional es buena — seguridad de tipos, restricciones, indexación, optimización de consultas — y lo tira a la basura. Tu base de datos se convierte en un key-value store glorificado, excepto más lento que un key-value store real porque todavía tiene la sobrecarga de un motor relacional.
+
+### Qué Usar en Su Lugar
+
+```sql
+-- Option 1: JSONB for truly dynamic attributes
+CREATE TABLE products (
+  id          BIGSERIAL PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  category    VARCHAR(50) NOT NULL,
+  price       NUMERIC(12, 2) NOT NULL,
+  attributes  JSONB NOT NULL DEFAULT '{}',
+
+  -- You CAN index JSONB fields
+  CONSTRAINT valid_attributes CHECK (jsonb_typeof(attributes) = 'object')
+);
+
+-- Index specific paths you query often
+CREATE INDEX idx_products_weight ON products ((attributes->>'weight'));
+CREATE INDEX idx_products_attrs ON products USING gin (attributes);
+
+-- Query is clean and indexable
+SELECT * FROM products
+WHERE (attributes->>'weight')::numeric > 5;
+
+-- Option 2: Separate tables per category (for structured data)
+CREATE TABLE products (
+  id       BIGSERIAL PRIMARY KEY,
+  name     VARCHAR(200) NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  price    NUMERIC(12, 2) NOT NULL
+);
+
+CREATE TABLE product_electronics (
+  product_id   BIGINT PRIMARY KEY REFERENCES products(id),
+  wattage      INTEGER,
+  voltage      VARCHAR(10),
+  connectivity TEXT[]
+);
+
+CREATE TABLE product_clothing (
+  product_id BIGINT PRIMARY KEY REFERENCES products(id),
+  size       VARCHAR(10),
+  color      VARCHAR(50),
+  material   VARCHAR(100)
+);
+```
+
+<Callout type="info" title="JSONB No Es una Salida Fácil">
+Usar JSONB para atributos dinámicos no es lo mismo que el anti-patrón EAV, y voy a defender este punto hasta que me ponga azul. JSONB te da indexación (índices GIN para consultas de contención, índices btree para paths específicos), validación (restricciones CHECK con jsonb_typeof y funciones personalizadas) y sintaxis de consulta limpia. EAV te da dolores de cabeza, errores de casting en runtime y consultas que hacen llorar a tu DBA. Son enfoques fundamentalmente diferentes que se parecen superficialmente.
+</Callout>
+
+## Máquinas de Estado en la Base de Datos (Porque el Código de Aplicación Tiene Bugs)
+
+Estados de pedidos, flujos de aprobación, ciclos de vida de tickets, estados de suscripciones — todos son máquinas de estado. Y esto es lo que los tutoriales no enfatizan lo suficiente: si solo aplicas transiciones de estado válidas en tu código de aplicación, alguien *va* a encontrar la forma de poner un pedido en un estado inválido. Un script de actualización masiva que no verifica transiciones. Una race condition entre dos solicitudes concurrentes. Un desarrollador bien intencionado que agrega un "arreglo rápido" que se salta la validación. He visto pedidos ir de "borrador" directamente a "entregado" (saltándose, ya sabes, toda la parte del "envío"), y suscripciones que estaban simultáneamente "activas" y "canceladas."
+
+Modela tus máquinas de estado explícitamente en la base de datos. Deja que la base de datos sea el portero que revisa las identificaciones en la puerta.
+
+```sql
+-- Define valid states and transitions
+CREATE TYPE order_status AS ENUM (
+  'draft', 'submitted', 'processing',
+  'shipped', 'delivered', 'cancelled', 'refunded'
+);
+
+CREATE TABLE orders (
+  id         BIGSERIAL PRIMARY KEY,
+  status     order_status NOT NULL DEFAULT 'draft',
+  -- ...other columns
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Enforce valid state transitions
+CREATE TABLE order_status_transitions (
+  from_status order_status NOT NULL,
+  to_status   order_status NOT NULL,
+  PRIMARY KEY (from_status, to_status)
+);
+
+INSERT INTO order_status_transitions VALUES
+  ('draft', 'submitted'),
+  ('submitted', 'processing'),
+  ('submitted', 'cancelled'),
+  ('processing', 'shipped'),
+  ('processing', 'cancelled'),
+  ('shipped', 'delivered'),
+  ('delivered', 'refunded');
+```
+
+```
+┌────────────────────────────────────────────────────────┐
+│              Order State Machine                        │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│  draft ──► submitted ──► processing ──► shipped         │
+│                │              │            │             │
+│                │              │            ▼             │
+│                │              │        delivered         │
+│                │              │            │             │
+│                ▼              ▼            ▼             │
+│            cancelled      cancelled    refunded         │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+```
+
+```sql
+-- Trigger to enforce valid transitions
+CREATE OR REPLACE FUNCTION enforce_order_transition()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status = NEW.status THEN
+    RETURN NEW; -- No transition, allow
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM order_status_transitions
+    WHERE from_status = OLD.status AND to_status = NEW.status
+  ) THEN
+    RAISE EXCEPTION 'Invalid status transition: % → %',
+      OLD.status, NEW.status;
+  END IF;
+
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER order_transition_trigger
+BEFORE UPDATE OF status ON orders
+FOR EACH ROW EXECUTE FUNCTION enforce_order_transition();
+```
+
+Ahora intenta cambiar un pedido de "draft" a "shipped" y la base de datos lanzará una excepción. No un error 400 que tu frontend podría tragarse. No un mensaje de log que nadie lee. Una excepción de base de datos real que previene que el estado inválido exista jamás. Tu código de aplicación *también* puede validar transiciones (y debería, para mejores mensajes de error), pero el trigger de base de datos es tu red de seguridad.
+
+Agregué este patrón a un sistema que había estado funcionando por dos años sin él. En la primera semana, el trigger atrapó 14 transiciones inválidas que estaban siendo permitidas silenciosamente. Catorce. En una semana. En un sistema que todos pensaban que funcionaba correctamente.
+
+## Manejo de Múltiples Monedas (Donde el Punto Flotante Va a Morir)
+
+Si tu aplicación maneja dinero en múltiples monedas, necesitas almacenar la moneda con cada monto monetario. Siempre. Sin excepciones. "Solo soportamos USD" es una condición temporal que tu PM cambiará de opinión la semana antes de un lanzamiento importante (pregúntame cómo lo sé).
+
+Pero la trampa real no es la multi-moneda — es el punto flotante. Una vez pasé tres días rastreando un bug donde un reporte de conciliación financiera estaba desfasado $0.03. Tres centavos. A través de un millón de transacciones. ¿El culpable? Alguien había usado `FLOAT` en lugar de `NUMERIC` para un cálculo intermedio. Los errores de redondeo se acumularon silenciosamente, transacción tras transacción, hasta que la discrepancia fue lo suficientemente grande para que contabilidad la notara. Tres centavos no suena a mucho hasta que tu auditor te dice que significa que tus libros no cuadran.
+
+```sql
+CREATE TABLE transactions (
+  id              BIGSERIAL PRIMARY KEY,
+  amount          NUMERIC(16, 4) NOT NULL, -- 4 decimal places
+  currency        VARCHAR(3) NOT NULL,     -- ISO 4217
+  -- Store the exchange rate at the time of transaction
+  exchange_rate   NUMERIC(16, 8),          -- Rate to base currency
+  base_amount     NUMERIC(16, 4),          -- Converted to base currency
+
+  CONSTRAINT valid_currency CHECK (currency ~ '^[A-Z]{3}$'),
+  CONSTRAINT positive_amount CHECK (amount > 0)
+);
+
+-- Never do arithmetic across currencies without conversion
+-- BAD:  SELECT SUM(amount) FROM transactions;
+-- GOOD: SELECT SUM(base_amount) FROM transactions WHERE base_amount IS NOT NULL;
+
+-- Exchange rate snapshot table
+CREATE TABLE exchange_rates (
+  id         BIGSERIAL PRIMARY KEY,
+  from_curr  VARCHAR(3) NOT NULL,
+  to_curr    VARCHAR(3) NOT NULL,
+  rate       NUMERIC(16, 8) NOT NULL,
+  valid_from TIMESTAMPTZ NOT NULL,
+  valid_to   TIMESTAMPTZ,
+  source     VARCHAR(50) NOT NULL, -- 'ecb', 'xe', 'manual'
+
+  EXCLUDE USING gist (
+    from_curr WITH =,
+    to_curr WITH =,
+    tstzrange(valid_from, valid_to) WITH &&
+  )
+);
+```
+
+¿Notas la restricción `EXCLUDE USING gist` en las tasas de cambio? Mismo patrón que la tabla temporal de salarios. Previene períodos de tasa superpuestos para el mismo par de monedas. Porque si tienes dos tasas conflictivas de USD a EUR para el mismo período de tiempo, cada conversión durante esa superposición es ambigua, y "ambiguo" en sistemas financieros se traduce directamente a "hallazgo costoso de auditoría."
+
+<Callout type="warning" title="El Dinero No Es un Float">
+Nunca uses FLOAT o DOUBLE para valores monetarios. Nunca. No me importa si "funciona en testing." Usa NUMERIC (PostgreSQL) o DECIMAL con precisión explícita. La aritmética de punto flotante introduce errores de redondeo que se acumulan silenciosamente. ¿Esa discrepancia de $0.03 que mencioné? Tomó tres días encontrarla porque los montos de transacciones individuales todos *se veían* correctos — el error solo aparecía en las agregaciones. Un error de fracción de centavo multiplicado a través de millones de transacciones se convierte en dinero real, hallazgos reales de auditoría y conversaciones reales con tu equipo de compliance que no quieres tener.
+</Callout>
+
+## Event Sourcing Lite (Para Gente Que Quiere Historial Sin el Doctorado)
+
+El event sourcing completo — almacenar cada cambio de estado como un evento inmutable y reconstruir el estado actual reproduciendo el log de eventos — es poderoso, fascinante, y aproximadamente 10 veces más complejo de lo que la mayoría de los equipos se dan cuenta cuando deciden adoptarlo. He visto implementaciones de event sourcing que empezaron con entusiasmo y terminaron con equipos pasando más tiempo manteniendo la infraestructura de eventos que construyendo features.
+
+Para la mayoría de las aplicaciones, lo que yo llamo "event sourcing lite" te da el 80% de los beneficios con el 20% de la complejidad. Y honestamente, ese 80% es la parte que realmente necesitabas.
+
+```sql
+-- Store state AND events, not just events
+CREATE TABLE orders (
+  id         BIGSERIAL PRIMARY KEY,
+  status     order_status NOT NULL DEFAULT 'draft',
+  total      NUMERIC(12, 2) NOT NULL,
+  -- Current state for fast reads
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Event log for history, debugging, and analytics
+CREATE TABLE order_events (
+  id         BIGSERIAL PRIMARY KEY,
+  order_id   BIGINT NOT NULL REFERENCES orders(id),
+  event_type VARCHAR(50) NOT NULL,
+  payload    JSONB NOT NULL DEFAULT '{}',
+  actor_id   BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Index for common queries
+CREATE INDEX idx_order_events_order ON order_events(order_id, created_at);
+CREATE INDEX idx_order_events_type ON order_events(event_type);
+```
+
+El patrón: tu tabla principal mantiene el estado actual para lecturas rápidas — sin reproducir eventos para averiguar cómo luce un pedido ahora mismo. La tabla de eventos captura cada cambio para auditoría, depuración, analítica, y esos momentos maravillosos cuando un cliente dice "definitivamente yo no cancelé ese pedido" y puedes sacar el log de eventos mostrando el timestamp exacto, su user ID y la dirección IP desde la que vino la cancelación. (No es que esté resentido por algún incidente específico.)
+
+Obtienes lo mejor de ambos mundos sin la complejidad de reconstruir estado a partir de eventos, manejar versionado de eventos, gestionar snapshots, o explicarle a tu equipo por qué las lecturas ahora requieren procesar 400 eventos para averiguar el precio actual de un producto.
+
+## Estrategias de Migración de Esquema (O: Cómo Cambiar una Llanta a un Auto en Movimiento)
+
+Cambiar un esquema de base de datos en producción sin tiempo de inactividad es una de esas cosas que suena sencilla y luego destruye tu fin de semana. Una vez renombré una columna en una sola migración, desplegué el nuevo código, y observé cómo el código anterior (todavía ejecutándose en algunos servidores durante el despliegue rolling) empezaba a lanzar errores 500 porque buscaba el nombre antiguo de la columna. Los servidores nuevos estaban bien. Los servidores viejos estaban en llamas. Los usuarios recibían errores aleatoriamente dependiendo de qué servidor atendía su solicitud. Buenos tiempos.
+
+El patrón de expandir y contraer existe específicamente porque gente inteligente cometió este error antes que tú y decidió formalizar el enfoque correcto.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│         Expand-and-Contract Migration                     │
+├──────────────────────────────────────────────────────────┤
+│                                                           │
+│  Phase 1: EXPAND                                          │
+│  ┌─────────────────────────────┐                          │
+│  │ Add new column (nullable)   │ ← No breaking changes    │
+│  │ Deploy code writing to both │                          │
+│  └─────────────────────────────┘                          │
+│                │                                          │
+│                ▼                                          │
+│  Phase 2: MIGRATE                                         │
+│  ┌─────────────────────────────┐                          │
+│  │ Backfill historical data    │ ← In batches, not all    │
+│  │ Validate data consistency   │   at once                │
+│  └─────────────────────────────┘                          │
+│                │                                          │
+│                ▼                                          │
+│  Phase 3: CONTRACT                                        │
+│  ┌─────────────────────────────┐                          │
+│  │ Deploy code reading new col │ ← Old column ignored     │
+│  │ Drop old column             │                          │
+│  └─────────────────────────────┘                          │
+│                                                           │
+└──────────────────────────────────────────────────────────┘
+```
+
+```sql
+-- Example: Renaming "name" to "full_name"
+-- Phase 1: Expand
+ALTER TABLE users ADD COLUMN full_name VARCHAR(200);
+
+-- Phase 2: Backfill (in batches to avoid locking)
+UPDATE users SET full_name = name
+WHERE full_name IS NULL
+LIMIT 1000; -- Run repeatedly until done
+
+-- Phase 3: Contract (after all code reads from full_name)
+ALTER TABLE users DROP COLUMN name;
+ALTER TABLE users ALTER COLUMN full_name SET NOT NULL;
+```
+
+Tres despliegues para renombrar una columna. Sí, es lento. Sí, es tedioso. No, no hay atajo que no arriesgue tiempo de inactividad. Lo he intentado. El enfoque de "simplemente renómbrala y despliega rápido" funciona genial hasta que no, y cuando no funciona, estás haciendo un rollback de emergencia a las 11 PM mientras tu rotación de guardia contempla cambios de carrera.
+
+La parte de "en lotes" de la Fase 2 es crítica y a menudo ignorada. Rellenar un millón de filas en un solo `UPDATE` va a bloquear tu tabla durante toda la duración. Tu aplicación va a encolar solicitudes, las conexiones se van a acumular, los timeouts van a cascadear, y de repente renombrar una columna se convirtió en una caída del sistema. Hazlo en lotes. 1,000 filas a la vez. Con un pequeño sleep entre lotes si eres paranoico (soy paranoico).
+
+<Callout type="tip" title="Nunca Bloquees Tu Tabla">
+Las operaciones grandes de ALTER TABLE pueden bloquear tu tabla por minutos u horas. Usa CREATE INDEX CONCURRENTLY para índices. Agrega columnas como nullable primero, luego establece NOT NULL después del backfill. Usa herramientas como pg_repack o pgroll para operaciones que de otra forma bloquearían la tabla. Tengo una lista de "operaciones que bloquean" vs "operaciones que no bloquean" pegada a mi monitor. Me ha salvado más veces de las que puedo contar.
+</Callout>
+
+## Cuándo Desnormalizar (Y Cuándo Solo Estás Siendo Flojo)
+
+La normalización es el valor predeterminado. La desnormalización es la optimización. Y como cualquier optimización, si la haces antes de haber medido el problema real, solo estás agregando complejidad por vibes.
+
+He visto equipos desnormalizar desde el día uno "porque lo vamos a necesitar para rendimiento" y luego pasar meses manteniendo lógica de sincronización entre fuentes de datos redundantes. También he visto equipos negarse a desnormalizar incluso cuando su dashboard tarda 12 segundos en cargar porque "la normalización es la forma correcta." Ambos extremos están mal.
+
+Mi regla: si puedes señalar una consulta específica que es lenta, mostrarme el output de `EXPLAIN ANALYZE` probando que los joins son el cuello de botella (no índices faltantes, no consultas N+1, no un full table scan que podrías arreglar con una cláusula `WHERE`), y ya probaste vistas materializadas y caching — *entonces* podemos hablar de desnormalización.
+
+```sql
+-- Normalized: correct but slow for dashboards
+-- Requires joining 4 tables to show order summaries
+SELECT
+  o.id,
+  c.name AS customer_name,
+  c.email,
+  SUM(oi.quantity * oi.unit_price) AS total,
+  COUNT(oi.id) AS item_count
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN order_items oi ON o.id = oi.order_id
+GROUP BY o.id, c.name, c.email;
+
+-- Denormalized: materialized view for the dashboard
+CREATE MATERIALIZED VIEW order_summaries AS
+SELECT
+  o.id AS order_id,
+  o.status,
+  o.created_at,
+  c.name AS customer_name,
+  c.email AS customer_email,
+  SUM(oi.quantity * oi.unit_price) AS total,
+  COUNT(oi.id) AS item_count
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN order_items oi ON o.id = oi.order_id
+GROUP BY o.id, o.status, o.created_at, c.name, c.email;
+
+CREATE UNIQUE INDEX idx_order_summaries_id ON order_summaries(order_id);
+
+-- Refresh periodically or on demand
+REFRESH MATERIALIZED VIEW CONCURRENTLY order_summaries;
+```
+
+Las vistas materializadas son a menudo el punto dulce entre "normalización pura con consultas lentas" y "desnormalización completa con pesadillas de sincronización." La base de datos mantiene los datos desnormalizados por ti. Solo los refrescas cuando necesitas. Es como tener un caché que habla SQL. La palabra clave `CONCURRENTLY` significa que el refresco no bloquea lecturas — los usuarios pueden seguir consultando los datos anteriores mientras los nuevos datos se están computando.
+
+La regla: mantén las tablas normalizadas como tu fuente de verdad. Siempre. Las vistas desnormalizadas, cachés e índices de búsqueda son datos derivados que siempre pueden reconstruirse desde la fuente. Si tus datos desnormalizados alguna vez entran en conflicto con tus datos normalizados, los datos normalizados ganan. Sin excepciones.
+
+## Lecciones Aprendidas (Por las Malas, Obviamente)
+
+Después de modelar bases de datos en dominios de salud, finanzas y SaaS — y después de cada error descrito en este post (sí, todos ellos, algunos más de una vez) — estos son los principios a los que sigo volviendo:
+
+1. **Modela el tiempo explícitamente.** Casi todo dominio tiene requisitos temporales que el PM todavía no ha pensado pero va a preguntar en el mes dos. Agrega valid_from y valid_to temprano — retrofitear datos temporales en un esquema existente es una de las migraciones más dolorosas que he hecho. Esencialmente tienes que reescribir cada consulta que toca la tabla.
+2. **Aplica invariantes en la base de datos.** Restricciones CHECK, restricciones EXCLUDE, triggers. Tu código de aplicación tiene bugs. Tu ORM tiene peculiaridades. Ese script de importación masiva que alguien escribió a las 6 PM de un viernes definitivamente tiene bugs. La base de datos es tu última línea de defensa, y nunca se cansa, nunca toma atajos y nunca dice "bah, probablemente está bien."
+3. **Separa el estado actual del historial.** Mantén tus tablas principales ligeras para lecturas rápidas. Usa tablas de eventos o tablas de auditoría para el registro histórico. No hagas que tu hot path de consultas nade a través de diez años de registros históricos para encontrar el valor actual.
+4. **Prefiere JSONB sobre EAV.** Si necesitas atributos flexibles, JSONB te da indexación, validación y sintaxis de consulta que no te hacen querer dejar la ingeniería. EAV te da una tabla con 50 millones de filas y consultas que tardan un minuto. La elección no es difícil.
+5. **Diseña para migración desde el día uno.** *Vas* a cambiar tu esquema. Probablemente antes de lo que piensas. Usa expandir y contraer. Nunca hagas cambios que rompan la compatibilidad en un solo despliegue. El tú del futuro (el que está haciendo la migración a las 11 PM) le agradecerá al tú del presente (el que planificó para ello).
+6. **Desnormaliza deliberadamente.** Mide el problema. Confirma que realmente son los joins causándolo. Prueba vistas materializadas primero. Desnormaliza el camino de consulta específico, mantén la fuente normalizada, y documenta *por qué* desnormalizaste para que el próximo ingeniero no lo "limpie" re-normalizando y rompiendo el rendimiento de tu dashboard.
+
+El mejor modelo de datos no es el más normalizado ni el más desnormalizado. Es el que coincide con tu dominio, aplica tus invariantes, sobrevive el contacto con usuarios reales y puede evolucionar sin requerir un proyecto de migración de dos semanas cada vez que los requisitos de negocio cambian. Y si tu modelo de datos puede hacer todo eso, quizás hasta puedas dormir toda la noche.
+
+---
+
+## Referencias
+
+PostgreSQL Documentation. (2025). *Range Types*. https://www.postgresql.org/docs/current/rangetypes.html
+
+Snodgrass, R. T. (2000). *Developing Time-Oriented Database Applications in SQL*. Morgan Kaufmann.
+
+Kleppmann, M. (2017). *Designing Data-Intensive Applications*. O'Reilly Media.
+
+Winand, M. (2024). *Use The Index, Luke — SQL Indexing and Tuning*. https://use-the-index-luke.com
+
+---
+
+*¿Diseñando una base de datos para un dominio complejo? [Contáctame](/contact) para discutir estrategias de modelado de datos.*

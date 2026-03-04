@@ -1,0 +1,633 @@
+---
+title: "Designing CI/CD Pipelines That Don't Make You Want to Quit"
+description: "Battle-tested CI/CD pipeline design with GitHub Actions — fast feedback loops, parallel testing, caching strategies, preview deployments, flaky test quarantine, and the 'green main' philosophy. Written by someone who's been paged at 3 AM because the pipeline was lying."
+date: 2026-02-14
+published: true
+category: "DevOps"
+tags: ["CI/CD", "GitHub Actions", "DevOps", "Testing", "Automation", "DX"]
+author: "Osvaldo Restrepo"
+tldr: "Great CI/CD pipelines optimize for fast feedback, not completeness. Parallelize tests, cache aggressively, deploy previews on every PR, quarantine flaky tests, and protect main at all costs. A pipeline that takes 20 minutes is a pipeline developers will route around — and they'll be right to."
+faqs:
+  - question: "How fast should a CI/CD pipeline be?"
+    answer: "Your PR feedback loop should complete in under 10 minutes — ideally under 5. Anything longer and developers context-switch away, stack PRs, or start pushing without waiting for checks. Optimize ruthlessly for this number."
+  - question: "How do you handle flaky tests in CI?"
+    answer: "Quarantine them. Move flaky tests to a separate job that runs but doesn't block merges. Track flaky test frequency with a dashboard. Assign owners and set SLAs for fixing them. Never let flaky tests erode trust in the pipeline."
+  - question: "Should every branch get a preview deployment?"
+    answer: "Yes, for frontend and full-stack apps. Preview deployments on Vercel or similar platforms are nearly free and dramatically improve code review quality. Reviewers can click and test instead of pulling the branch locally."
+  - question: "What's the 'green main' philosophy?"
+    answer: "Main should always be deployable. Every commit on main should pass all tests and be safe to ship. This means using branch protection, required status checks, and squash merges. If main breaks, fixing it is the team's top priority."
+relatedPosts: ["kubernetes-production-best-practices", "clean-code-principles-practice"]
+---
+
+Let me tell you about the worst CI/CD pipeline I ever worked with. It started as a clean 5-minute workflow. Beautiful, even. Then someone added E2E tests. Then someone else added a matrix build for three Node versions ("just in case"). Then security scanning. Then license checking. Then a Slack notification step that, for reasons nobody could explain, took 90 seconds.
+
+Within six months, that 5-minute pipeline was a 45-minute monstrosity. Developers started pushing to main without waiting for checks. PRs stacked up like dirty dishes. Flaky tests got a collective shrug. The pipeline — the thing that was supposed to keep us safe — became the thing everyone worked around.
+
+I've watched this movie play out at four different companies now. The plot is always the same. But here's the thing: it doesn't have to end this way.
+
+## The Fast Feedback Principle
+
+Every single pipeline design decision should be filtered through one question: **does this make the feedback loop faster or slower?** That's it. That's the whole framework.
+
+Here's what nobody warns you about slow pipelines: developers are incredibly resourceful at routing around obstacles. A 20-minute pipeline isn't just slow — it's actively training your team to ignore CI results. They push, they context-switch, and by the time the pipeline fails, they've forgotten what they were working on. Ask me how I know.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              The Feedback Speed Spectrum                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  < 2 min     2-5 min      5-10 min     10-20 min   > 20 min│
+│  ────────────────────────────────────────────────────────── │
+│  │ Ideal  │  Good     │  Tolerable │  Painful  │  Broken │ │
+│                                                              │
+│  Devs wait   Devs       Devs start    Devs push    Devs    │
+│  happily     check back  new work     without      bypass   │
+│              quickly     while        waiting      checks   │
+│                          waiting                            │
+│                                                              │
+│  Linting,    Unit tests  Integration  E2E suite    Full     │
+│  type check  + build     tests        + deploy     matrix   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+That "> 20 min / Broken" column? That's not hyperbole. I've literally watched a senior engineer set up a personal Git hook that auto-merged when HE decided the code was ready, completely bypassing CI. His reasoning? "The pipeline takes 35 minutes and it's flaky. I have deadlines." He wasn't wrong about the problem. His solution was terrifying, but he wasn't wrong about the problem.
+
+<Callout type="tip" title="The 10-Minute Rule">
+If your PR pipeline takes more than 10 minutes, developers will start gaming it. They'll push smaller changes more frequently (good), batch unrelated changes (bad), or skip the pipeline entirely (VERY bad). Treat 10 minutes as a hard ceiling and optimize backward from there. This isn't aspirational — this is survival.
+</Callout>
+
+## Pipeline Architecture
+
+I structure every pipeline into tiers. Not because I read it in a book — because I learned the hard way that running everything sequentially is how you get 45-minute pipelines, and running everything in parallel is how you waste money on builds that were doomed from the first lint error.
+
+Tiers. Fast stuff first. Expensive stuff last. Fail fast, fail cheap.
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true  # Cancel previous runs on the same PR
+
+jobs:
+  # ============================================
+  # TIER 1: Fast checks (< 2 minutes)
+  # ============================================
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm tsc --noEmit
+
+  # ============================================
+  # TIER 2: Tests (2-8 minutes, parallelized)
+  # ============================================
+  unit-tests:
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test -- --coverage --shard=${{ matrix.shard }}
+    strategy:
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
+
+  # ============================================
+  # TIER 3: Build & integration (runs in parallel with tests)
+  # ============================================
+  build:
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: .next/
+          retention-days: 1
+```
+
+The key insight here — and this took me embarrassingly long to figure out — is that linting and type checking act as a fast gate. If your code doesn't even pass `tsc --noEmit`, why on earth would you spin up four parallel test shards and a build? Kill it early. Kill it cheap.
+
+That `concurrency` block at the top? Absolute lifesaver. Without it, if you push three quick commits to a PR, you get three parallel pipeline runs fighting over resources. With `cancel-in-progress: true`, only the latest push runs. I've seen this single setting cut our monthly GitHub Actions bill by 30%.
+
+## Caching Everything That Moves
+
+Controversial opinion: caching is the single biggest lever you have for pipeline speed, and most teams are leaving 50%+ of the performance on the table because they don't think about it beyond `cache: 'npm'`.
+
+Every minute spent downloading dependencies or rebuilding unchanged code is a minute your developer is not getting feedback. It's also a minute you're paying for. Let's fix both.
+
+### Dependency Caching
+
+This one's easy — `actions/setup-node` handles it for you:
+
+```yaml
+  - uses: actions/setup-node@v4
+    with:
+      node-version: 20
+      cache: 'pnpm'
+      # This automatically caches the pnpm store
+      # Cache key is based on pnpm-lock.yaml hash
+```
+
+If you're using npm or yarn and NOT caching, go fix that right now. I'll wait. This is literally free minutes.
+
+### Build Caching for Next.js
+
+This is where things get more interesting. Next.js has an incremental build cache that can dramatically speed up rebuilds, but you need to persist it between CI runs:
+
+```yaml
+  - name: Cache Next.js build
+    uses: actions/cache@v4
+    with:
+      path: |
+        .next/cache
+      key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('src/**/*.ts', 'src/**/*.tsx') }}
+      restore-keys: |
+        nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+        nextjs-${{ runner.os }}-
+```
+
+See those `restore-keys`? They're a cascade. If the exact key doesn't match (because you changed source files), it falls back to matching just the lockfile hash, then just the OS. You almost always get SOME cache, even on new branches. I've seen this take Next.js builds from 3 minutes to 45 seconds. Not a typo. Forty-five seconds.
+
+### Docker Layer Caching
+
+If you build Docker images in CI, layer caching isn't optional — it's essential. Without it, every build starts from `FROM node:20` and re-downloads everything. Every. Single. Time.
+
+```yaml
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: myapp:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+```
+
+The `type=gha` cache backend stores layers directly in GitHub's cache, which means zero extra infrastructure. I switched a team from "no Docker caching" to this exact configuration and their image build went from 8 minutes to 90 seconds. The team lead bought me coffee for a week. (Worth it.)
+
+<Callout type="info" title="Measure Cache Hit Rates">
+Pro tip that took me way too long to learn: add a step that logs whether caches were hit or missed. If your cache hit rate is below 80%, your cache keys are too specific and you're barely getting any benefit. If it's at 100% and builds are still slow, your cache might be stale and you're just restoring garbage. Either way, you won't know unless you measure.
+</Callout>
+
+## Parallel Test Strategies
+
+Here's a law of nature: test suites grow. They never shrink. You will always have more tests next month than this month. If you run them sequentially, your pipeline time grows linearly with your test count, and eventually you're back in the 20+ minute danger zone.
+
+The solution is parallelization, and it's easier than you think.
+
+### Sharding with Vitest
+
+Vitest has built-in sharding support, and setting it up is almost criminally simple:
+
+```yaml
+  unit-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # Don't cancel other shards if one fails
+      matrix:
+        shard: ['1/4', '2/4', '3/4', '4/4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm vitest --reporter=verbose --shard=${{ matrix.shard }}
+```
+
+Four shards means your test suite runs in roughly 1/4 of the time. Yes, you pay for four parallel runners, but runners are cheap and developer time is expensive. I'll take that trade every day.
+
+The `fail-fast: false` bit is important and counterintuitive. Your instinct is "if one shard fails, cancel the rest — save money!" But in practice, developers want to see ALL the failures at once, not fix one, re-push, wait, discover another, fix, re-push, wait... That cycle is soul-crushing. Show all the failures upfront. Let them fix everything in one shot.
+
+### Splitting E2E Tests by Feature
+
+E2E tests are the big dogs. They're slow, they need browsers, and they're often the bottleneck. Split them by feature area:
+
+```yaml
+  e2e-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        spec:
+          - 'auth/**'
+          - 'dashboard/**'
+          - 'billing/**'
+          - 'settings/**'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Run Playwright tests
+        run: pnpm playwright test tests/${{ matrix.spec }}
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-${{ strategy.job-index }}
+          path: playwright-report/
+          retention-days: 7
+```
+
+That `if: failure()` artifact upload? Non-negotiable. When an E2E test fails, you need screenshots, traces, and video. Without them, debugging E2E failures in CI is like performing surgery blindfolded. I once spent an entire day debugging a Playwright failure that turned out to be a timezone difference between CI and local. The screenshot would've shown me in 5 seconds.
+
+## Preview Deployments
+
+OK, I need to talk about preview deployments because they are, genuinely, one of the highest-ROI investments you can make in your entire development workflow. I'm not exaggerating. This is the thing that fundamentally changed how my teams do code review.
+
+Before preview deployments, code review meant staring at diffs. "Yeah, that JSX looks right, I think. LGTM." After preview deployments, code review means clicking a link and actually USING the feature. "Oh wait, this button is misaligned on mobile." "The loading state looks weird." "What happens if I click submit twice?" Stuff you'd never catch from a diff.
+
+With Vercel, this is nearly zero-config:
+
+```yaml
+  preview-deploy:
+    needs: [build]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel Preview
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Comment PR with preview URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Preview deployed to: ${process.env.PREVIEW_URL}`
+            });
+```
+
+<Callout type="tip" title="Preview Deployments Change Code Review">
+I once wrote a 12-page document about improving code review quality. Nobody read it. Then I set up preview deployments. Review quality improved more in one week than it had in the entire previous year. Process documents change behavior approximately never. Tools change behavior immediately. Remember that.
+</Callout>
+
+## Flaky Test Quarantine
+
+Let me tell you what happens when you don't deal with flaky tests: they metastasize. One flaky test becomes two. Two becomes five. Developers start seeing failures and immediately clicking "re-run" without even reading the error. "Oh, that's just the auth test being flaky again." Until one day it's NOT the flaky test, it's a real bug, and everyone ignores it because the pipeline has been crying wolf for months.
+
+Flaky tests are a cancer. I don't use that word lightly. Left unchecked, they erode trust in your entire pipeline until CI becomes theater — something you technically have but nobody actually trusts. You need a system.
+
+```yaml
+  # Quarantined tests run but don't block merges
+  quarantined-tests:
+    runs-on: ubuntu-latest
+    continue-on-error: true  # Don't block the pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run quarantined tests
+        run: pnpm vitest --config vitest.quarantine.config.ts
+
+      - name: Report flaky test results
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: '⚠️ Quarantined tests failed. See [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.'
+            });
+```
+
+### The Quarantine Process
+
+Here's the system I've refined over several teams. It's not glamorous, but it works:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  Flaky Test Lifecycle                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. Test fails inconsistently (detected by CI or developer) │
+│     │                                                        │
+│     ▼                                                        │
+│  2. Move test to quarantine suite                            │
+│     - Tag with @quarantine                                   │
+│     - Create tracking issue with owner + SLA                 │
+│     │                                                        │
+│     ▼                                                        │
+│  3. Quarantine suite runs in CI, doesn't block merges        │
+│     - Results logged to dashboard                            │
+│     - Weekly digest sent to team                             │
+│     │                                                        │
+│     ▼                                                        │
+│  4. Owner investigates and fixes root cause                  │
+│     - Timing issue? Add proper waits or mocking              │
+│     - Race condition? Fix the test or the code               │
+│     - Environment? Make test hermetic                        │
+│     │                                                        │
+│     ▼                                                        │
+│  5. Fixed test moves back to main suite                      │
+│     - Must pass 20 consecutive runs before promotion         │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Step 5 is the one teams always skip. "I fixed it, it passes, let me move it back." No. Make it prove itself. Twenty consecutive passes. Why 20? Because I've been burned by tests that were "fixed" and then failed again two weeks later. (Narrator: the fix did not fix the root cause.)
+
+<Callout type="warning" title="The Quarantine SLA">
+Every quarantined test needs an owner and a fix-by date. EVERY. SINGLE. ONE. Without accountability, the quarantine becomes a graveyard where tests go to die. I set a 2-week SLA: fix it or delete it. Tests that provide value get fixed. Tests that don't get removed. If you can't figure out what a test was even supposed to verify, that's your answer — delete it. No test is better than a test that occasionally lies.
+</Callout>
+
+## Environment Promotion
+
+Here's a rule I now enforce with religious conviction: code flows through environments in one direction. Development to staging to production. Never sideways. NEVER patch production directly.
+
+"But it's just a small config change!" No. "But it's urgent!" No. "But —" No. Every "just a quick production fix" I've ever seen has ended in one of two ways: it worked and nobody documented it (so staging drifts from production), or it didn't work and now you've got a production incident AND no CI checks to catch it. Ask me how I know.
+
+```yaml
+  # .github/workflows/deploy.yml
+  name: Deploy
+
+  on:
+    push:
+      branches: [main]
+
+  jobs:
+    deploy-staging:
+      runs-on: ubuntu-latest
+      environment: staging
+      steps:
+        - uses: actions/checkout@v4
+        - run: pnpm install --frozen-lockfile
+        - run: pnpm build
+        - name: Deploy to staging
+          run: pnpm deploy:staging
+          env:
+            DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+    smoke-tests:
+      needs: deploy-staging
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v4
+        - run: pnpm install --frozen-lockfile
+        - name: Run smoke tests against staging
+          run: pnpm test:smoke
+          env:
+            BASE_URL: https://staging.myapp.com
+
+    deploy-production:
+      needs: smoke-tests
+      runs-on: ubuntu-latest
+      environment: production  # Requires manual approval in GitHub
+      steps:
+        - uses: actions/checkout@v4
+        - run: pnpm install --frozen-lockfile
+        - run: pnpm build
+        - name: Deploy to production
+          run: pnpm deploy:production
+          env:
+            DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+```
+
+See that `environment: production` with the comment about manual approval? That's not just a nice-to-have. GitHub lets you configure environments that require specific reviewers to approve before jobs run. Production deploys require a human to click "approve." This has saved us from deploying broken code more times than I can count. Is it annoying? Yes. Is it less annoying than a 3 AM production incident? Also yes.
+
+## Secrets Management
+
+I'm about to say something that should be obvious but apparently isn't, based on the number of repos I've audited: **never put secrets in your workflow files**. Not as default values, not as "temporary" hardcoded strings, not as "we'll rotate this later" constants. Never.
+
+I once inherited a project where the database connection string was hardcoded in the CI workflow. In a public repository. It had been there for eight months. EIGHT. MONTHS.
+
+Use GitHub's environments feature with required reviewers for production secrets:
+
+```yaml
+  # Reference secrets through environments
+  deploy-production:
+    environment:
+      name: production
+      url: https://myapp.com
+    steps:
+      - name: Deploy
+        env:
+          # These are only available in the production environment
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STRIPE_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: ./deploy.sh
+```
+
+Key rules for secrets — and yes, I've seen every single one of these violated:
+
+1. **Scope secrets to environments** — Staging secrets should never be accessible in production jobs. I once watched a team deploy to production using the staging database URL because secrets weren't scoped. Fun times. (Narrator: it was not fun times.)
+2. **Rotate regularly** — Automate rotation where possible. If you're manually rotating secrets, you're not rotating secrets. You're planning to rotate secrets someday.
+3. **Audit access** — Review who can trigger production deployments quarterly. People leave teams. People change roles. Access accumulates.
+4. **Never log secrets** — Add `::add-mask::` for any dynamically generated secrets. GitHub Actions will scrub them from logs.
+
+```yaml
+      - name: Generate token
+        id: token
+        run: |
+          TOKEN=$(generate-deploy-token)
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+```
+
+That `::add-mask::` command tells GitHub Actions to redact the value from all subsequent log output. Without it, your dynamically generated tokens show up in plain text in your build logs. Which are often visible to everyone in the organization. Yeah.
+
+## Monorepo Considerations
+
+If you're running a monorepo — and honestly, even if you're just running a Next.js app with a few shared packages — the naive approach of running ALL tests for EVERY change will absolutely destroy your pipeline speed. Someone changes a typo in the README and the entire E2E suite runs. That's not just slow, it's disrespectful of everyone's time.
+
+Path filtering. Use it.
+
+```yaml
+  # Only run frontend tests when frontend code changes
+  frontend-tests:
+    if: |
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'run-all')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            frontend:
+              - 'apps/web/**'
+              - 'packages/ui/**'
+              - 'packages/shared/**'
+            backend:
+              - 'apps/api/**'
+              - 'packages/shared/**'
+
+      - name: Run frontend tests
+        if: steps.changes.outputs.frontend == 'true'
+        run: pnpm --filter web test
+
+      - name: Run backend tests
+        if: steps.changes.outputs.backend == 'true'
+        run: pnpm --filter api test
+```
+
+Notice how `packages/shared/**` triggers BOTH frontend and backend tests? That's intentional. Shared code is shared — changes there could break either side. But if you only touched `apps/web/`, why run backend tests? You shouldn't. Your pipeline should be smart enough to know the difference.
+
+The `run-all` label escape hatch is important too. Sometimes you NEED to run everything — infrastructure changes, dependency updates, "something is weird and I want to verify." Slap the label on and the full suite runs. Without it, path filtering is a guardrail. With it, you have an override for the cases that genuinely need it.
+
+## The Green Main Philosophy
+
+I'll die on this hill: **main must always be deployable**.
+
+Not "usually deployable." Not "deployable after you check the last few commits." ALWAYS. Every commit on main should pass all checks and be safe to ship to production at a moment's notice. This isn't some theoretical ideal — it's a hard requirement enforced by tooling, and it's the foundation that everything else in this post builds on.
+
+```yaml
+# Branch protection rules (configured in GitHub settings, shown as code)
+# Use gh CLI or GitHub API to set these:
+#
+# gh api repos/{owner}/{repo}/branches/main/protection -X PUT \
+#   -f required_status_checks='{"strict":true,"contexts":["lint-and-typecheck","unit-tests","build"]}' \
+#   -f enforce_admins=true \
+#   -f required_pull_request_reviews='{"required_approving_review_count":1}' \
+#   -f restrictions=null
+```
+
+Here's what "green main" means in practice, and why each piece matters:
+
+1. **Branch protection** — Nobody pushes directly to main. No exceptions. Not the CTO. Not during an incident. Not "just this once." Especially not "just this once." (That's how it always starts.)
+2. **Required checks** — PRs can't merge until lint, tests, and build pass. If CI is red, the merge button is grayed out. Period.
+3. **Strict status checks** — The branch must be up to date with main before merging. Without this, two PRs can each pass individually but conflict when merged together. I've seen this cause production outages that neither PR would've caused alone. Strict mode catches these.
+4. **Squash merges** — One commit per PR on main. Clean, readable history. When something breaks, `git bisect` actually works because each commit is a coherent unit.
+5. **If main breaks, stop everything** — A broken main is the team's P0 until it's fixed. Not P1. Not "we'll get to it." P0. Drop what you're doing. Fix main. Everything else can wait. (Yes, even that feature the PM is asking about.)
+
+<Callout type="info" title="Strict Status Checks Matter">
+Without strict status checks, here's what happens: Developer A merges a PR that modifies the login API. Developer B, whose branch was based on yesterday's main, merges a PR that depends on the old login API. Both PRs passed CI individually. Together on main? Broken. Strict mode prevents this by requiring B's branch to be rebased on the latest main (which includes A's changes) before merging.
+</Callout>
+
+## The Complete Pipeline
+
+Alright, let's put it all together. Here's what a mature, battle-tested pipeline actually looks like:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    PR Pipeline Flow                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Push to PR branch                                          │
+│       │                                                      │
+│       ▼                                                      │
+│  ┌──────────────────────┐                                   │
+│  │ Tier 1: Fast Gate    │ ~90 seconds                       │
+│  │ - Lint               │                                   │
+│  │ - Type check         │                                   │
+│  └──────────┬───────────┘                                   │
+│             │                                                │
+│       ┌─────┴──────┐                                        │
+│       ▼            ▼                                        │
+│  ┌──────────┐ ┌──────────┐                                  │
+│  │ Tier 2a  │ │ Tier 2b  │ ~3-5 minutes (parallel)         │
+│  │ Unit     │ │ Build    │                                  │
+│  │ tests    │ │          │                                  │
+│  │ (sharded)│ │          │                                  │
+│  └────┬─────┘ └────┬─────┘                                  │
+│       └──────┬─────┘                                        │
+│              ▼                                               │
+│  ┌──────────────────────┐                                   │
+│  │ Tier 3: Integration  │ ~3-5 minutes                      │
+│  │ - E2E tests (sharded)│                                   │
+│  │ - Preview deployment │                                   │
+│  └──────────────────────┘                                   │
+│                                                              │
+│  Total: 6-10 minutes                                        │
+│                                                              │
+│  (Quarantined tests run in parallel, non-blocking)          │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+6-10 minutes. That's the target. Fast enough that developers wait for it. Comprehensive enough that you trust it. If your pipeline is outside this range, something needs to change.
+
+## What I'd Tell My Past Self
+
+After building dozens of CI/CD pipelines across startups and larger organizations — and making every mistake on this list at least once — these are the lessons I wish I could send back in time:
+
+1. **Speed is a feature** — A 5-minute pipeline gets 10x more respect than a 30-minute one with 20% more coverage. Optimize for developer trust, not theoretical completeness. Nobody cares about your 98% coverage if the pipeline takes half an hour.
+2. **Flaky tests are a management problem** — This one took me years to learn. If leadership doesn't prioritize fixing them, they won't get fixed. Engineering teams can't fix what management won't schedule. Track flaky test rates and escalate them the same way you'd escalate any reliability issue. Because that's what they are.
+3. **Preview deployments are non-negotiable** — The cost is near zero and the improvement to code review quality is immense. If your team doesn't have preview deploys set up, stop reading this post and go set them up. Right now. I'll still be here when you get back.
+4. **Cache everything** — Dependencies, builds, Docker layers, test results. Your CI provider charges by the minute. Caching isn't optimization — it's basic fiscal responsibility. And it makes your developers happier. Win-win.
+5. **Protect main like production** — Because it IS production. Or at least, it should be one button press away from production at all times. Every commit on main should be shippable. The moment you relax this, you're one bad merge from a production incident.
+6. **Automate the boring stuff** — Dependency updates (Renovate/Dependabot), changelog generation, version bumping. If a human does it, a human will forget. If a human forgets, it becomes tech debt. If it becomes tech debt, it joins the graveyard of things you'll "get to eventually." Automate it now.
+
+The best pipeline is one nobody complains about. That's actually a really high bar when you think about it — developers love complaining. But it's achievable if you treat your CI/CD as a product with developers as your users. Listen to their complaints. Measure what's slow. Fix the bottlenecks ruthlessly. And never, ever let main stay red overnight.
+
+---
+
+## References
+
+GitHub. (2024). *GitHub Actions documentation*. https://docs.github.com/en/actions
+
+Vercel. (2024). *Preview deployments*. https://vercel.com/docs/deployments/preview-deployments
+
+Forsgren, N., Humble, J., & Kim, G. (2018). *Accelerate: The Science of Lean Software and DevOps*. IT Revolution Press.
+
+Fowler, M. (2024). *Continuous Integration*. https://martinfowler.com/articles/continuousIntegration.html
+
+---
+
+*Struggling with slow pipelines or flaky tests? [Reach out](/contact) — I've helped teams cut their CI times by 70%, and I've got the war stories to prove it.*

@@ -1,0 +1,637 @@
+---
+title: "Data Modeling for the Real World: Beyond Tutorial Examples"
+description: "The data modeling patterns that tutorials conveniently skip — temporal data, soft deletes, polymorphic associations, audit logging, state machines, multi-currency handling, and the moments when you realize your beautiful normalized schema needs to get its hands dirty. Learned the hard way so you don't have to."
+date: 2026-03-02
+published: true
+category: "System Design"
+tags: ["Data Modeling", "Database", "PostgreSQL", "Schema Design", "Architecture"]
+author: "Osvaldo Restrepo"
+tldr: "Tutorial schemas fall apart in production faster than a sandcastle at high tide. Real data has temporal dimensions your PM will ask about on day 30, audit requirements that compliance will demand on day 60, and messy polymorphism that makes your clean ERD weep. Use valid-time columns for historical data, implement soft deletes only when you actually need them (not 'just in case'), avoid EAV like the plague it is, model state machines explicitly in your schema, and denormalize deliberately — not accidentally. Your database is your last line of defense against bad data, so make it earn its keep."
+faqs:
+  - question: "Should I use soft deletes or hard deletes?"
+    answer: "Use soft deletes only when you have a concrete business requirement for data recovery or audit trails. Otherwise, hard deletes with an archive table are simpler and avoid the performance and query complexity overhead of filtering deleted records everywhere."
+  - question: "What is the EAV anti-pattern and what should I use instead?"
+    answer: "Entity-Attribute-Value stores arbitrary key-value pairs per entity. It kills query performance, makes validation impossible, and bypasses database constraints. Use JSONB columns for truly dynamic attributes, or separate tables per entity type for structured data."
+  - question: "When should I denormalize my database?"
+    answer: "Denormalize when you have measured a real performance problem that normalization causes, not as a premature optimization. Common valid cases include read-heavy dashboards, search result pages, and reporting tables. Always maintain the normalized source of truth and sync denormalized copies."
+  - question: "How do I handle schema migrations safely in production?"
+    answer: "Use expand-and-contract migrations: add the new column or table first, deploy code that writes to both old and new, backfill historical data, deploy code that reads from the new location, then drop the old column. Never rename or drop columns in a single deploy."
+relatedPosts: ["postgres-beyond-basics", "multi-tenant-saas-architecture"]
+---
+
+Every tutorial teaches you users-posts-comments. Beautiful. Normalized. Three tables, two foreign keys, a `JOIN` that practically writes itself. You feel like a database architect. You push to production with confidence.
+
+Then your PM asks "can we see what the price was when they ordered, not what it is now?" and your beautiful schema crumbles like a sandcastle at high tide.
+
+I've modeled databases for healthcare systems where a wrong data type could literally affect patient outcomes, financial platforms where a floating-point rounding error across millions of transactions became *actual money that was missing*, and multi-tenant SaaS products where one customer's data leaking into another's query results is a company-ending event. The patterns that matter in production are rarely the ones taught in tutorials, and the distance between a CS textbook ERD and a schema that survives contact with real users is roughly the distance between a paper airplane and a 747.
+
+This post covers the patterns I keep reaching for — the ones I wish someone had taught me before I learned them at 2 AM staring at a production database that was quietly losing data.
+
+## Temporal Data: Your Data Has a Time Dimension (And It's Already Biting You)
+
+Here's a story. Early in my career, I built an e-commerce system. Products had prices. Simple column: `price NUMERIC(10,2)`. Beautiful. Then a customer called support and said "I was charged $49.99 but the product page says $39.99." They were both right — we had updated the price after their order, and there was no record of what the price was when they actually bought it. The `UPDATE` statement had cheerfully destroyed that information forever.
+
+Most tutorials treat data as if it exists in an eternal present. A row has a value, you update the value, the old value ceases to exist. In reality, almost every business domain needs to answer: "What was the value at a specific point in time?" And if you didn't plan for that question, the answer is: "We have no idea, and we can't find out."
+
+There are two temporal dimensions that matter, and understanding the difference between them will save you from building the wrong thing:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                   Temporal Dimensions                         │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Valid Time (business time):                                  │
+│    When was the fact TRUE in the real world?                   │
+│    "This employee's salary was $80k from Jan to March"        │
+│                                                               │
+│  Transaction Time (system time):                              │
+│    When was the fact RECORDED in the database?                │
+│    "We recorded this salary change on January 5th at 3pm"     │
+│                                                               │
+│  Bitemporal:                                                  │
+│    Both dimensions tracked together                           │
+│    "On Jan 5 we recorded that the salary was $80k             │
+│     effective from Jan 1"                                     │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The distinction between valid time and transaction time seems academic until you need it. I once spent a week debugging a payroll discrepancy that came down to: we knew when the salary *was changed in the system* (transaction time), but we didn't know when the salary *was supposed to take effect* (valid time). HR had entered a raise on January 15th that was supposed to be retroactive to January 1st. Our schema couldn't represent that. The workaround was ugly. The lesson was permanent.
+
+### Valid-Time Pattern
+
+The most common pattern, and the one you should probably be using right now if you're not. Track when a fact is true in the business domain.
+
+```sql
+-- Instead of a single row that gets updated:
+-- BAD: UPDATE employees SET salary = 90000 WHERE id = 1;
+-- (Previous salary is lost forever)
+
+-- Use a temporal table:
+CREATE TABLE employee_salaries (
+  id          BIGSERIAL PRIMARY KEY,
+  employee_id BIGINT NOT NULL REFERENCES employees(id),
+  salary      NUMERIC(12, 2) NOT NULL,
+  currency    VARCHAR(3) NOT NULL DEFAULT 'USD',
+  valid_from  TIMESTAMPTZ NOT NULL,
+  valid_to    TIMESTAMPTZ, -- NULL means "current"
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- Prevent overlapping periods for the same employee
+  EXCLUDE USING gist (
+    employee_id WITH =,
+    tstzrange(valid_from, valid_to) WITH &&
+  )
+);
+
+-- What is the current salary?
+SELECT salary FROM employee_salaries
+WHERE employee_id = 1 AND valid_to IS NULL;
+
+-- What was the salary on March 15?
+SELECT salary FROM employee_salaries
+WHERE employee_id = 1
+  AND valid_from <= '2026-03-15'
+  AND (valid_to IS NULL OR valid_to > '2026-03-15');
+```
+
+<Callout type="tip" title="PostgreSQL Range Types">
+The EXCLUDE constraint with tstzrange prevents overlapping salary periods for the same employee at the database level. No application code needed — the database does the enforcement for you. This is one of PostgreSQL's most underused features, and I genuinely get a little emotional every time I use it. It's beautiful. Other databases wish they had this. Your application code *will* have bugs that let overlapping periods sneak in. The EXCLUDE constraint won't.
+</Callout>
+
+That `EXCLUDE USING gist` constraint is doing more work than it looks. Without it, you're relying on your application code to ensure an employee never has two concurrent salary records. Your application code will have edge cases around race conditions, bulk imports, and that one developer who writes a migration script that doesn't check for overlaps. The database constraint doesn't have edge cases. It just says no.
+
+### Transaction-Time Pattern (Audit Trail)
+
+Track when changes were recorded in the system. This is essential for compliance ("show me exactly what changed and when"), debugging ("what did this record look like before someone 'fixed' it"), and my personal favorite: proving to an angry stakeholder that their team made the change, not yours.
+
+```sql
+-- Automatic audit trail using triggers
+CREATE TABLE employees_audit (
+  audit_id     BIGSERIAL PRIMARY KEY,
+  employee_id  BIGINT NOT NULL,
+  operation    VARCHAR(10) NOT NULL, -- INSERT, UPDATE, DELETE
+  old_data     JSONB,
+  new_data     JSONB,
+  changed_by   TEXT NOT NULL,
+  changed_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION audit_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO employees_audit (
+    employee_id, operation, old_data, new_data, changed_by
+  ) VALUES (
+    COALESCE(NEW.id, OLD.id),
+    TG_OP,
+    CASE WHEN TG_OP != 'INSERT' THEN to_jsonb(OLD) END,
+    CASE WHEN TG_OP != 'DELETE' THEN to_jsonb(NEW) END,
+    current_setting('app.current_user', true)
+  );
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER employees_audit_trigger
+AFTER INSERT OR UPDATE OR DELETE ON employees
+FOR EACH ROW EXECUTE FUNCTION audit_trigger();
+```
+
+I put audit triggers on every table that holds business-critical data. Every. Single. One. The storage cost is negligible compared to the cost of not being able to answer "who changed this and when?" I've been in meetings where an audit trail turned a four-hour finger-pointing session into a two-minute "oh, it was the batch import script from Tuesday." Worth every byte.
+
+## Soft Deletes vs Hard Deletes (A.K.A. The Great Overengineering)
+
+Soft deletes are one of the most over-applied patterns in all of software engineering. I've watched teams add a `deleted_at` column to every single table in their schema "just in case," and then spend the next two years dealing with the consequences. Let me paint you a picture of what those consequences look like.
+
+First, every single query now needs `WHERE deleted_at IS NULL`. Every. Single. One. Miss one, and you're showing deleted data to users. Your ORM's default scope handles it? Great, until someone writes a raw query for a report. Or uses a different ORM. Or forgets to apply the scope in a migration script. I've seen "deleted" user accounts show up in admin dashboards, "deleted" products appear in search results, and "deleted" orders get shipped. (Yes, that last one actually happened. No, I'm not over it.)
+
+```
+┌────────────────────────────────────────────────────────────┐
+│              Soft Delete Trade-offs                          │
+├────────────────────────────────────────────────────────────┤
+│                                                             │
+│  Pros:                         Cons:                        │
+│  ✓ Data recovery possible      ✗ Every query needs          │
+│  ✓ Audit trail preserved         WHERE deleted_at IS NULL   │
+│  ✓ Referential integrity       ✗ Unique constraints break   │
+│    maintained                  ✗ Performance degrades over   │
+│                                  time as table grows         │
+│                                ✗ GDPR "right to be          │
+│                                  forgotten" gets harder      │
+│                                                             │
+└────────────────────────────────────────────────────────────┘
+```
+
+Oh, and unique constraints. You had `UNIQUE(email)` on your users table? Well, now a user deletes their account, and then they try to sign up again with the same email. Blocked. The soft-deleted record still holds the unique constraint. So you change it to a partial unique index: `CREATE UNIQUE INDEX ... WHERE deleted_at IS NULL`. Except now your ORM doesn't know about partial indexes and validates uniqueness incorrectly. It's turtles all the way down.
+
+### My Approach: Archive Tables Instead
+
+For most cases, I prefer hard deletes with an archive table. You get the full audit trail without polluting every query in your application. The archive table is a separate concern that doesn't interfere with your normal operations.
+
+```sql
+-- Archive table mirrors the structure with metadata
+CREATE TABLE orders_archive (
+  -- Original columns
+  id          BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL,
+  total       NUMERIC(12, 2) NOT NULL,
+  status      VARCHAR(20) NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL,
+
+  -- Archive metadata
+  archived_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived_by TEXT NOT NULL,
+  archive_reason TEXT
+);
+
+-- Archive before delete
+CREATE OR REPLACE FUNCTION archive_order()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO orders_archive (
+    id, customer_id, total, status, created_at,
+    archived_by, archive_reason
+  ) VALUES (
+    OLD.id, OLD.customer_id, OLD.total, OLD.status, OLD.created_at,
+    current_setting('app.current_user', true),
+    current_setting('app.archive_reason', true)
+  );
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER orders_archive_trigger
+BEFORE DELETE ON orders
+FOR EACH ROW EXECUTE FUNCTION archive_order();
+```
+
+The beauty of this pattern: your main table stays clean. No ghost records. No forgotten `WHERE` clauses. No performance degradation from a table that only grows and never shrinks. Unique constraints work normally. GDPR compliance is straightforward — you control exactly what goes into the archive and can purge it independently. And if you ever need to "undelete" something, you have the full record right there in the archive table.
+
+<Callout type="warning" title="When Soft Deletes Are Actually Right">
+Use soft deletes when the deleted entity is still referenced by active records and you need to display its data (for example, a deleted user whose comments are still visible), or when your domain requires an "undo" feature with a short window. These are real use cases. "We might need it someday" is not a real use case. I've deleted more `deleted_at` columns from schemas than I've added.
+</Callout>
+
+## Polymorphic Associations: The Right Way (After Doing It Wrong Three Times)
+
+Polymorphic associations — where one table references multiple other tables — are one of those patterns where the easy solution is wrong and the right solution feels like overkill. Comments on posts, photos, and events. Notifications about orders, messages, and system events. Activity feeds spanning every entity type in your system.
+
+The first time I needed this, I did what every Rails developer does. Two columns: `commentable_type` (a string!) and `commentable_id` (an integer that could refer to any table). It worked. It deployed. And then six months later, someone renamed the `Photo` model to `Image`, and suddenly every polymorphic reference to photos was broken because the type column still said "Photo." No foreign key constraint caught this. No migration warned about it. We found out from user bug reports. (Yes, I've done this.)
+
+```sql
+-- BAD: The Rails-style polymorphic association
+-- No foreign key constraints, no type safety
+CREATE TABLE comments (
+  id              BIGSERIAL PRIMARY KEY,
+  commentable_type VARCHAR(50),  -- 'Post', 'Photo', 'Event'
+  commentable_id   BIGINT,       -- Could be any table's ID
+  body            TEXT NOT NULL
+  -- Can't add: FOREIGN KEY (commentable_id) REFERENCES ???
+);
+
+-- BETTER: Shared table with nullable FKs (works for few types)
+CREATE TABLE comments (
+  id       BIGSERIAL PRIMARY KEY,
+  post_id  BIGINT REFERENCES posts(id),
+  photo_id BIGINT REFERENCES photos(id),
+  event_id BIGINT REFERENCES events(id),
+  body     TEXT NOT NULL,
+
+  -- Exactly one must be set
+  CONSTRAINT exactly_one_parent CHECK (
+    (post_id IS NOT NULL)::int +
+    (photo_id IS NOT NULL)::int +
+    (event_id IS NOT NULL)::int = 1
+  )
+);
+
+-- BEST for many types: Intermediate join tables
+CREATE TABLE post_comments (
+  comment_id BIGINT PRIMARY KEY REFERENCES comments(id),
+  post_id    BIGINT NOT NULL REFERENCES posts(id)
+);
+
+CREATE TABLE photo_comments (
+  comment_id BIGINT PRIMARY KEY REFERENCES comments(id),
+  photo_id   BIGINT NOT NULL REFERENCES photos(id)
+);
+```
+
+The intermediate join table approach preserves referential integrity, allows proper foreign keys, and scales to any number of parent types without modifying the comments table. Yes, it's more tables. Yes, it's more joins. But your database will actually *prevent* invalid data instead of cheerfully storing references to rows that don't exist in tables that might have been renamed. I'll take the extra `JOIN` over the "I wonder if this comment still has a valid parent" uncertainty every single time.
+
+The nullable FK approach (the "BETTER" option) works well when you have 2-4 parent types and don't expect more. Once you hit 5+, the CHECK constraint gets unwieldy and adding a new parent type requires an ALTER TABLE. The join table approach scales indefinitely — you just create a new junction table.
+
+## The EAV Anti-Pattern (A.K.A. The Road to Hell Is Paved with Flexible Schemas)
+
+Entity-Attribute-Value. Three innocent words that have caused more suffering than any other pattern in database design. EAV is the pattern where you store arbitrary attributes as key-value rows, and it seems brilliant the first time you see it. "We can add any attribute without a schema change! Total flexibility!"
+
+I have inherited two EAV systems in my career. The first one had 47 million rows in the attributes table for 200,000 products. A query to find all products with weight over 5kg took 45 seconds. The second one had been in production for four years, and by that point, the same attribute name was spelled three different ways across different records ("color", "Color", "colour"), there were prices stored as strings with currency symbols embedded ("$49.99"), and someone had stored a JSON blob as a single attribute value. Total flexibility indeed.
+
+```sql
+-- The EAV anti-pattern — DO NOT DO THIS
+CREATE TABLE product_attributes (
+  product_id  BIGINT REFERENCES products(id),
+  attr_name   VARCHAR(100),
+  attr_value  TEXT, -- Everything is a string. Validation? What validation?
+  PRIMARY KEY (product_id, attr_name)
+);
+
+-- "What products have weight > 5kg?"
+-- This query is a nightmare:
+SELECT p.* FROM products p
+JOIN product_attributes pa ON p.id = pa.product_id
+WHERE pa.attr_name = 'weight'
+  AND CAST(pa.attr_value AS NUMERIC) > 5;
+-- No index can help. No type safety. No constraints.
+```
+
+The fundamental problem with EAV is that it takes everything the relational database is good at — type safety, constraints, indexing, query optimization — and throws it all in the garbage. Your database becomes a glorified key-value store, except slower than an actual key-value store because it still has the overhead of a relational engine.
+
+### What to Use Instead
+
+```sql
+-- Option 1: JSONB for truly dynamic attributes
+CREATE TABLE products (
+  id          BIGSERIAL PRIMARY KEY,
+  name        VARCHAR(200) NOT NULL,
+  category    VARCHAR(50) NOT NULL,
+  price       NUMERIC(12, 2) NOT NULL,
+  attributes  JSONB NOT NULL DEFAULT '{}',
+
+  -- You CAN index JSONB fields
+  CONSTRAINT valid_attributes CHECK (jsonb_typeof(attributes) = 'object')
+);
+
+-- Index specific paths you query often
+CREATE INDEX idx_products_weight ON products ((attributes->>'weight'));
+CREATE INDEX idx_products_attrs ON products USING gin (attributes);
+
+-- Query is clean and indexable
+SELECT * FROM products
+WHERE (attributes->>'weight')::numeric > 5;
+
+-- Option 2: Separate tables per category (for structured data)
+CREATE TABLE products (
+  id       BIGSERIAL PRIMARY KEY,
+  name     VARCHAR(200) NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  price    NUMERIC(12, 2) NOT NULL
+);
+
+CREATE TABLE product_electronics (
+  product_id   BIGINT PRIMARY KEY REFERENCES products(id),
+  wattage      INTEGER,
+  voltage      VARCHAR(10),
+  connectivity TEXT[]
+);
+
+CREATE TABLE product_clothing (
+  product_id BIGINT PRIMARY KEY REFERENCES products(id),
+  size       VARCHAR(10),
+  color      VARCHAR(50),
+  material   VARCHAR(100)
+);
+```
+
+<Callout type="info" title="JSONB Is Not a Cop-out">
+Using JSONB for dynamic attributes is not the same as the EAV anti-pattern, and I will argue this point until I'm blue in the face. JSONB gives you indexing (GIN indexes for containment queries, btree indexes for specific paths), validation (CHECK constraints with jsonb_typeof and custom functions), and clean query syntax. EAV gives you headaches, casting errors at runtime, and queries that make your DBA cry. They are fundamentally different approaches that look superficially similar.
+</Callout>
+
+## State Machines in the Database (Because Application Code Has Bugs)
+
+Order statuses, approval workflows, ticket lifecycles, subscription states — these are all state machines. And here's the thing that tutorials don't emphasize enough: if you only enforce valid state transitions in your application code, someone *will* find a way to put an order into an invalid state. A bulk update script that doesn't check transitions. A race condition between two concurrent requests. A well-meaning developer who adds a "quick fix" that skips the validation. I've seen orders go from "draft" directly to "delivered" (skipping, you know, the whole "shipping" part), and subscriptions that were simultaneously "active" and "cancelled."
+
+Model your state machines explicitly in the database. Let the database be the bouncer that checks IDs at the door.
+
+```sql
+-- Define valid states and transitions
+CREATE TYPE order_status AS ENUM (
+  'draft', 'submitted', 'processing',
+  'shipped', 'delivered', 'cancelled', 'refunded'
+);
+
+CREATE TABLE orders (
+  id         BIGSERIAL PRIMARY KEY,
+  status     order_status NOT NULL DEFAULT 'draft',
+  -- ...other columns
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Enforce valid state transitions
+CREATE TABLE order_status_transitions (
+  from_status order_status NOT NULL,
+  to_status   order_status NOT NULL,
+  PRIMARY KEY (from_status, to_status)
+);
+
+INSERT INTO order_status_transitions VALUES
+  ('draft', 'submitted'),
+  ('submitted', 'processing'),
+  ('submitted', 'cancelled'),
+  ('processing', 'shipped'),
+  ('processing', 'cancelled'),
+  ('shipped', 'delivered'),
+  ('delivered', 'refunded');
+```
+
+```
+┌────────────────────────────────────────────────────────┐
+│              Order State Machine                        │
+├────────────────────────────────────────────────────────┤
+│                                                         │
+│  draft ──► submitted ──► processing ──► shipped         │
+│                │              │            │             │
+│                │              │            ▼             │
+│                │              │        delivered         │
+│                │              │            │             │
+│                ▼              ▼            ▼             │
+│            cancelled      cancelled    refunded         │
+│                                                         │
+└────────────────────────────────────────────────────────┘
+```
+
+```sql
+-- Trigger to enforce valid transitions
+CREATE OR REPLACE FUNCTION enforce_order_transition()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status = NEW.status THEN
+    RETURN NEW; -- No transition, allow
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM order_status_transitions
+    WHERE from_status = OLD.status AND to_status = NEW.status
+  ) THEN
+    RAISE EXCEPTION 'Invalid status transition: % → %',
+      OLD.status, NEW.status;
+  END IF;
+
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER order_transition_trigger
+BEFORE UPDATE OF status ON orders
+FOR EACH ROW EXECUTE FUNCTION enforce_order_transition();
+```
+
+Now try to set an order from "draft" to "shipped" and the database will raise an exception. Not a 400 error that your frontend might swallow. Not a log message that nobody reads. An actual database exception that prevents the invalid state from ever existing. Your application code can *also* validate transitions (and it should, for better error messages), but the database trigger is your safety net.
+
+I added this pattern to a system that had been running for two years without it. Within the first week, the trigger caught 14 invalid transitions that were being silently allowed. Fourteen. In one week. In a system everyone thought was working correctly.
+
+## Multi-Currency Handling (Where Floating Point Goes to Die)
+
+If your application handles money in multiple currencies, you need to store the currency with every monetary amount. Always. No exceptions. "We only support USD" is a temporary condition that your PM will change their mind about the week before a major launch (ask me how I know).
+
+But the real trap isn't multi-currency — it's floating point. I once spent three days tracking down a bug where a financial reconciliation report was off by $0.03. Three cents. Across a million transactions. The culprit? Someone had used `FLOAT` instead of `NUMERIC` for an intermediate calculation. The rounding errors accumulated silently, transaction by transaction, until the discrepancy was large enough for accounting to notice. Three cents doesn't sound like much until your auditor tells you it means your books don't balance.
+
+```sql
+CREATE TABLE transactions (
+  id              BIGSERIAL PRIMARY KEY,
+  amount          NUMERIC(16, 4) NOT NULL, -- 4 decimal places
+  currency        VARCHAR(3) NOT NULL,     -- ISO 4217
+  -- Store the exchange rate at the time of transaction
+  exchange_rate   NUMERIC(16, 8),          -- Rate to base currency
+  base_amount     NUMERIC(16, 4),          -- Converted to base currency
+
+  CONSTRAINT valid_currency CHECK (currency ~ '^[A-Z]{3}$'),
+  CONSTRAINT positive_amount CHECK (amount > 0)
+);
+
+-- Never do arithmetic across currencies without conversion
+-- BAD:  SELECT SUM(amount) FROM transactions;
+-- GOOD: SELECT SUM(base_amount) FROM transactions WHERE base_amount IS NOT NULL;
+
+-- Exchange rate snapshot table
+CREATE TABLE exchange_rates (
+  id         BIGSERIAL PRIMARY KEY,
+  from_curr  VARCHAR(3) NOT NULL,
+  to_curr    VARCHAR(3) NOT NULL,
+  rate       NUMERIC(16, 8) NOT NULL,
+  valid_from TIMESTAMPTZ NOT NULL,
+  valid_to   TIMESTAMPTZ,
+  source     VARCHAR(50) NOT NULL, -- 'ecb', 'xe', 'manual'
+
+  EXCLUDE USING gist (
+    from_curr WITH =,
+    to_curr WITH =,
+    tstzrange(valid_from, valid_to) WITH &&
+  )
+);
+```
+
+Notice the `EXCLUDE USING gist` constraint on exchange rates? Same pattern as the temporal salary table. It prevents overlapping rate periods for the same currency pair. Because if you have two conflicting USD-to-EUR rates for the same time period, every conversion during that overlap is ambiguous, and "ambiguous" in financial systems translates directly to "expensive audit finding."
+
+<Callout type="warning" title="Money Is Not a Float">
+Never use FLOAT or DOUBLE for monetary values. Never. I don't care if it "works in testing." Use NUMERIC (PostgreSQL) or DECIMAL with explicit precision. Floating-point arithmetic introduces rounding errors that accumulate silently. That $0.03 discrepancy I mentioned? It took three days to find because the individual transaction amounts all *looked* correct — the error only appeared in aggregations. A fraction-of-a-cent error multiplied across millions of transactions becomes real money, real audit findings, and real conversations with your compliance team that you don't want to have.
+</Callout>
+
+## Event Sourcing Lite (For People Who Want History Without the PhD)
+
+Full event sourcing — storing every state change as an immutable event and rebuilding current state by replaying the event log — is powerful, fascinating, and approximately 10x more complex than most teams realize when they decide to adopt it. I've seen event sourcing implementations that started enthusiastically and ended up with teams spending more time maintaining the event infrastructure than building features.
+
+For most applications, what I call "event sourcing lite" gives you 80% of the benefits with 20% of the complexity. And honestly? That 80% is the part you actually needed.
+
+```sql
+-- Store state AND events, not just events
+CREATE TABLE orders (
+  id         BIGSERIAL PRIMARY KEY,
+  status     order_status NOT NULL DEFAULT 'draft',
+  total      NUMERIC(12, 2) NOT NULL,
+  -- Current state for fast reads
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Event log for history, debugging, and analytics
+CREATE TABLE order_events (
+  id         BIGSERIAL PRIMARY KEY,
+  order_id   BIGINT NOT NULL REFERENCES orders(id),
+  event_type VARCHAR(50) NOT NULL,
+  payload    JSONB NOT NULL DEFAULT '{}',
+  actor_id   BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Index for common queries
+CREATE INDEX idx_order_events_order ON order_events(order_id, created_at);
+CREATE INDEX idx_order_events_type ON order_events(event_type);
+```
+
+The pattern: your main table holds the current state for fast reads — no replaying events to figure out what an order looks like right now. The events table captures every change for audit, debugging, analytics, and those wonderful moments when a customer says "I definitely didn't cancel that order" and you can pull up the event log showing the exact timestamp, their user ID, and the IP address from which the cancellation came. (Not that I'm bitter about any specific incident.)
+
+You get the best of both worlds without the complexity of rebuilding state from events, handling event versioning, managing snapshots, or explaining to your team why reads now require processing 400 events to figure out the current price of a product.
+
+## Schema Migration Strategies (Or: How to Change a Tire on a Moving Car)
+
+Changing a production database schema without downtime is one of those things that sounds straightforward and then destroys your weekend. I once renamed a column in a single migration, deployed the new code, and watched as the old code (still running on some servers during the rolling deploy) started throwing 500 errors because it was looking for the old column name. The new servers were fine. The old servers were on fire. Users were getting errors randomly depending on which server their request hit. Good times.
+
+The expand-and-contract pattern exists specifically because smart people made this mistake before you and decided to formalize the correct approach.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│         Expand-and-Contract Migration                     │
+├──────────────────────────────────────────────────────────┤
+│                                                           │
+│  Phase 1: EXPAND                                          │
+│  ┌─────────────────────────────┐                          │
+│  │ Add new column (nullable)   │ ← No breaking changes    │
+│  │ Deploy code writing to both │                          │
+│  └─────────────────────────────┘                          │
+│                │                                          │
+│                ▼                                          │
+│  Phase 2: MIGRATE                                         │
+│  ┌─────────────────────────────┐                          │
+│  │ Backfill historical data    │ ← In batches, not all    │
+│  │ Validate data consistency   │   at once                │
+│  └─────────────────────────────┘                          │
+│                │                                          │
+│                ▼                                          │
+│  Phase 3: CONTRACT                                        │
+│  ┌─────────────────────────────┐                          │
+│  │ Deploy code reading new col │ ← Old column ignored     │
+│  │ Drop old column             │                          │
+│  └─────────────────────────────┘                          │
+│                                                           │
+└──────────────────────────────────────────────────────────┘
+```
+
+```sql
+-- Example: Renaming "name" to "full_name"
+-- Phase 1: Expand
+ALTER TABLE users ADD COLUMN full_name VARCHAR(200);
+
+-- Phase 2: Backfill (in batches to avoid locking)
+UPDATE users SET full_name = name
+WHERE full_name IS NULL
+LIMIT 1000; -- Run repeatedly until done
+
+-- Phase 3: Contract (after all code reads from full_name)
+ALTER TABLE users DROP COLUMN name;
+ALTER TABLE users ALTER COLUMN full_name SET NOT NULL;
+```
+
+Three deploys for a column rename. Yes, it's slow. Yes, it's tedious. No, there's no shortcut that doesn't risk downtime. I've tried. The "just rename it and deploy quickly" approach works great until it doesn't, and when it doesn't, you're doing an emergency rollback at 11 PM while your on-call rotation contemplates career changes.
+
+The "in batches" part of Phase 2 is critical and often overlooked. Backfilling a million rows in a single `UPDATE` statement will lock your table for the duration. Your application will queue requests, connections will pile up, timeouts will cascade, and suddenly a column rename has turned into an outage. Batch it. 1,000 rows at a time. With a small sleep between batches if you're paranoid (I'm paranoid).
+
+<Callout type="tip" title="Never Lock Your Table">
+Large ALTER TABLE operations can lock your table for minutes or hours. Use CREATE INDEX CONCURRENTLY for indexes. Add columns as nullable first, then set NOT NULL after backfill. Use tools like pg_repack or pgroll for operations that would otherwise lock the table. I keep a checklist of "operations that lock" vs "operations that don't" pinned to my monitor. It has saved me more times than I can count.
+</Callout>
+
+## When to Denormalize (And When You're Just Being Lazy)
+
+Normalization is the default. Denormalization is the optimization. And like any optimization, if you do it before you've measured the actual problem, you're just adding complexity for vibes.
+
+I've seen teams denormalize on day one "because we'll need it for performance" and then spend months maintaining sync logic between redundant data sources. I've also seen teams refuse to denormalize even when their dashboard takes 12 seconds to load because "normalization is the right way." Both extremes are wrong.
+
+Here's my rule: if you can point at a specific query that's slow, show me the `EXPLAIN ANALYZE` output proving the joins are the bottleneck (not missing indexes, not N+1 queries, not a full table scan you could fix with a `WHERE` clause), and you've already tried materialized views and caching — *then* we can talk about denormalization.
+
+```sql
+-- Normalized: correct but slow for dashboards
+-- Requires joining 4 tables to show order summaries
+SELECT
+  o.id,
+  c.name AS customer_name,
+  c.email,
+  SUM(oi.quantity * oi.unit_price) AS total,
+  COUNT(oi.id) AS item_count
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN order_items oi ON o.id = oi.order_id
+GROUP BY o.id, c.name, c.email;
+
+-- Denormalized: materialized view for the dashboard
+CREATE MATERIALIZED VIEW order_summaries AS
+SELECT
+  o.id AS order_id,
+  o.status,
+  o.created_at,
+  c.name AS customer_name,
+  c.email AS customer_email,
+  SUM(oi.quantity * oi.unit_price) AS total,
+  COUNT(oi.id) AS item_count
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN order_items oi ON o.id = oi.order_id
+GROUP BY o.id, o.status, o.created_at, c.name, c.email;
+
+CREATE UNIQUE INDEX idx_order_summaries_id ON order_summaries(order_id);
+
+-- Refresh periodically or on demand
+REFRESH MATERIALIZED VIEW CONCURRENTLY order_summaries;
+```
+
+Materialized views are often the sweet spot between "pure normalization with slow queries" and "full denormalization with sync nightmares." The database maintains the denormalized data for you. You just refresh it when you need to. It's like having a cache that speaks SQL. The `CONCURRENTLY` keyword means the refresh doesn't block reads — users can still query the old data while the new data is being computed.
+
+The rule: keep the normalized tables as your source of truth. Always. Denormalized views, caches, and search indexes are derived data that can always be rebuilt from the source. If your denormalized data ever conflicts with your normalized data, the normalized data wins. No exceptions.
+
+## Lessons Learned (The Hard Way, Obviously)
+
+After modeling databases across healthcare, finance, and SaaS domains — and after every single mistake described in this post (yes, all of them, some more than once) — these are the principles I keep coming back to:
+
+1. **Model time explicitly.** Almost every domain has temporal requirements that the PM hasn't thought of yet but will ask about in month two. Add valid_from and valid_to early — retrofitting temporal data onto an existing schema is one of the most painful migrations I've ever done. You essentially have to rewrite every query that touches the table.
+2. **Enforce invariants in the database.** CHECK constraints, EXCLUDE constraints, triggers. Your application code has bugs. Your ORM has quirks. That bulk import script someone wrote at 6 PM on a Friday definitely has bugs. The database is your last line of defense, and it never gets tired, never takes shortcuts, and never says "eh, it's probably fine."
+3. **Separate current state from history.** Keep your main tables lean for fast reads. Use event tables or audit tables for the historical record. Don't make your hot path query wade through ten years of historical records to find the current value.
+4. **Prefer JSONB over EAV.** If you need flexible attributes, JSONB gives you indexing, validation, and query syntax that doesn't make you want to quit engineering. EAV gives you a table with 50 million rows and queries that take a minute. The choice is not hard.
+5. **Design for migration from day one.** You *will* change your schema. Probably sooner than you think. Use expand-and-contract. Never make breaking changes in a single deploy. Future you (the one doing the migration at 11 PM) will thank present you (the one who planned for it).
+6. **Denormalize deliberately.** Measure the problem. Confirm it's actually the joins causing it. Try materialized views first. Denormalize the specific query path, maintain the normalized source, and document *why* you denormalized so the next engineer doesn't "clean it up" by re-normalizing and breaking your dashboard performance.
+
+The best data model is not the most normalized or the most denormalized. It's the one that matches your domain, enforces your invariants, survives contact with real users, and can evolve without requiring a two-week migration project every time the business requirements change. And if your data model can do all that, you might actually get to sleep through the night.
+
+---
+
+## References
+
+PostgreSQL Documentation. (2025). *Range Types*. https://www.postgresql.org/docs/current/rangetypes.html
+
+Snodgrass, R. T. (2000). *Developing Time-Oriented Database Applications in SQL*. Morgan Kaufmann.
+
+Kleppmann, M. (2017). *Designing Data-Intensive Applications*. O'Reilly Media.
+
+Winand, M. (2024). *Use The Index, Luke — SQL Indexing and Tuning*. https://use-the-index-luke.com
+
+---
+
+*Designing a database for a complex domain? [Get in touch](/contact) to discuss data modeling strategies.*

@@ -1,0 +1,567 @@
+---
+title: "Lecciones de Diseño de API que Aprendí por las Malas"
+description: "Sabiduría ganada a punta de cicatrices por un tipo al que lo han despertado a las 3 AM por sus propias decisiones de API. REST vs GraphQL, paginación, manejo de errores, idempotencia, webhooks, y cómo evolucionar APIs sin ganarte enemigos."
+date: 2026-02-18
+published: true
+category: "Ingeniería Backend"
+tags: ["Diseño de API", "REST", "GraphQL", "Backend", "Arquitectura"]
+author: "Osvaldo Restrepo"
+translationOf: "api-design-lessons-learned"
+tldr: "Un buen diseño de API es en realidad empatía disfrazada de ingeniería. Pon la versión en la URL (confía en mí), usa paginación basada en cursores para cualquier cosa que se mueva, trata las respuestas de error como una funcionalidad del producto, ponle claves de idempotencia a cada mutación, y solo recurre a GraphQL cuando hayas medido de verdad el problema que resuelve. Cada atajo que tomas en el diseño de API eventualmente va a despertar a alguien a las 2 AM — y ese alguien podrías ser tú."
+faqs:
+  - question: "¿Debería usar versionado de API basado en URL o en headers?"
+    answer: "El versionado basado en URL (por ejemplo, /v1/users) es más simple, más visible y más fácil de depurar. El versionado basado en headers es más 'puro' pero añade fricción para los consumidores. En la práctica, el versionado por URL gana para la mayoría de los equipos porque reduce los tickets de soporte y hace que el enrutamiento sea directo."
+  - question: "¿Cuándo debería usar GraphQL en lugar de REST?"
+    answer: "GraphQL sobresale cuando tienes múltiples clientes con diferentes necesidades de datos (móvil vs web), relaciones profundamente anidadas, o cuando el over-fetching es un problema real y medido. Para servicios pesados en CRUD, comunicación interna entre microservicios o APIs simples, REST es más simple y predecible."
+  - question: "¿Cómo manejo los cambios incompatibles en una API pública?"
+    answer: "Ejecuta las versiones antigua y nueva en paralelo con un cronograma de deprecación claro (mínimo 6 meses para APIs públicas). Comunica los cambios a través de changelogs, guías de migración y headers de sunset. Monitorea el uso de endpoints deprecados y contacta a los consumidores que no han migrado."
+  - question: "¿Qué es una clave de idempotencia y por qué importa?"
+    answer: "Una clave de idempotencia es un token único enviado por el cliente para que el servidor pueda reconocer solicitudes duplicadas y devolver la respuesta original en lugar de procesar nuevamente. Esto previene cobros dobles, registros duplicados y otros problemas causados por reintentos de red."
+relatedPosts: ["scalable-microservices-architecture", "multi-tenant-saas-architecture"]
+---
+
+Cada API que he diseñado me ha enseñado algo. Generalmente explotando de una forma que me hizo cuestionar mis decisiones de carrera a las 2 AM un martes.
+
+Después de construir APIs consumidas por cientos de desarrolladores en plataformas SaaS, aplicaciones móviles e integraciones de terceros, he acumulado una colección de lecciones que genuinamente desearía que alguien me hubiera agarrado por los hombros y obligado a leer el primer día. En cambio, las aprendí como la mayoría de los ingenieros: desplegando algo, viéndolo incendiarse, y luego escribiendo un postmortem al respecto.
+
+Esta no es una guía teórica sobre la pureza RESTful. He leído esas guías. He asentido con la cabeza. Y luego he ido a producción y descubierto que el mundo real tiene opiniones para las que la RFC 7231 no me preparó. Esto es lo que realmente importa cuando desarrolladores de verdad están golpeando tus endpoints con dinero real en juego.
+
+## Versionado: Simplemente Ponlo en la URL
+
+El debate del versionado de APIs lleva años. Ruta URL (`/v1/users`) vs header personalizado (`Accept: application/vnd.myapi.v2+json`) vs parámetro de consulta (`?version=2`). Hay gente que ha escrito tesis doctorales sobre esto. Charlas de conferencia. Posts de blog que de alguna manera se convierten en guerras religiosas.
+
+He probado los tres. En producción. Con consumidores reales. Y estoy aquí para ahorrarte el sufrimiento: el versionado por ruta URL gana siempre, todas las veces.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Versioning Strategy Comparison                 │
+├──────────────────┬──────────────────┬───────────────────────────┤
+│   URL Path       │   Header-Based   │   Query Parameter         │
+│   /v1/users      │   Accept: v2     │   ?version=2              │
+├──────────────────┼──────────────────┼───────────────────────────┤
+│ ✓ Visible in     │ ✗ Hidden from    │ ~ Visible but messy       │
+│   browser/logs   │   casual view    │   with other params       │
+│ ✓ Easy routing   │ ✗ Complex nginx  │ ✗ Caching headaches       │
+│ ✓ Cache-friendly │   /gateway rules │ ✗ Easy to forget          │
+│ ✓ Simple docs    │ ✓ "Pure" REST    │ ~ Decent docs             │
+│ ✓ Low support    │ ✗ High support   │ ~ Moderate support        │
+│   burden         │   burden         │   burden                  │
+└──────────────────┴──────────────────┴───────────────────────────┘
+```
+
+El tema con el versionado basado en headers es este: es técnicamente elegante. Roy Fielding probablemente lo aprobaría. Pero cada vez que lo he usado, los desarrolladores se lo pierden. Abren curl, le pegan al endpoint, obtienen el comportamiento de v1, e inmediatamente abren un bug diciendo que v2 está rota. He recibido este exacto ticket de soporte al menos cuatro veces. CUATRO. Con el versionado por URL, la versión te está mirando a la cara. Sin ambigüedad, sin conversaciones de "¿te acordaste de poner el header?" Simplemente `/v2/users` y sabes exactamente lo que vas a recibir.
+
+(Y antes de que alguien venga con "pero el versionado por URL no es REST verdadero" — te prometo que a tus usuarios no les importa. Les importa poder probar tu API desde la barra de direcciones del navegador. No me arroben.)
+
+<Callout type="tip" title="Regla General de Versionado">
+Usa versionado por ruta URL (`/v1/`, `/v2/`) para APIs públicas y la mayoría de APIs internas. Reserva el versionado basado en headers para casos donde genuinamente necesitas negociación de contenido, como servir diferentes formatos de respuesta desde el mismo endpoint.
+</Callout>
+
+### Cuándo Crear una Nueva Versión
+
+No todo cambio necesita una nueva versión. Una vez vi a un equipo lanzar la v7 de una API que llevaba 18 meses en producción. ¡V7! Eso no es versionado, eso es un grito de auxilio. Este es el marco que uso para evitar convertirme en ese equipo:
+
+```typescript
+// These are NON-BREAKING changes (no new version needed):
+// - Adding new optional fields to responses
+// - Adding new optional query parameters
+// - Adding new endpoints
+// - Relaxing validation (accepting more input)
+
+// These are BREAKING changes (new version required):
+// - Removing or renaming fields
+// - Changing field types (string -> number)
+// - Tightening validation (rejecting previously valid input)
+// - Changing error response format
+// - Altering authentication mechanism
+
+// My versioning strategy in Express/Fastify:
+import { Router } from 'express';
+
+const v1Router = Router();
+const v2Router = Router();
+
+// v1 returns the old format
+v1Router.get('/users/:id', async (req, res) => {
+  const user = await getUser(req.params.id);
+  res.json({
+    id: user.id,
+    name: user.fullName,         // v1 used "name"
+    email: user.email,
+  });
+});
+
+// v2 returns the new format
+v2Router.get('/users/:id', async (req, res) => {
+  const user = await getUser(req.params.id);
+  res.json({
+    id: user.id,
+    first_name: user.firstName,  // v2 splits into first/last
+    last_name: user.lastName,
+    email: user.email,
+    created_at: user.createdAt,  // New field in v2
+  });
+});
+
+app.use('/v1', v1Router);
+app.use('/v2', v2Router);
+```
+
+El modelo mental es simple: si el código de los consumidores existentes se rompería, es una nueva versión. Si su código sigue funcionando y simplemente reciben datos extra, despliégalo en la versión actual. Trata tu número de versión como una promesa, no como un changelog.
+
+## Paginación: Cursor vs Offset
+
+La paginación por offset (`?page=3&limit=20`) es lo primero que todo desarrollador agarra. Es intuitiva. Se ve limpia en la URL. Se mapea bonito al LIMIT/OFFSET de SQL. También está sutilmente rota para cualquier conjunto de datos que no sea completamente estático.
+
+Déjame contarte cómo aprendí esto por las malas. Teníamos un dashboard de soporte al cliente paginando a través de tickets abiertos. Un agente de soporte estaba en la página 3, leyendo los issues. Mientras tanto, llegó un ticket nuevo de alta prioridad. El agente hizo clic en "siguiente página" y... vio un ticket de la página anterior de nuevo. Luego se saltó un ticket completamente diferente. El offset se había corrido porque el dataset cambió debajo de sus pies. Cerró un duplicado y se perdió el issue urgente de verdad. Tiempos divertidos (ojalá estuviera bromeando).
+
+Para datos estáticos, offset está bien. Para cualquier otra cosa — y me refiero a cualquier otra cosa — la paginación basada en cursores es la respuesta.
+
+```typescript
+// Offset pagination - simple but fragile
+// GET /v1/orders?page=3&limit=20
+// Problem: If new orders arrive while paginating, results shift
+
+// Cursor pagination - stable and performant
+// GET /v1/orders?cursor=eyJpZCI6MTAwfQ&limit=20
+
+interface CursorPaginationResponse<T> {
+  data: T[];
+  pagination: {
+    next_cursor: string | null;  // null means no more pages
+    has_more: boolean;
+    limit: number;
+  };
+}
+
+// Server-side implementation
+async function getOrdersCursor(cursor: string | null, limit: number) {
+  let query = db('orders').orderBy('created_at', 'desc').limit(limit + 1);
+
+  if (cursor) {
+    const decoded = JSON.parse(
+      Buffer.from(cursor, 'base64').toString()
+    );
+    query = query.where('created_at', '<', decoded.created_at);
+  }
+
+  const results = await query;
+  const hasMore = results.length > limit;
+  const data = hasMore ? results.slice(0, limit) : results;
+
+  const nextCursor = hasMore
+    ? Buffer.from(
+        JSON.stringify({ created_at: data[data.length - 1].created_at })
+      ).toString('base64')
+    : null;
+
+  return {
+    data,
+    pagination: { next_cursor: nextCursor, has_more: hasMore, limit },
+  };
+}
+```
+
+<Callout type="warning" title="Trampa de la Paginación por Cursor">
+Asegúrate de que tus campos de cursor formen un orden de clasificación único y estable. Usar `created_at` solo puede fallar si dos registros comparten la misma marca de tiempo. Usa un cursor compuesto: `created_at` + `id` para garantizar unicidad.
+</Callout>
+
+Todavía uso paginación por offset en exactamente un escenario: paneles de administración donde los usuarios genuinamente necesitan saltar a la "página 47 de 200." La paginación por cursor no soporta acceso aleatorio, y a veces un humano realmente necesita saltar de un lado a otro. Pero para APIs públicas y feeds de datos, la paginación por cursor es innegociable. Moriré en esta colina. (Cómodamente, porque tendré resultados de paginación estables.)
+
+## Las Respuestas de Error Son una Funcionalidad
+
+Una confesión: la mejora individual más impactante que he hecho a cualquier API no fue una optimización de rendimiento ni un patrón arquitectónico ingenioso. Fue diseñar respuestas de error apropiadas. En serio.
+
+Una buena respuesta de error le ahorra al consumidor tener que leer tu documentación. Una mala genera tickets de soporte, mensajes furiosos en Slack, y ese tipo especial de rabia de desarrollador donde alguien tuitea "Llevo 3 horas depurando y la API solo dice 'Invalid input'" con un screenshot que se vuelve medio viral. (Historia real. No mi API, afortunadamente. Pero he desplegado errores casi igual de malos.)
+
+```typescript
+// Bad: What does this tell the consumer?
+// 400 Bad Request
+// { "error": "Invalid input" }
+
+// Good: Self-documenting error response
+// 422 Unprocessable Entity
+{
+  "error": {
+    "type": "validation_error",
+    "message": "The request body contains invalid fields.",
+    "code": "VALIDATION_FAILED",
+    "details": [
+      {
+        "field": "email",
+        "message": "Must be a valid email address.",
+        "code": "INVALID_FORMAT",
+        "received": "not-an-email"
+      },
+      {
+        "field": "age",
+        "message": "Must be between 13 and 120.",
+        "code": "OUT_OF_RANGE",
+        "received": -5,
+        "constraints": { "min": 13, "max": 120 }
+      }
+    ],
+    "request_id": "req_abc123",
+    "documentation_url": "https://api.example.com/docs/errors#VALIDATION_FAILED"
+  }
+}
+```
+
+¿Ves ese campo `received`? Ese pequeño detalle ahorra TANTÍSIMO ida y vuelta. En vez de "tu email es inválido" (que lleva a "¡no lo es, ya lo revisé!"), les muestras exactamente lo que recibiste. Nueve de cada diez veces, detectan el problema inmediatamente — un espacio de más, un dominio faltante, lo que sea. Acabas de ahorrarte un ticket de soporte y a ellos treinta minutos de confusión.
+
+La estructura a la que llegué después de años de iteración (y demasiados momentos de "¿por qué no incluí X desde el principio?"):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Error Response Anatomy                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  type            → Category of error (machine-readable)          │
+│  message         → Human-readable explanation                    │
+│  code            → Stable error code for programmatic handling   │
+│  details[]       → Field-level errors for validation             │
+│  request_id      → Correlation ID for support/debugging          │
+│  documentation_url → Direct link to relevant docs                │
+│                                                                  │
+│  HTTP Status Codes I Actually Use:                               │
+│  ─────────────────────────────────                               │
+│  400  → Malformed request (can't parse JSON)                     │
+│  401  → No valid authentication credentials                      │
+│  403  → Authenticated but not authorized                         │
+│  404  → Resource doesn't exist                                   │
+│  409  → Conflict (duplicate, state conflict)                     │
+│  422  → Valid JSON but semantic validation failed                 │
+│  429  → Rate limit exceeded                                      │
+│  500  → Server error (never expose internals)                    │
+│  503  → Service temporarily unavailable                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Fíjate que dije "códigos que realmente uso." He visto APIs que usan 15 códigos de estado diferentes, incluyendo joyas como 418 I'm A Teapot (sí, de verdad). Elige un conjunto pequeño. Úsalos consistentemente. Tus consumidores van a escribir switch statements contra estos — no los obligues a manejar códigos de estado HTTP de los que nunca han oído hablar.
+
+<Callout type="info" title="Estabilidad de Códigos de Error">
+Una vez que publicas un código de error como `VALIDATION_FAILED`, es parte del contrato de tu API. Los consumidores escribirán lógica `if (error.code === 'VALIDATION_FAILED')` contra él. Cambiar o eliminar códigos es un cambio incompatible.
+</Callout>
+
+## Rate Limiting que Comunica
+
+Algo que me tomó vergonzosamente mucho tiempo internalizar: el rate limiting no se trata solo de proteger tus servidores. Se trata de comunicación. Un 429 sin contexto es básicamente un dedo medio para tu consumidor. Un 429 con buenos headers es un empujoncito amigable que dice "oye, bájale, y aquí te digo exactamente cuándo puedes intentar de nuevo."
+
+```typescript
+// Rate limit headers I always include
+function setRateLimitHeaders(res: Response, limiter: RateLimitInfo) {
+  res.set({
+    'X-RateLimit-Limit': limiter.limit.toString(),
+    'X-RateLimit-Remaining': limiter.remaining.toString(),
+    'X-RateLimit-Reset': limiter.resetAt.toISOString(),
+    'Retry-After': Math.ceil(
+      (limiter.resetAt.getTime() - Date.now()) / 1000
+    ).toString(),
+  });
+}
+
+// 429 response body
+{
+  "error": {
+    "type": "rate_limit_exceeded",
+    "message": "You have exceeded 100 requests per minute.",
+    "code": "RATE_LIMIT_EXCEEDED",
+    "retry_after": 23,
+    "limit": 100,
+    "window": "1m",
+    "documentation_url": "https://api.example.com/docs/rate-limits"
+  }
+}
+```
+
+Te ahorro el trabajo de aprenderlo por ti mismo: ten diferentes límites de tasa para diferentes endpoints. Una vez tuve un único límite de tasa global para toda una API. Sonaba simple. Limpio. Elegante. Luego un cliente cuyas lecturas legítimas de alto volumen (estaban sincronizando un catálogo de productos, totalmente razonable) se estaban limitando porque sus escrituras anteriores habían consumido la cuota. Sus lecturas eran baratas — solo pegándole a un caché. Sus escrituras tocaban tres bases de datos y un modelo de ML. Mismo límite de tasa para ambos. Todavía me da vergüenza pensarlo.
+
+¿El endpoint de búsqueda costoso que dispara consultas de Elasticsearch en seis índices? Ese lleva un límite más estricto. ¿El simple GET-by-ID que le pega a Redis? Ese puede ser generoso. Tus límites de tasa deberían reflejar el costo real de la operación, no un número arbitrario que elegiste porque se veía redondo.
+
+## Claves de Idempotencia: Previniendo Cobros Dobles
+
+Si tu API procesa pagos, crea órdenes, envía emails, o hace literalmente cualquier cosa que no debería pasar dos veces, necesitas claves de idempotencia. Esta fue la lección que más sueño me costó.
+
+La primera vez que construí un endpoint de pagos sin claves de idempotencia, la integración de un cliente se topó con un timeout en una red lenta. Su lógica de reintentos se disparó. Procesamos el mismo pago dos veces. Al cliente le cobraron doble. Su cliente los llamó furioso. Ellos nos llamaron furiosos. Mi teléfono estuvo muy ruidoso esa tarde.
+
+El patrón de clave de idempotencia previene esto por completo, y ni siquiera es tan difícil de implementar — lo cual lo hace extra doloroso cuando te das cuenta de que debiste haberlo hecho desde el principio.
+
+```typescript
+// Client sends a unique key with each mutation
+// POST /v1/payments
+// Idempotency-Key: unique-uuid-from-client
+
+async function handlePayment(req: Request, res: Response) {
+  const idempotencyKey = req.headers['idempotency-key'];
+  if (!idempotencyKey) {
+    return res.status(400).json({
+      error: { code: 'MISSING_IDEMPOTENCY_KEY',
+               message: 'Idempotency-Key header is required for this endpoint.' }
+    });
+  }
+
+  // Check if we've seen this key before
+  const existing = await db('idempotency_keys')
+    .where({ key: idempotencyKey, user_id: req.user.id })
+    .first();
+
+  if (existing) {
+    // Return the original response, don't process again
+    return res.status(existing.status_code).json(existing.response_body);
+  }
+
+  // Process the payment
+  const result = await processPayment(req.body);
+
+  // Store the result keyed by idempotency key
+  await db('idempotency_keys').insert({
+    key: idempotencyKey,
+    user_id: req.user.id,
+    status_code: 201,
+    response_body: result,
+    created_at: new Date(),
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h TTL
+  });
+
+  return res.status(201).json(result);
+}
+```
+
+Ahora le pongo claves de idempotencia a cada endpoint de mutación. A todos. Incluyendo — no estoy bromeando — endpoints en un tier gratuito que ni siquiera tocan dinero, porque me han quemado suficientes veces como para no confiar absolutamente en nada cuando se trata de solicitudes duplicadas. Las redes mienten. Los clientes reintentan. Los navegadores hacen doble submit de formularios. Los load balancers repiten solicitudes. Ponle la clave de idempotencia. Tu yo del futuro le comprará un café a tu yo del presente.
+
+<Callout type="warning" title="Trampa de las Claves de Idempotencia">
+Las claves de idempotencia deben estar delimitadas por usuario o clave de API. De lo contrario, dos usuarios diferentes podrían compartir accidentalmente una clave y uno obtendría la respuesta del otro. Siempre almacena `(key, user_id)` como la búsqueda compuesta.
+</Callout>
+
+## Confiabilidad de Webhooks
+
+Déjame contarte de la vez que pensé que los webhooks eran simples. "Es solo un POST HTTP a una URL," dije. "¿Qué podría salir mal?" dije. La respuesta, resulta, es todo. Todo puede salir mal.
+
+Los webhooks son la parte más poco confiable de cualquier integración. Las redes fallan, los servidores de los consumidores se caen, los certificados expiran, los firewalls se reconfiguran, y — mi favorito personal — un consumidor despliega un bug que retorna 200 OK pero en realidad no procesa el payload. (Este último es básicamente indetectable desde tu lado, y te va a perseguir.)
+
+Diseña para todo esto.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Webhook Delivery Pipeline                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Event Occurs                                                    │
+│       │                                                          │
+│       ▼                                                          │
+│  Write to Event Queue (persistent)                               │
+│       │                                                          │
+│       ▼                                                          │
+│  Webhook Worker picks up event                                   │
+│       │                                                          │
+│       ▼                                                          │
+│  Sign payload (HMAC-SHA256)                                      │
+│       │                                                          │
+│       ▼                                                          │
+│  POST to consumer URL                                            │
+│       │                                                          │
+│   ┌───┴───┐                                                      │
+│   │       │                                                      │
+│ 2xx     Fail                                                     │
+│   │       │                                                      │
+│   ▼       ▼                                                      │
+│ Mark    Retry with exponential backoff                            │
+│ delivered  │                                                     │
+│           Attempts: 1m, 5m, 30m, 2h, 12h, 24h                   │
+│           │                                                      │
+│        Still failing after 24h?                                  │
+│           │                                                      │
+│           ▼                                                      │
+│        Disable endpoint + notify consumer                        │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Ese diagrama del pipeline se ve limpio y ordenado. En la realidad, la primera versión de mi sistema de webhooks era "dispara y olvídate" — sin cola, sin reintentos, sin firmas. Si el POST fallaba, el evento simplemente... desaparecía. Al vacío. Un consumidor preguntó por qué le faltaba la mitad de sus notificaciones de órdenes y tuve que explicarle que habíamos estado silenciosamente tirando entregas de webhooks por tres semanas. Esa fue una reunión divertida (no fue una reunión divertida).
+
+Prácticas clave que me salvaron después de reconstruir todo desde cero:
+
+```typescript
+// Always sign webhook payloads
+function signWebhookPayload(payload: string, secret: string): string {
+  return crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+}
+
+// Include metadata that helps consumers
+const webhookPayload = {
+  id: 'evt_abc123',           // Unique event ID for deduplication
+  type: 'order.completed',     // Dot-notation event type
+  created_at: '2026-02-18T10:30:00Z',
+  data: { order_id: 'ord_456', total: 99.99 },
+  api_version: '2026-02-01',  // API version that generated the event
+};
+```
+
+Ese campo `id` está haciendo mucho más trabajo pesado de lo que parece. Les permite a los consumidores deduplicar, lo cual van a necesitar hacer porque tu lógica de reintentos inevitablemente va a entregar el mismo evento dos veces a veces. Es como darles un número de recibo — "sí, ya procesaste este, puedes saltártelo." Sin él, les estás pidiendo que de alguna manera adivinen si ya vieron este `order.completed` en particular. Spoiler: no lo van a adivinar.
+
+<Callout type="tip" title="Consejo para Consumidores de Webhooks">
+Siempre retorna 200 inmediatamente y procesa el payload del webhook de forma asíncrona. Si tu procesamiento tarda más de unos segundos, el emisor va a expirar y reintentar, causando entregas duplicadas. Usa el campo `id` del evento para deduplicar.
+</Callout>
+
+## Evolución de API Sin Romper Clientes
+
+Este es el objetivo, y lo digo casi espiritualmente: nunca lances un v2. Cada cambio incompatible es un proyecto de migración para cada consumidor. No solo estás escribiendo código — estás creando tarea para otros desarrolladores. Desarrolladores que tienen sus propios deadlines, sus propias prioridades, y sus propias opiniones sobre si tu "mejorado" naming de campos valía la pena reescribir su integración.
+
+En cambio, evoluciono las APIs de forma aditiva. Piénsalo como renovar una casa mientras la gente vive en ella. Puedes agregar cuartos. Puedes agregar ventanas. Lo que definitivamente no puedes hacer es quitar la puerta principal y decir "la nueva puerta estará lista en seis meses."
+
+```typescript
+// Evolution strategy: additive changes only
+// Original response
+{
+  "user": {
+    "id": "usr_123",
+    "name": "Jane Smith"     // Don't remove this
+  }
+}
+
+// Evolved response - old fields stay, new fields added
+{
+  "user": {
+    "id": "usr_123",
+    "name": "Jane Smith",         // Keep for backward compat
+    "first_name": "Jane",         // New field
+    "last_name": "Smith",         // New field
+    "display_name": "Jane Smith"  // New field
+  }
+}
+
+// Use deprecation headers to nudge consumers
+res.set('Deprecation', 'true');
+res.set('Sunset', 'Sat, 01 Aug 2026 00:00:00 GMT');
+res.set('Link', '<https://api.example.com/v2/docs>; rel="successor-version"');
+```
+
+Cuando absolutamente debes hacer un cambio incompatible — y a veces genuinamente debes, no soy ingenuo — ejecuta ambas versiones simultáneamente y dale a los consumidores una ventana de migración larga. Para APIs públicas, seis meses como mínimo. Para integraciones de socios, he mantenido endpoints deprecados vivos por más de un año, y cada vez que me he tentado a cortarlos antes, me he acordado del socio que me escribió en pánico porque tenía un deploy freeze y no podía migrar todavía. Empatía, gente. No es solo para terapeutas.
+
+Los headers de deprecación son un buen detalle, por cierto. La mayoría de los consumidores nunca los van a notar (seamos honestos), pero los que tienen herramientas automatizadas de verificación de dependencias sí, y esos son exactamente los consumidores a quienes quieres avisar.
+
+## OpenAPI: La Fuente de Verdad de Tu API
+
+Lo voy a decir lo más directamente posible: si no estás generando la documentación de tu API desde una especificación OpenAPI, tu documentación le está mintiendo a tus consumidores. Te lo garantizo. No me importa qué tan disciplinado sea tu equipo. No me importa si tienes un paso de "revisión de docs" en tu proceso de PR. En algún lugar, ahora mismo, hay un campo en tu respuesta que no coincide con lo que dice tu documentación. Nunca me he equivocado en esto.
+
+La especificación debería ser la única fuente de verdad. Genera stubs del servidor, SDKs de cliente y documentación a partir de ella. Cuando la especificación cambia, todo se actualiza. Cuando un desarrollador mira tu documentación, está viendo lo que la API realmente hace, no lo que alguien se acordó de escribir hace tres sprints.
+
+```yaml
+# openapi.yaml - excerpt
+openapi: 3.1.0
+info:
+  title: Orders API
+  version: 2026-02-01
+paths:
+  /v1/orders:
+    post:
+      operationId: createOrder
+      summary: Create a new order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created
+          headers:
+            Idempotency-Key:
+              description: Echo of the idempotency key used
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+```
+
+<Callout type="tip" title="Desarrollo Spec-First">
+Escribe la especificación OpenAPI antes de escribir cualquier código. Revísala con los consumidores de tu API. Esto detecta problemas de diseño antes de que hayas invertido esfuerzo de implementación. He evitado múltiples rediseños al obtener retroalimentación sobre la especificación primero.
+</Callout>
+
+El enfoque spec-first se siente lento al principio. ¡Estás escribiendo YAML cuando podrías estar escribiendo código! Pero una vez me salté la revisión del spec, construí toda una suite de endpoints durante dos semanas, se la mostré al equipo de frontend, y escuché "ah, en realidad necesitamos los datos estructurados completamente diferente." Dos semanas. A la basura. La revisión del spec habría tomado una tarde. Ahora escribo el spec primero con la devoción religiosa de alguien que aprendió esta lección de la manera cara.
+
+## Cuándo GraphQL Realmente Tiene Sentido
+
+He construido APIs tanto con REST como con GraphQL. Tengo opiniones. Fuertes. Y mi opinión más fuerte es esta: GraphQL es una herramienta poderosa que muchos equipos adoptan por las razones equivocadas.
+
+"Deberíamos usar GraphQL porque es lo que usa Airbnb/Shopify/GitHub" no es un argumento técnico. Es presión de grupo. Y lo digo como alguien que genuinamente le gusta GraphQL y lo ha usado exitosamente en producción. La palabra clave es "exitosamente" — es decir, realmente necesitábamos lo que provee, no solo lo que promete en la landing page.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              REST vs GraphQL Decision Matrix                     │
+├──────────────────────────┬──────────────────────────────────────┤
+│    Choose REST When:     │    Choose GraphQL When:              │
+├──────────────────────────┼──────────────────────────────────────┤
+│ • CRUD-heavy operations  │ • Multiple clients with different    │
+│ • Simple resource models │   data needs (mobile vs web)         │
+│ • Caching is critical    │ • Deeply nested relationships        │
+│   (HTTP caching works    │ • Over-fetching is a real problem    │
+│    out of the box)       │   (measured, not hypothetical)       │
+│ • Microservice-to-       │ • Rapid frontend iteration needed    │
+│   microservice calls     │ • API gateway aggregating multiple   │
+│ • File uploads/downloads │   backend services                   │
+│ • Webhook delivery       │ • Consumer-driven queries are a      │
+│ • Public APIs for        │   genuine requirement                │
+│   third-party devs       │                                      │
+└──────────────────────────┴──────────────────────────────────────┘
+```
+
+Fíjate que escribí "medido, no hipotético" junto al over-fetching. Eso es deliberado. He estado en tres reuniones separadas donde alguien argumentó a favor de GraphQL porque "podríamos tener problemas de over-fetching." ¡Podríamos! ¡No habían medido nada! Solo asumían que retornar unos campos extra en una respuesta REST era una crisis de rendimiento. Spoiler: casi nunca lo es. ¿Sabes qué SÍ es una crisis de rendimiento? El problema de consultas N+1 que se cuela en cada implementación de GraphQL que no tiene un DataLoader, que es aproximadamente el 100% de las implementaciones de GraphQL de primera vez.
+
+El error más grande que veo: elegir GraphQL porque está de moda, y luego pasar los siguientes seis meses peleando con el caché (adiós, simples headers de caché HTTP), complejidad de autorización (auth por campo es un dolor especial), consultas N+1 (hola, DataLoader, mi viejo amigo), y la completa falta de manejo de errores estandarizado.
+
+El verdadero superpoder de GraphQL — y sí tiene uno — es el esquema tipado como contrato entre los equipos de frontend y backend. Si ese contrato te importa y tienes múltiples consumidores con necesidades de datos genuinamente diferentes, GraphQL vale la complejidad operacional. Si no, una API REST bien diseñada con OpenAPI es más simple, más predecible, más cacheable, y honestamente más agradable de depurar a las 3 AM.
+
+```typescript
+// GraphQL makes sense here: dashboard aggregating multiple services
+const typeDefs = gql`
+  type Query {
+    # One query replaces 4 REST calls for the dashboard
+    dashboard(orgId: ID!): Dashboard!
+  }
+
+  type Dashboard {
+    organization: Organization!
+    recentOrders(limit: Int = 10): [Order!]!
+    metrics: DashboardMetrics!
+    activeUsers: [User!]!
+  }
+`;
+
+// REST makes sense here: simple CRUD with caching
+// GET /v1/products/:id
+// Cache-Control: public, max-age=3600
+// ETag: "abc123"
+```
+
+¿Ese ejemplo del dashboard? Ese es un caso de uso legítimo de GraphQL. El equipo de frontend puede agarrar exactamente lo que necesitan para el layout de su dashboard sin orquestar cuatro llamadas REST separadas. Hermoso. Beso de chef. Pero si tu API es mayormente "crea una cosa, lee una cosa, actualiza una cosa, borra una cosa"... REST. Por favor. Por el bien de todos.
+
+## Uniendo Todo
+
+El buen diseño de API se resume en una palabra: empatía. Tus consumidores son desarrolladores tratando de construir algo. Tienen deadlines. Tienen stakeholders respirándoles en la nuca. Cada mensaje de error poco claro, header faltante, o caso límite no documentado los ralentiza. Y cada vez que los ralentizas, estás erosionando la confianza que hace que quieran construir sobre tu plataforma en primer lugar.
+
+La lista de verificación que repaso antes de lanzar cualquier API:
+
+1. **El versionado** es explícito y visible (ruta URL)
+2. **La paginación** usa cursores para datos mutables
+3. **Las respuestas de error** incluyen type, code, message, request_id y enlace a docs
+4. **Los límites de tasa** se comunican mediante headers en cada respuesta
+5. **Las mutaciones** requieren claves de idempotencia
+6. **Los webhooks** tienen firmas, reintentos e IDs de deduplicación
+7. **La especificación OpenAPI** se escribe primero y se mantiene sincronizada
+8. **Los cambios incompatibles** siguen un proceso de deprecación con fechas de sunset
+
+Nada de esto es revolucionario. Nada de esto te va a conseguir una charla en una conferencia ni un tweet viral. Pero nunca me he arrepentido de implementar ninguno de ellos, y me he arrepentido profundamente — de la manera en que solo un incidente de producción a las 3 AM te puede hacer arrepentir — cada vez que me salté uno.
+
+Diseña APIs como si fueras a ser tú el que las integra a medianoche. Porque tarde o temprano, lo serás.

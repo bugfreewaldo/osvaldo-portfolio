@@ -1,0 +1,390 @@
+---
+title: "Claude Code Keeps Running Out of Context — Here's How I Fixed My Workflow"
+description: "A practical, battle-tested guide to managing Claude Code's context window. Real strategies for breaking tasks down, avoiding token waste, and getting 3x more done per session — from someone who learned the hard way."
+date: 2026-03-04
+published: true
+category: "AI Engineering"
+tags: ["Claude Code", "AI Tools", "Developer Experience", "Productivity", "Context Window"]
+author: "Osvaldo Restrepo"
+tldr: "Claude Code's context window is finite, and most developers burn through it way too fast by reading entire files, chatting casually, and tackling monolithic tasks. Break work into focused sessions, use /compact aggressively, write a solid CLAUDE.md, stop saying 'thank you' mid-session, and use subagents to offload heavy exploration. Your context is a budget — spend it wisely."
+faqs:
+  - question: "Why does Claude Code run out of context so quickly?"
+    answer: "Every interaction in Claude Code — your prompts, its responses, file reads, search results, tool outputs — all consume tokens from a finite context window. Large tasks that involve reading many files, long outputs, or back-and-forth conversation can exhaust it in minutes. The context window is shared between input and output, so verbose interactions burn it from both sides."
+  - question: "Does saying 'thank you' or chatting really waste context?"
+    answer: "Yes. Every token counts. A 'thanks, that looks great!' response costs tokens on your message and on Claude's acknowledgment. Over a long session, casual conversation, pleasantries, and re-explaining things you already said can consume thousands of tokens that could have gone toward actual work. Be polite in life, be efficient in your context window."
+  - question: "What is /compact and when should I use it?"
+    answer: "/compact is a Claude Code command that summarizes the conversation history to free up context space. Use it after completing a logical chunk of work, before starting a new subtask, or whenever you notice the context getting long. It preserves the key decisions and state while dramatically reducing token usage."
+  - question: "How do I structure my CLAUDE.md to save context?"
+    answer: "Your CLAUDE.md should contain project architecture, key file paths, coding conventions, tech stack details, and common patterns. This gives Claude instant context about your project without needing to explore and read files every session. Think of it as a cheat sheet that saves thousands of tokens of file-reading per conversation."
+relatedPosts: ["building-ai-agents-production", "streaming-llm-responses-guide"]
+---
+
+I was three hours into a refactor — Claude Code and I were on a roll, ripping through components, updating types, wiring up new API routes — when I saw the message that makes every developer's stomach drop:
+
+**"Context window limit reached."**
+
+Three hours of shared understanding, gone. Claude forgot everything. The architecture decisions, the file structure we'd mapped out, the half-finished migration — all of it evaporated like my mass spectrometry samples used to evaporate when I left them out in the lab during my PhD. (Except those were accidents. This was preventable.)
+
+I sat there staring at my terminal, contemplating whether to start over or just go outside. I chose neither and instead spent the next two weeks figuring out how to never end up in that situation again.
+
+This post is everything I learned.
+
+## What Is the Context Window, Really?
+
+Think of Claude Code's context window as a whiteboard. Everything — your messages, Claude's responses, file contents it reads, search results, tool outputs, error logs — gets written on this whiteboard. Once it's full, nothing else fits. Game over.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  CONTEXT WINDOW                          │
+│                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │  Your    │  │ Claude's │  │  File    │              │
+│  │ Messages │  │ Responses│  │  Reads   │              │
+│  │          │  │          │  │          │              │
+│  │  ~15%    │  │  ~30%    │  │  ~25%    │              │
+│  └──────────┘  └──────────┘  └──────────┘              │
+│                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │  Search  │  │  Tool    │  │  Error   │              │
+│  │ Results  │  │ Outputs  │  │  Logs    │              │
+│  │          │  │          │  │          │              │
+│  │  ~10%    │  │  ~10%    │  │  ~10%    │              │
+│  └──────────┘  └──────────┘  └──────────┘              │
+│                                                          │
+│  ████████████████████████████████░░░░░░░░  85% FULL     │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+The rough numbers vary, but you get the idea. That whiteboard fills up fast. And here's the part that surprised me: **Claude's own responses are often the biggest context hog.** When it writes a 200-line file, explains its reasoning, and then writes tests — that's a lot of whiteboard space consumed by output alone.
+
+## The Day I Lost Three Hours of Work
+
+Let me tell you the full story because I think it's instructive (and because misery loves company).
+
+I was building a new feature for a Next.js app — a multi-step form wizard with validation, API integration, and state management. Classic full-stack task. I started by asking Claude to read the existing codebase structure. It read about 15 files. Then I asked it to understand the current form patterns. More files. Then the API routes. More files.
+
+We hadn't written a single line of new code and I'd already burned through probably 30% of my context window just on reconnaissance.
+
+Then we started building. Claude was generating components, I was reviewing, asking for changes, it was reading test files to understand patterns... and before I knew it — boom. Context limit.
+
+<Callout type="warning" title="The Expensive Lesson">
+Exploration is the silent context killer. Every file read, every grep search, every "can you also check..." eats into your budget. If you don't have a plan before you start, you'll spend half your context just figuring out what to do.
+</Callout>
+
+The fix? I completely changed how I work with Claude Code. Here's the playbook.
+
+## Strategy 1: Break Everything Into Small, Focused Sessions
+
+This is the single most impactful change I made. Instead of "build me this entire feature," I now think in **atomic sessions**:
+
+```
+❌  Old approach (one mega-session):
+    "Build a multi-step form with validation, API routes,
+     tests, and error handling"
+    → Context explodes at step 3 of 7
+
+✅  New approach (multiple focused sessions):
+    Session 1: "Create the form wizard component with step navigation"
+    Session 2: "Add validation schemas for each form step"
+    Session 3: "Build the API route for form submission"
+    Session 4: "Write tests for the form wizard"
+    Session 5: "Add error handling and loading states"
+    → Each session completes fully within context
+```
+
+Each session has one clear goal. When it's done, I start fresh. The key insight is that **starting a new conversation is free** — there's no penalty for it. But running out of context mid-task? That's expensive.
+
+<Callout type="tip" title="The 15-Minute Rule">
+If I think a task will take Claude more than 15 minutes of back-and-forth, I break it up. This isn't a hard science — it's a gut check. But it's saved me countless blown sessions.
+</Callout>
+
+## Strategy 2: Use /compact Like Your Life Depends On It
+
+The `/compact` command is criminally underused. It summarizes your conversation history, compressing thousands of tokens into a tight summary. I use it:
+
+- After finishing a logical subtask
+- Before pivoting to a different part of the codebase
+- When I notice the conversation getting long
+- Basically every 10-15 minutes of active work
+
+```
+You: "Add the user authentication middleware"
+Claude: *writes 80 lines of middleware code*
+You: "Looks good. Now let's move to the dashboard."
+You: /compact                    ← DO THIS BEFORE SWITCHING CONTEXT
+Claude: *compresses conversation*
+You: "Now build the dashboard API route"
+```
+
+The summary preserves what matters — decisions made, files changed, current state — while ditching the verbose back-and-forth that was eating your context alive.
+
+## Strategy 3: Stop Being Polite (Seriously)
+
+This one hurts because my mom raised me right. But here's the truth: **every "thank you," "looks great!", and "awesome, now can you..." costs tokens.** Both your message and Claude's polite response.
+
+```
+❌  Token-expensive conversation:
+    You:    "Can you update the header component?"
+    Claude: *updates it*
+    You:    "Thanks so much! That looks really great.
+             I love how you handled the responsive part.
+             One small thing though — could you also
+             add the dark mode toggle?"
+    Claude: "Thank you for the kind words! I'm glad you
+             liked the responsive approach. I'd be happy
+             to add the dark mode toggle..."
+
+    Token cost: ~400 tokens on pleasantries alone
+
+✅  Token-efficient conversation:
+    You:    "Update the header component"
+    Claude: *updates it*
+    You:    "Add dark mode toggle to the header"
+
+    Token cost: ~40 tokens
+```
+
+I'm not saying be rude. I'm saying save the gratitude for after the session. Claude doesn't have feelings (yet), and your context window doesn't care about your manners. Be direct, be specific, move fast.
+
+<Callout type="info" title="Real Numbers">
+I tracked this for a week. In sessions where I was conversational, I averaged 45 minutes before hitting context limits. In sessions where I was direct and terse, I averaged 80+ minutes. Almost double the productive time from just cutting the small talk.
+</Callout>
+
+## Strategy 4: Write a CLAUDE.md That Actually Works
+
+Your `CLAUDE.md` file (or `.claude/settings.json` project instructions) is the single best investment you can make. It gives Claude instant context about your project without having to read dozens of files to figure things out.
+
+Here's what I include in mine:
+
+```markdown
+# Project: MyApp
+
+## Architecture
+- Next.js 15 App Router, TypeScript, Tailwind CSS
+- Database: PostgreSQL with Drizzle ORM
+- Auth: NextAuth.js with Google/GitHub providers
+- State: Zustand for client, React Query for server
+
+## Key Directories
+- src/app/ — App Router pages and API routes
+- src/components/ — Shared UI components
+- src/lib/ — Utilities, database, auth config
+- src/types/ — TypeScript type definitions
+
+## Conventions
+- Use server components by default, 'use client' only when needed
+- API routes return { data, error } shape
+- All forms use react-hook-form + zod validation
+- Tests go in __tests__/ adjacent to source files
+- Use cn() utility for conditional Tailwind classes
+
+## Common Patterns
+- Database queries go through src/lib/db/queries/
+- Auth checks use getServerSession() in server components
+- Error boundaries wrap each route segment
+```
+
+This single file saves me **thousands of tokens per session** because Claude doesn't need to read half my codebase to understand the project structure and conventions. It just knows.
+
+<Callout type="tip" title="CLAUDE.md Pro Move">
+Include a "Current Work" section at the top of your CLAUDE.md that you update with what you're actively working on. When you start a new session, Claude immediately has context on what you were doing before — no need to re-explain.
+</Callout>
+
+## Strategy 5: Structure Your Prompts for Efficiency
+
+The way you write prompts has a massive impact on context usage. Here's my formula:
+
+```
+❌  Vague prompt (causes exploration, burns context):
+    "The login isn't working right, can you fix it?"
+
+✅  Precise prompt (surgical, context-efficient):
+    "In src/app/auth/login/page.tsx, the form submission
+     handler (line ~45) isn't passing the redirect URL
+     to signIn(). Add the callbackUrl parameter from
+     the search params."
+```
+
+The precise prompt tells Claude exactly where to look and what to do. No exploration needed. No reading five files to understand the problem. Direct hit.
+
+My prompt template for most tasks:
+
+```
+1. What file(s) to modify (exact paths)
+2. What the current behavior is
+3. What the desired behavior is
+4. Any constraints or patterns to follow
+```
+
+This might feel over-specified, but trust me — the upfront effort of writing a clear prompt saves 10x the context that would be wasted on exploration and clarification.
+
+## Strategy 6: Use Subagents for Heavy Lifting
+
+Claude Code can spawn subagents — essentially child processes that do work in their own context window and return just the results. This is a game-changer for context management.
+
+When I need to explore a large codebase or do research-heavy tasks, I explicitly ask Claude to use a subagent:
+
+```
+"Use a subagent to find all files that import the
+UserProfile component and list the file paths and
+how they use it. Just give me the summary."
+```
+
+The subagent does all the file reading and searching in its own context. My main session only receives the compressed results. It's like hiring an intern to do the research and give you a one-page brief instead of dumping 50 pages of raw notes on your desk.
+
+```
+┌─────────────────────────────────────────┐
+│         Main Session Context            │
+│                                         │
+│  You ←──── Summary only ────┐          │
+│                              │          │
+│                    ┌─────────┴────────┐ │
+│                    │    Subagent      │ │
+│                    │                  │ │
+│                    │  Reads 20 files  │ │
+│                    │  Runs searches   │ │
+│                    │  Analyzes code   │ │
+│                    │                  │ │
+│                    │  (own context)   │ │
+│                    └──────────────────┘ │
+│                                         │
+│  Main context: barely touched           │
+└─────────────────────────────────────────┘
+```
+
+## Strategy 7: Know When to Start Fresh
+
+This is the hardest lesson because of sunk cost fallacy. When your context is getting full, **do not** try to squeeze in "just one more thing." You'll get degraded responses, Claude will start forgetting earlier decisions, and the quality tanks.
+
+My rules for starting a new conversation:
+
+1. **The task is done** — even if there's related work, start fresh
+2. **You're switching domains** — going from frontend to backend? New session
+3. **Claude starts repeating itself** — it's running low, bail out
+4. **You've been going for 20+ minutes** — consider a `/compact` or a fresh start
+5. **The quality drops** — if responses feel off, don't push it
+
+```
+Signs you should have started a new conversation 5 minutes ago:
+
+  ☐ Claude suggests something you already discussed and rejected
+  ☐ Responses are getting shorter and less detailed
+  ☐ It's reading files it already read earlier
+  ☐ You're re-explaining context you already gave
+  ☐ The output quality just... feels worse
+```
+
+Starting fresh with a clear, specific prompt is almost always faster than limping along with an exhausted context window.
+
+## My Actual Workflow (A Real Example)
+
+Let me walk you through how I recently built a notification system using these principles:
+
+**Session 1: Database Schema (8 minutes)**
+```
+Prompt: "Create a notifications table in src/lib/db/schema.ts
+following the existing pattern. Columns: id, userId, type
+(enum: info/warning/error), title, message, read (boolean),
+createdAt. Add the Drizzle migration."
+```
+Done. New session.
+
+**Session 2: API Routes (12 minutes)**
+```
+Prompt: "Create CRUD API routes for notifications at
+src/app/api/notifications/. Follow the existing API pattern
+in src/app/api/users/. Include GET (with pagination), POST,
+PATCH (mark as read), DELETE."
+```
+Done. New session.
+
+**Session 3: UI Components (15 minutes)**
+```
+Prompt: "Build a NotificationBell component and NotificationPanel
+dropdown. Follow the component patterns in src/components/ui/.
+Use the notifications API from Session 2. Include unread count
+badge and mark-as-read on click."
+```
+Used `/compact` once midway. Done. New session.
+
+**Session 4: Tests (10 minutes)**
+```
+Prompt: "Write tests for the notification API routes and the
+NotificationBell component. Follow test patterns in
+__tests__/api/ and __tests__/components/."
+```
+Done.
+
+Total time: ~45 minutes across 4 sessions. Each session completed fully. No context blowups. No lost work. No frustration.
+
+If I'd tried this in one session? I'd have hit the wall somewhere in Session 3 and lost everything from Sessions 1-2 that Claude was holding in context.
+
+## The Token Budget Mindset
+
+I now think about context like a budget. Every session, I have a fixed amount to spend:
+
+| Action | Token Cost | Worth It? |
+|--------|-----------|-----------|
+| Clear, specific prompt | ~100 tokens | Always |
+| Reading a file | ~500-2000 tokens | Only if needed |
+| "Thanks, looks great!" | ~50 tokens | Never during session |
+| Vague prompt requiring exploration | ~3000+ tokens | Rarely |
+| /compact | Negative (saves tokens) | Almost always |
+| Re-explaining what you want | ~200+ tokens | Avoid with better prompts |
+| Asking Claude to explain its code | ~500+ tokens | Only if confused |
+
+The developers who get the most out of Claude Code are the ones who treat every token like it costs money. Because in a way, it does — it costs you time and productivity when the context runs out.
+
+<Callout type="warning" title="The Biggest Waste I See">
+Developers who paste entire error logs, full stack traces, or complete file contents when only a few relevant lines would do. If you have a 200-line error log, find the relevant error and paste those 5 lines. Your context window will thank you.
+</Callout>
+
+## Quick Reference Cheat Sheet
+
+```
+┌─────────────────────────────────────────────────────────┐
+│           CONTEXT SURVIVAL CHEAT SHEET                   │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  BEFORE the session:                                     │
+│    ✓ Write/update CLAUDE.md                              │
+│    ✓ Plan your task breakdown                            │
+│    ✓ Identify the specific files you'll touch            │
+│    ✓ Write your first prompt before starting             │
+│                                                          │
+│  DURING the session:                                     │
+│    ✓ Be direct — skip pleasantries                       │
+│    ✓ Give exact file paths in prompts                    │
+│    ✓ Use /compact every 10-15 minutes                    │
+│    ✓ One task per session                                │
+│    ✓ Don't paste full files/logs — excerpt them          │
+│                                                          │
+│  WHEN TO BAIL:                                           │
+│    ✓ Task is complete (even partially)                   │
+│    ✓ Switching to a different area of code               │
+│    ✓ Quality of responses is declining                   │
+│    ✓ Claude is repeating itself                          │
+│                                                          │
+│  AFTER the session:                                      │
+│    ✓ Update CLAUDE.md "Current Work" section             │
+│    ✓ Note what's done and what's next                    │
+│    ✓ Start a fresh session for the next task             │
+│    ✓ NOW you can say thank you :)                        │
+│                                                          │
+└─────────────────────────────────────────────────────────┘
+```
+
+## It Gets Better With Practice
+
+When I first started managing context deliberately, it felt annoying. Like, I'm already learning a new tool and now I have to think about token budgets? But after a week or two it became second nature. Just like you don't think about saving a file anymore (Cmd+S is muscle memory), context management becomes instinctive.
+
+And the payoff is real. I went from losing work to context limits multiple times a day to maybe hitting the limit once a week — and even then, it's at the natural end of a task, not mid-sentence in a critical refactor.
+
+The irony isn't lost on me: I'm a PhD in Biomedical Engineering writing about how to efficiently communicate with a language model. But honestly, the skills transfer more than you'd think. Research taught me to be methodical, to plan before executing, and to never trust that you'll have unlimited resources. Turns out those same principles apply to context windows.
+
+Now if you'll excuse me, I have a CLAUDE.md to update.
+
+---
+
+*Struggling with Claude Code context limits or AI-assisted development workflows? [Let's chat](/contact) — I've probably hit every wall there is and I'm happy to share the dents.*

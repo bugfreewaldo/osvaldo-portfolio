@@ -1,0 +1,448 @@
+---
+title: "Construyendo Agentes de IA Que Realmente Funcionan en Producción"
+description: "Historias de guerra y lecciones duramente aprendidas construyendo agentes de IA con LLMs que llaman herramientas para sistemas en producción. Bucles de agentes, diseño de herramientas, recuperación de errores, barreras de seguridad, observabilidad y control de costos — con ejemplos reales de agentes de voz y automatización empresarial, y todas las formas en que la cagué en el camino."
+date: 2026-02-02
+published: true
+category: "Ingeniería de IA"
+tags: ["Agentes de IA", "LLM", "Uso de Herramientas", "Producción", "Confiabilidad", "Claude"]
+author: "Osvaldo Restrepo"
+translationOf: "building-ai-agents-production"
+tldr: "Los agentes de IA en producción necesitan interfaces de herramientas deterministas, bucles de ejecución acotados, recuperación elegante de errores y observabilidad agresiva. La brecha entre un agente de demo y uno de producción es enorme — y está llena de modos de fallo que te van a arruinar el fin de semana. Yo ya me arruiné varios."
+faqs:
+  - question: "¿Qué es un agente de IA en el contexto de los LLMs?"
+    answer: "Un agente de IA es un LLM que puede tomar acciones llamando herramientas (APIs, bases de datos, ejecución de código) en un bucle, decidiendo qué hacer a continuación basándose en los resultados de acciones anteriores. A diferencia de la simple interacción prompt-respuesta, los agentes razonan, actúan, observan e iteran."
+  - question: "¿Cómo se evita que los agentes de IA se ejecuten indefinidamente o se descontrolen?"
+    answer: "Implementa límites estrictos en iteraciones del bucle, presupuesto total de tokens, tiempo de reloj y cantidad de llamadas a herramientas. Usa circuit breakers que fuercen al agente a devolver un resultado parcial o escalar a un humano cuando se alcanzan los límites."
+  - question: "¿Cuál es el mayor desafío con los agentes de IA en producción?"
+    answer: "La recuperación de errores. Las demos funcionan en el camino feliz. Los agentes en producción enfrentan fallos de API, formatos de datos inesperados, entradas ambiguas de usuarios y timeouts de herramientas constantemente. Diseñar degradación elegante para cada modo de fallo es donde se concentra la mayor parte del esfuerzo de ingeniería."
+  - question: "¿Cómo se controlan los costos de los agentes de IA en producción?"
+    answer: "Usa modelos más pequeños para decisiones de enrutamiento simples, cachea los resultados de herramientas agresivamente, establece presupuestos de tokens por solicitud, implementa terminación temprana cuando el agente tiene suficiente información y monitorea el costo por tarea para detectar regresiones."
+relatedPosts: ["prompt-engineering-production-llms", "llm-evaluation-pipelines"]
+---
+
+Todas las semanas algún tipo en Twitter publica "Construí un agente de IA en 50 líneas de código!" con un emoji de fuego. Qué bien. Ahora ponlo a correr para mil usuarios con plata de verdad en juego y mira cómo le agenda a la abuela de alguien una colonoscopía en un autolavado. La brecha entre demo y producción es donde se forjan las carreras — y donde yo he perdido más horas de sueño de las que me gustaría admitir.
+
+He estado construyendo sistemas basados en agentes durante el último año — agentes de voz para programación de citas médicas, asistentes potenciados por RAG y herramientas de automatización empresarial que hablan con CRMs y ERPs. Y te puedo decir con absoluta confianza: la brecha entre una demo funcional y un agente en producción es la más amplia que he encontrado en ingeniería de software. No se le acerca nada. Es el Gran Cañón de las brechas de ingeniería, y tu demo está parada de un lado saludando a producción del otro lado con un telescopio.
+
+Este post trata sobre lo que vive en esa brecha. (Spoiler: es mayormente manejo de errores y arrepentimiento.)
+
+## Qué Queremos Decir con "Agente"
+
+Déjame ser preciso, porque la mitad de la industria no se pone de acuerdo en qué significa esta palabra. Cuando digo agente, me refiero a un LLM que opera en un bucle: recibe una tarea, decide qué herramienta llamar, observa el resultado y decide qué hacer después. Sigue hasta que la tarea se completa o alcanza un límite. Eso es todo. No es IA sentiente, no es Skynet, es un while loop con una llamada a una API y algunas herramientas.
+
+El bucle principal se ve así:
+
+```
+┌─────────────────────────────────┐
+│         User Request            │
+└──────────────┬──────────────────┘
+               │
+               ▼
+┌─────────────────────────────────┐
+│   LLM: Analyze + Plan          │◄──────┐
+└──────────────┬──────────────────┘       │
+               │                          │
+               ▼                          │
+┌─────────────────────────────────┐       │
+│   Select Tool + Parameters      │       │
+└──────────────┬──────────────────┘       │
+               │                          │
+               ▼                          │
+┌─────────────────────────────────┐       │
+│   Execute Tool                  │       │
+└──────────────┬──────────────────┘       │
+               │                          │
+               ▼                          │
+┌─────────────────────────────────┐       │
+│   Observe Result                ├───────┘
+└──────────────┬──────────────────┘
+               │ (done or limit hit)
+               ▼
+┌─────────────────────────────────┐
+│   Return Final Response         │
+└─────────────────────────────────┘
+```
+
+Bastante simple, ¿verdad? Qué lindo diagramita. El diablo está en cada una de las cajas de ese diagrama, y trajo amigos.
+
+## El Diseño de Herramientas Lo Es Todo
+
+Esto es lo que nadie te dice sobre construir agentes: **la calidad de tu agente la determina la calidad de tus herramientas, no la calidad de tu modelo.** No puedo enfatizar esto lo suficiente. He visto gente pasar semanas haciendo prompt engineering para compensar una herramienta mal diseñada cuando podrían haber pasado una tarde arreglando la herramienta misma.
+
+Una herramienta bien diseñada con entradas claras, salidas predecibles y buenos mensajes de error hace que un modelo mediocre parezca brillante. Una herramienta mal diseñada hace que el mejor modelo del mundo parezca que está teniendo un derrame cerebral. He visto ambas cosas. Múltiples veces. A veces en la misma semana.
+
+### Las Buenas Herramientas Son Aburridas
+
+Una opinión picante que no debería serlo: cada herramienta debe hacer exactamente una cosa. La firma de la función debe ser autodocumentada. El tipo de retorno debe ser predecible. Básicamente, diseña tus herramientas como tu profesor de computación te dijo que diseñaras funciones — excepto que ahora sí importa porque lo que está llamando tu función es un generador probabilístico de texto que va a encontrar cada ambigüedad que dejaste ahí.
+
+```python
+from pydantic import BaseModel, Field
+from typing import Literal
+from datetime import datetime
+
+class AppointmentSearchInput(BaseModel):
+    """Search for available appointment slots."""
+    provider_id: str = Field(description="The doctor's unique ID")
+    date_from: datetime = Field(description="Start of search range (ISO 8601)")
+    date_to: datetime = Field(description="End of search range (ISO 8601)")
+    appointment_type: Literal["new_patient", "follow_up", "urgent"] = Field(
+        description="Type of appointment to search for"
+    )
+
+class AppointmentSlot(BaseModel):
+    slot_id: str
+    provider_name: str
+    start_time: datetime
+    end_time: datetime
+    location: str
+
+class AppointmentSearchOutput(BaseModel):
+    slots: list[AppointmentSlot]
+    total_available: int
+    search_metadata: dict
+```
+
+<Callout type="tip" title="Nombra Tus Herramientas para el LLM">
+Los nombres y descripciones de las herramientas son parte del prompt. Suena obvio pero no te imaginas cuántas veces he visto herramientas llamadas `query_db` o `do_thing`. Una vez logré una mejora del 20% en precisión de selección de herramientas solo renombrando `query_db` a `search_available_appointments` y escribiendo una descripción de una oración que explica cuándo usarla. ¡Veinte por ciento! ¡Por renombrar una función! Tu profesor de la universidad lloraría de alegría.
+</Callout>
+
+### Evita las Herramientas Todopoderosas
+
+A ver, hora de anécdotas. Una vez construí una herramienta llamada `execute_database_query` que aceptaba SQL crudo. El agente podía hacer lo que quisiera con ella. Era poderosa, flexible, hasta elegante. También fue la cosa más estúpida que he puesto en producción (y una vez hice deploy un viernes por la tarde, así que el estándar es alto).
+
+En un día de pruebas, el agente construyó una consulta que habría escaneado toda nuestra tabla de producción. Toda. Cada fila. En una base de datos que era, digamos, no pequeña. Gracias a Dios por los ambientes de staging.
+
+En su lugar, construye herramientas acotadas con barreras de seguridad incorporadas:
+
+```python
+# Bad: God tool (ask me how I know)
+def execute_query(sql: str) -> dict:
+    return db.execute(sql)
+
+# Good: Scoped tools with built-in limits
+def search_patients(
+    name: str | None = None,
+    dob: str | None = None,
+    mrn: str | None = None,
+    limit: int = 10
+) -> list[PatientSummary]:
+    """Search patients by name, date of birth, or MRN. Returns max 10 results."""
+    query = build_patient_query(name=name, dob=dob, mrn=mrn)
+    return db.execute(query, limit=min(limit, 50))
+```
+
+La herramienta todopoderosa es como darle una tarjeta de crédito a un niño de tres años. Claro, técnicamente *puede* comprar lo que necesita. También puede comprar 20 kilos de gomitas y una podadora de jardín.
+
+## El Bucle del Agente: Acotado y Observable
+
+Este es el patrón de bucle de agente que uso en producción. Quiero ser muy claro sobre algo: **cada pieza de esto existe porque algo salió mal sin ella.** Esto no es teoría de mejores prácticas. Es tejido cicatrizal convertido en código.
+
+```python
+import time
+import uuid
+from dataclasses import dataclass, field
+
+@dataclass
+class AgentConfig:
+    max_iterations: int = 10
+    max_tokens_budget: int = 50_000
+    max_wall_time_seconds: float = 30.0
+    max_tool_calls: int = 15
+
+@dataclass
+class AgentState:
+    request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    iteration: int = 0
+    total_tokens: int = 0
+    tool_calls: int = 0
+    start_time: float = field(default_factory=time.time)
+    tool_history: list[dict] = field(default_factory=list)
+
+class AgentLimitExceeded(Exception):
+    def __init__(self, limit_type: str, current: float, maximum: float):
+        self.limit_type = limit_type
+        self.current = current
+        self.maximum = maximum
+        super().__init__(f"{limit_type}: {current}/{maximum}")
+
+def check_limits(state: AgentState, config: AgentConfig):
+    elapsed = time.time() - state.start_time
+    if state.iteration >= config.max_iterations:
+        raise AgentLimitExceeded("iterations", state.iteration, config.max_iterations)
+    if state.total_tokens >= config.max_tokens_budget:
+        raise AgentLimitExceeded("tokens", state.total_tokens, config.max_tokens_budget)
+    if elapsed >= config.max_wall_time_seconds:
+        raise AgentLimitExceeded("wall_time", elapsed, config.max_wall_time_seconds)
+    if state.tool_calls >= config.max_tool_calls:
+        raise AgentLimitExceeded("tool_calls", state.tool_calls, config.max_tool_calls)
+```
+
+<Callout type="warning" title="Siempre Establece Límites">
+Un bucle de agente sin límites no es un riesgo teórico. Es un incidente de producción sentado en tu código con la mecha encendida. Yo personalmente fui testigo de un agente que se quedó atascado en un bucle de reintentos durante un fin de semana y quemó cientos de dólares en llamadas a API antes de que alguien se diera cuenta el lunes por la mañana. *Cientos. De. Dólares.* Un fin de semana. Porque nadie puso un maldito techo. Cada agente necesita un límite estricto en iteraciones, tokens y tiempo de reloj. Sin excepciones. No me importa si es un prototipo.
+</Callout>
+
+## Recuperación de Errores: Donde Se Forjan los Agentes de Producción
+
+A ver, la cosa es así: los agentes de demo asumen que las herramientas funcionan. Los agentes de producción asumen que las herramientas fallan. La diferencia en volumen de código es aproximadamente 3x, y el 100% de ese código extra es manejo de errores. Bienvenido a la ingeniería de verdad, donde el camino feliz es la parte más pequeña de tu base de código.
+
+Así es como estructuro la ejecución de herramientas con recuperación:
+
+```python
+import logging
+from enum import Enum
+
+logger = logging.getLogger(__name__)
+
+class ToolResultStatus(str, Enum):
+    SUCCESS = "success"
+    RETRYABLE_ERROR = "retryable_error"
+    PERMANENT_ERROR = "permanent_error"
+    TIMEOUT = "timeout"
+
+async def execute_tool_with_recovery(
+    tool_name: str,
+    tool_fn,
+    params: dict,
+    state: AgentState,
+    max_retries: int = 2,
+    timeout_seconds: float = 10.0
+) -> dict:
+    """Execute a tool with retry logic and structured error reporting."""
+    for attempt in range(max_retries + 1):
+        try:
+            result = await asyncio.wait_for(
+                tool_fn(**params),
+                timeout=timeout_seconds
+            )
+            state.tool_calls += 1
+            return {
+                "status": ToolResultStatus.SUCCESS,
+                "data": result,
+                "tool": tool_name,
+                "attempt": attempt + 1
+            }
+        except asyncio.TimeoutError:
+            logger.warning(f"Tool {tool_name} timed out (attempt {attempt + 1})")
+            if attempt == max_retries:
+                return {
+                    "status": ToolResultStatus.TIMEOUT,
+                    "error": f"{tool_name} timed out after {timeout_seconds}s",
+                    "tool": tool_name,
+                    "suggestion": "Try a simpler query or skip this step"
+                }
+        except ToolPermanentError as e:
+            return {
+                "status": ToolResultStatus.PERMANENT_ERROR,
+                "error": str(e),
+                "tool": tool_name,
+                "suggestion": "This operation cannot be completed. Inform the user."
+            }
+        except Exception as e:
+            logger.error(f"Tool {tool_name} failed (attempt {attempt + 1}): {e}")
+            if attempt == max_retries:
+                return {
+                    "status": ToolResultStatus.RETRYABLE_ERROR,
+                    "error": str(e),
+                    "tool": tool_name,
+                    "suggestion": "Consider an alternative approach"
+                }
+
+        await asyncio.sleep(min(2 ** attempt, 8))
+```
+
+La idea clave — y déjame ahorrarte algo de dolor — es que necesitas alimentar la información de errores de vuelta al LLM de forma estructurada. ¿Ves ese campo `suggestion`? Ese pequeño string está haciendo más trabajo pesado del que te imaginas. Sin él, el agente simplemente reintenta la misma llamada fallida una y otra vez como un perro corriendo contra una puerta de vidrio. Con él, básicamente le estás susurrando al modelo: "hey, eso no funcionó, prueba esto en vez." La diferencia es abismal.
+
+<Callout type="info" title="Los Mensajes de Error Son Prompts">
+Esto me voló la cabeza cuando me di cuenta: cada mensaje de error que devuelven tus herramientas es efectivamente un prompt. El LLM lo lee y decide qué hacer basándose en lo que dice. Así que escribe tus mensajes de error como le escribirías instrucciones a un junior inteligente pero despistado. "Connection refused" no sirve para nada. "La API de programación no está disponible temporalmente — sugiere al usuario llamar directamente a la oficina al número que tiene registrado" sí es accionable. Empecé a reescribir todos mis mensajes de error con este enfoque y la tasa de recuperación exitosa de nuestro agente subió un 35%. Treinta y cinco por ciento por mejores mensajes de error. Casi lloro.
+</Callout>
+
+## Barreras de Seguridad: Previniendo Errores Costosos
+
+Los agentes con acceso de escritura a sistemas reales necesitan barreras de seguridad. Esto no es negociable. No me importa qué tan bueno sea tu modelo. No me importa qué tan exhaustivas sean tus pruebas. Si tu agente puede reservar citas, enviar correos o cobrar tarjetas de crédito, necesitas barreras de seguridad, porque la única vez que la riega va a ser la vez que más importa. La ley de Murphy la escribió alguien que desplegó agentes de IA en producción.
+
+### Clasificación de Acciones
+
+Clasifico cada herramienta en niveles, y te recomiendo hacer esto antes de escribir una sola línea de lógica del agente:
+
+```python
+from enum import Enum
+
+class ActionTier(str, Enum):
+    READ = "read"         # No side effects, always safe
+    WRITE_SAFE = "safe"   # Reversible writes (draft email, add to cart)
+    WRITE_RISKY = "risky"  # Hard to reverse (send email, submit order)
+    DESTRUCTIVE = "destructive"  # Cannot reverse (delete, cancel)
+
+TOOL_TIERS = {
+    "search_appointments": ActionTier.READ,
+    "get_patient_info": ActionTier.READ,
+    "draft_message": ActionTier.WRITE_SAFE,
+    "book_appointment": ActionTier.WRITE_RISKY,
+    "cancel_appointment": ActionTier.DESTRUCTIVE,
+}
+
+def check_action_allowed(
+    tool_name: str,
+    agent_permissions: set[ActionTier],
+    require_confirmation: bool = False
+) -> bool:
+    tier = TOOL_TIERS.get(tool_name, ActionTier.DESTRUCTIVE)  # default to most restrictive
+    if tier not in agent_permissions:
+        raise PermissionError(
+            f"Agent lacks permission for {tier.value} actions (tool: {tool_name})"
+        )
+    return True
+```
+
+Fíjate que el nivel por defecto es `DESTRUCTIVE`. Es intencional. Si me olvido de clasificar una herramienta nueva, recibe el tratamiento más restrictivo automáticamente. Sí, aprendí esto por las malas. No, no quiero hablar de eso.
+
+Para los agentes de voz, siempre requiero confirmación humana antes de acciones `WRITE_RISKY` o `DESTRUCTIVE`. El agente dice "Encontré una cita el jueves a las 2pm. ¿La reservo?" y espera confirmación explícita. Este único patrón nos ha salvado de más reservas erróneas de las que puedo contar. Y créeme, explicarle a un proveedor de salud que tu IA le reservó a un paciente de dermatología una cita de proctología no es una conversación que quieras tener dos veces.
+
+### Validación de Salidas
+
+Mira, yo sé que quieres confiar en tu agente. Yo también quería. Y entonces lo vi alucinar un número de teléfono que conectaba a una pizzería en Nueva Jersey. Nunca confíes en las salidas del agente sin validación, especialmente cuando van dirigidas a los usuarios:
+
+```python
+import re
+
+def validate_agent_response(response: str, context: dict) -> str:
+    """Validate and sanitize agent response before sending to user."""
+    # Check for hallucinated phone numbers or URLs
+    phone_pattern = r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b'
+    found_phones = re.findall(phone_pattern, response)
+    known_phones = context.get("valid_phone_numbers", [])
+    for phone in found_phones:
+        normalized = re.sub(r'[-.]', '', phone)
+        if normalized not in [re.sub(r'[-.]', '', p) for p in known_phones]:
+            response = response.replace(phone, "[phone number on file]")
+
+    # Check for PII leakage
+    if context.get("patient_ssn") and context["patient_ssn"] in response:
+        raise SecurityViolation("Agent attempted to include SSN in response")
+
+    return response
+```
+
+<Callout type="warning" title="La Información de Contacto Alucinada Es Peligrosa">
+He visto agentes proporcionar números de teléfono que no existen con una confianza total, con el mismo tono seguro que usan para todo lo demás. Eso es lo aterrador — no hay duda, no hay "creo que," solo "Puede comunicarse al 555-..." En el sector salud, un paciente llamando a un número inventado en vez de a su médico es un problema de seguridad real. Siempre valida la información de contacto contra datos verificados. Siempre. En esta colina me muero.
+</Callout>
+
+## Observabilidad: No Puedes Arreglar Lo Que No Puedes Ver
+
+Los agentes en producción necesitan más observabilidad que las aplicaciones típicas, y la razón es esta: su comportamiento es no determinista. La misma entrada puede producir trazas de ejecución completamente diferentes un martes que un miércoles. Si no tienes logging detallado, depurar un problema en producción se convierte en un ejercicio de leer hojas de té mientras lloras.
+
+### Logging Estructurado por Solicitud
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+def log_agent_step(state: AgentState, step_type: str, details: dict):
+    logger.info(
+        "agent_step",
+        request_id=state.request_id,
+        iteration=state.iteration,
+        step_type=step_type,
+        total_tokens=state.total_tokens,
+        tool_calls=state.tool_calls,
+        elapsed_seconds=round(time.time() - state.start_time, 2),
+        **details
+    )
+```
+
+Cada solicitud del agente recibe un ID único. Cada llamada a herramienta, cada respuesta del LLM, cada error se registra con ese ID. Cuando algo sale mal — y déjame ser cristalino, *va a salir mal* — necesitas poder reconstruir toda la traza de ejecución. La primera vez que depuras un problema de agente en producción sin logging estructurado, lo vas a agregar. La segunda vez no vas a tener que hacerlo, porque ya lo hiciste. Adivina desde cuál experiencia estoy hablando.
+
+### Métricas Clave a Rastrear
+
+Estos son los dashboards que construyo para cada sistema de agentes. No son "estaría bueno tener" — me refiero a que literalmente me niego a lanzar sin ellos:
+
+```
+Agent Metrics Dashboard
+────────────────────────────────────────
+Task Completion Rate     │  92.3%  (target: >90%)
+Avg Iterations/Task      │  3.2    (target: <5)
+Avg Latency              │  4.8s   (target: <10s)
+Avg Cost/Task            │  $0.03  (target: <$0.05)
+Tool Error Rate          │  2.1%   (target: <5%)
+Limit Exceeded Rate      │  0.8%   (target: <2%)
+Human Escalation Rate    │  5.4%   (target: <10%)
+────────────────────────────────────────
+```
+
+La métrica más importante es la **tasa de completación de tareas** desglosada por tipo de tarea. Y aquí está la trampa: un promedio alto puede ocultar que una categoría de solicitudes falla el 40% del tiempo. Aprendí esto cuando nuestra tasa general de completación era un hermoso 93% pero la reprogramación de citas estaba fallando silenciosamente para casi la mitad de las solicitudes. El promedio nos estaba mintiendo. Los promedios siempre mienten. Desglosa por tipo de tarea o estás volando a ciegas.
+
+## Control de Costos: El Asesino Silencioso
+
+Bueno, hablemos de plata. Los costos de los agentes se multiplican de maneras que no son para nada obvias hasta que te llega la primera factura de verdad y escupes el café de la mañana. Una sola solicitud puede disparar 5 llamadas al LLM y 8 ejecuciones de herramientas. Eso está bien. Ahora multiplica por miles de usuarios y de repente le estás explicando a tu CFO por qué la factura de la API parece la cuota de un carro.
+
+### Estrategia de Modelos por Niveles
+
+La cosa es esta: no todas las decisiones necesitan tu modelo más caro. Usar Opus para clasificar la intención del usuario es como contratar a un cirujano para poner una curita. Funciona, claro, pero tu presupuesto no va a sobrevivir.
+
+```python
+MODEL_ROUTING = {
+    "classify_intent": "claude-3-5-haiku-20241022",   # Fast, cheap
+    "select_tool": "claude-sonnet-4-20250514",         # Good balance
+    "generate_response": "claude-sonnet-4-20250514",   # Good balance
+    "complex_reasoning": "claude-opus-4-20250514",     # Only when needed
+}
+
+async def get_completion(task_type: str, messages: list[dict]) -> str:
+    model = MODEL_ROUTING.get(task_type, "claude-sonnet-4-20250514")
+    response = await client.messages.create(
+        model=model,
+        messages=messages,
+        max_tokens=get_max_tokens(task_type)
+    )
+    return response
+```
+
+<Callout type="tip" title="Mide Antes de Optimizar">
+Rastreo el costo por tipo de tarea semanalmente. Cuando instrumenté nuestro agente de voz por primera vez, descubrí que el 60% de nuestros costos venía del 5% de las solicitudes — flujos largos y complejos de programación donde el agente iba y venía tratando de encontrar horarios disponibles. Optimizar solo esos flujos (mejores herramientas, prompts más inteligentes, cacheo de disponibilidad de proveedores) redujo nuestra factura un 40%. ¡Cuarenta por ciento! Por mirar los datos reales en vez de adivinar. Imagínate.
+</Callout>
+
+### Terminación Temprana
+
+En fin, uno de los sumideros de costos más traicioneros es un agente que sigue recopilando información después de que ya tiene lo que necesita. Es como un estudiante que ya sabe la respuesta pero sigue investigando "por si acaso." Enséñale a tu agente a parar:
+
+```python
+SYSTEM_PROMPT_SUFFIX = """
+Important: Once you have enough information to answer the user's question,
+stop calling tools and respond directly. Do not gather additional information
+"just in case." Every tool call costs time and money.
+
+If you have already found what the user needs, respond immediately.
+"""
+```
+
+Esta única adición a nuestro prompt de sistema redujo el promedio de llamadas a herramientas por solicitud de 4.7 a 3.1. Eso es una reducción de aproximadamente 34% en llamadas a herramientas gracias a cuatro oraciones en español. A veces la mejor optimización es simplemente decirle al maldito sistema lo que quieres.
+
+## La Lista de Verificación de Demo a Producción
+
+Después de enviar múltiples sistemas de agentes (y acumular suficientes historias de guerra para llenar un libro que nadie se creería), mantengo esta lista de verificación para cada proyecto nuevo:
+
+1. **Bucles acotados** — Máximo de iteraciones, tokens, tiempo y llamadas a herramientas
+2. **Herramientas tipadas** — Modelos Pydantic para cada entrada y salida
+3. **Recuperación de errores** — Errores estructurados con sugerencias accionables
+4. **Niveles de acción** — Clasificar herramientas por riesgo, aplicar permisos
+5. **Validación de salidas** — Nunca confiar en texto del agente enviado a usuarios
+6. **Observabilidad** — Trazar cada solicitud de extremo a extremo
+7. **Rastreo de costos** — Costo por solicitud con alertas de anomalías
+8. **Degradación elegante** — Cuando se alcanzan límites, devolver resultados parciales
+9. **Escalación humana** — Camino claro para transferir a una persona
+10. **Pruebas de regresión** — Ejemplos dorados que se ejecutan en cada despliegue
+
+Si te saltas alguno de estos para tu primer lanzamiento, los vas a agregar después de tu primer incidente en producción. Lo sé porque he hecho exactamente eso, más de una vez, generalmente a las 2 AM mientras cuestionaba mis decisiones de vida. Aprende de mi sufrimiento. No fue divertido y el café estaba malo.
+
+## Conclusión
+
+Las herramientas para construir agentes de IA se han vuelto increíblemente buenas. De verdad, impresionantemente buenas. La brecha ya no está en la capacidad — está en la confiabilidad. Y aquí va la verdad incómoda que nadie en el club del "vibe coding" quiere escuchar: un agente que funciona el 95% del tiempo y falla catastróficamente el 5% del tiempo es *peor* que un sistema determinista tonto que funciona el 100% del tiempo. Porque los usuarios no recuerdan las 95 veces que funcionó perfecto. Recuerdan la vez que reservó la cita equivocada, envió el correo equivocado o inventó un número de teléfono con total confianza. La confianza se gana a gotas y se pierde a baldes.
+
+El trabajo de ingeniería está en los modos de fallo. Está en la recuperación de errores, las barreras de seguridad, la observabilidad y los controles de costos. No es glamoroso. No te va a dar likes en Twitter. No va a quedar bien en una demo. Pero es lo que separa a los agentes que impresionan a tu jefe en una reunión de los agentes que corren en producción sin despertarte a las 3 AM.
+
+¿Y siendo honesto? Después de suficientes alertas a las 3 AM, empiezas a apreciar mucho el código aburrido y confiable.
+
+---
+
+*¿Construyendo agentes de IA para producción? [Contáctame](/contact) para hablar de arquitectura, patrones de confiabilidad y estrategias de optimización de costos. O simplemente para compartir penas sobre la vez que tu agente intentó agendar una endodoncia en Navidad.*

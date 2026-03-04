@@ -1,0 +1,574 @@
+---
+title: "Patrones de TypeScript Que Escalan: Lecciones de Grandes Bases de Código"
+description: "Patrones de TypeScript ganados a base de dolor, debuggeando meltdowns en producción — uniones discriminadas, tipos branded, aserciones const, el operador satisfies, validación con Zod y límites de módulos. Escrito por alguien que aprendió todo esto de la peor manera posible."
+date: 2026-02-10
+published: true
+category: "Desarrollo Web"
+tags: ["TypeScript", "Patrones", "Arquitectura", "DX", "Next.js"]
+author: "Osvaldo Restrepo"
+translationOf: "typescript-patterns-large-codebases"
+tldr: "A escala, el valor de TypeScript proviene de las uniones discriminadas para máquinas de estado, tipos branded para seguridad de IDs, el operador satisfies para validación de configuraciones, Zod para la alineación entre tiempo de ejecución y tiempo de compilación, y límites de módulos disciplinados. Los tipos ingeniosos no impresionan a nadie a las 3 AM cuando producción está en llamas."
+faqs:
+  - question: "¿Qué patrones de TypeScript importan más en grandes bases de código?"
+    answer: "Uniones discriminadas para gestión de estado, tipos branded para prevenir mezclas de IDs, el operador satisfies para configuraciones con seguridad de tipos y esquemas Zod para validación en tiempo de ejecución que se mantiene sincronizada con tus tipos de TypeScript. Estos patrones previenen errores reales a escala."
+  - question: "¿Debería usar barrel files (index.ts) en proyectos TypeScript?"
+    answer: "Depende de tus herramientas. Los barrel files simplifican las importaciones pero pueden causar dependencias circulares y bundles inflados si tu bundler carece de tree-shaking adecuado. En aplicaciones Next.js, prefiero importaciones explícitas para código de aplicación y barrel files solo para bibliotecas de UI compartidas."
+  - question: "¿Cómo funcionan los tipos branded en TypeScript?"
+    answer: "Los tipos branded usan intersección con un símbolo único para hacer tipos estructuralmente idénticos incompatibles. Por ejemplo, UserId y OrderId son ambos strings en tiempo de ejecución, pero TypeScript te impedirá pasar accidentalmente uno donde se espera el otro."
+  - question: "¿Vale la pena agregar Zod a un proyecto TypeScript?"
+    answer: "Absolutamente, especialmente en los límites de la API. Los tipos de TypeScript desaparecen en tiempo de ejecución, por lo que los datos externos (respuestas de API, entradas de formularios, variables de entorno) necesitan validación en tiempo de ejecución. Zod te permite definir un esquema que te da tanto validaciones en tiempo de ejecución como tipos TypeScript inferidos."
+relatedPosts: ["react-server-components-architecture", "clean-code-principles-practice"]
+---
+
+He trabajado en bases de código TypeScript que van desde startups donde yo era el "equipo" entero hasta monorepos empresariales con cientos de desarrolladores que tenían Opiniones (con O mayúscula) sobre cómo deberían funcionar los tipos. Y déjame decirte algo que nadie te advierte: los patrones que te hacen sentir brillante con 500 líneas de código te van a arruinar la vida activamente con 500,000 líneas.
+
+Este post es todo lo que desearía que alguien me hubiera estampado en el escritorio durante mi primer año. Cada patrón aquí lo aprendí a través del dolor, incidentes en producción, o ambos. Generalmente ambos.
+
+## La Curva de Madurez de TypeScript
+
+Todos los equipos pasan por estas fases. Es como las etapas del duelo, excepto que la etapa final es "restricción estratégica" en lugar de "aceptación." Ahora que lo pienso, en realidad SÍ es aceptación.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              TypeScript Maturity Curve                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Phase 1       Phase 2        Phase 3        Phase 4        │
+│  "any          "Type          "Advanced      "Strategic     │
+│   everywhere"   everything"    generics"      restraint"    │
+│                                                              │
+│  ───────►  ────────────►  ──────────────►  ──────────►      │
+│                                                              │
+│  Just          Over-typed     Utility type    Right type     │
+│  migrated      configs,       gymnastics,     at the right   │
+│  from JS       verbose        conditional     boundary       │
+│                generics       inference                      │
+│                                                              │
+│  Value: Low    Value: Medium  Value: Mixed   Value: High    │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+La Fase 3 es donde la arrogancia llega a su punto máximo. Yo estuve ahí. Una vez escribí un conditional mapped type tan anidado que el compilador de TypeScript literalmente se rindió y mostró `any`. Estaba ORGULLOSO de eso. "¡Mira este tipo tan hermoso!" le dije a mi compañero. Él lo miró entrecerrando los ojos durante 30 segundos y dijo: "¿Qué hace?" No pude explicarlo. Ese fue el momento en que empecé mi camino hacia la Fase 4.
+
+<Callout type="tip" title="Donde Quieres Estar">
+La Fase 4 es donde aterrizan los equipos con experiencia. Dejas de intentar codificar cada invariante en el sistema de tipos y enfocas los tipos donde previenen errores reales — en los límites, transiciones de estado y manejo de IDs. El objetivo no es "tipos impresionantes." El objetivo es "que nadie reciba una alerta a las 2 AM."
+</Callout>
+
+## Uniones Discriminadas para Máquinas de Estado
+
+Estoy dispuesto a morir en esta colina: este es el patrón individual más impactante que existe en TypeScript. Lo he introducido en cinco bases de código diferentes, y todas las veces la reacción fue "espera, ¿por qué no estábamos haciendo esto antes?"
+
+Esto es lo que nadie te advierte: si modelas el estado con booleanos, VAS a mandar estados imposibles a producción. No "podrías." VAS.
+
+### El Problema con los Booleanos
+
+Déjame mostrarte una fábrica de bugs. He visto este patrón exacto en bases de código en producción de empresas que definitivamente conoces.
+
+```typescript
+// Esto es una fábrica de bugs
+interface RequestState {
+  isLoading: boolean;
+  isError: boolean;
+  data: User[] | null;
+  error: string | null;
+}
+
+// ¿Qué significa esto? ¿Loading Y error? ¿data Y error?
+const state: RequestState = {
+  isLoading: true,
+  isError: true,
+  data: [{ id: '1', name: 'Alice' }],
+  error: 'Something went wrong',
+};
+// TypeScript dice que esto está bien. No debería estarlo.
+```
+
+"¡Pero nadie pondría esos valores juntos!" Ah, dulce criatura inocente. En una app compleja con múltiples llamadas a `setState`, race conditions y effects que actualizan diferentes campos en diferentes momentos? He debuggeado este EXACTO escenario. Un spinner de carga que mostraba un mensaje de error mientras también renderizaba datos viejos. El usuario veía los tres estados simultáneamente. Era hermoso de la peor manera posible.
+
+### La Solución: Uniones Discriminadas
+
+```typescript
+type RequestState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'success'; data: User[] }
+  | { status: 'error'; error: string };
+
+function UserList({ state }: { state: RequestState }) {
+  switch (state.status) {
+    case 'idle':
+      return <p>Ingresa un término de búsqueda</p>;
+    case 'loading':
+      return <Spinner />;
+    case 'success':
+      // TypeScript sabe que state.data existe aquí
+      return <ul>{state.data.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+    case 'error':
+      // TypeScript sabe que state.error existe aquí
+      return <Alert variant="error">{state.error}</Alert>;
+  }
+}
+```
+
+¿Ves lo que pasó ahí? Es literalmente imposible tener `data` y `error` al mismo tiempo. El sistema de tipos no te deja. No puedes construir un valor que sea `loading` y `error` simultáneamente. El estado imposible es *irrepresentable*.
+
+Uso este patrón en todas partes — respuestas de API, estados de formularios, flujos de autenticación, wizards multi-paso. Cada. Una. De. Las. Máquinas. De. Estado. El switch exhaustivo te da garantías en tiempo de compilación de que manejaste cada caso, lo que significa que cuando algún desarrollador futuro (probablemente tú mismo) agregue un nuevo estado, el compilador le dice exactamente dónde manejarlo.
+
+### Verificación de Exhaustividad
+
+Este truco le va a salvar la vida a tu yo del futuro. Agrega un helper para detectar casos faltantes en tiempo de compilación:
+
+```typescript
+function assertNever(x: never): never {
+  throw new Error(`Unexpected value: ${x}`);
+}
+
+function getStatusMessage(state: RequestState): string {
+  switch (state.status) {
+    case 'idle': return 'Listo';
+    case 'loading': return 'Cargando...';
+    case 'success': return `Se encontraron ${state.data.length} usuarios`;
+    case 'error': return state.error;
+    default: return assertNever(state);
+    // Si agregas un nuevo status y olvidas manejarlo,
+    // TypeScript dará error AQUÍ en tiempo de compilación
+  }
+}
+```
+
+No puedo exagerar cuántos bugs previene este patrón. ¿Tu yo del futuro agrega un status `'retrying'` a la unión? Boom — cada switch statement que no lo maneje se ilumina en rojo. No más "ay, se nos olvidó manejar ese caso" en producción. (Pregúntame cómo lo sé.)
+
+<Callout type="warning" title="Cuidado">
+Si usas una cláusula default sin `assertNever`, pierdes la verificación de exhaustividad. Los nuevos miembros de la unión caerán silenciosamente al default en lugar de causar un error de compilación. Esta es una de esas situaciones de "parece que está bien hasta que son las 2 AM y estás debuggeando por qué el estado de retry muestra una pantalla en blanco."
+</Callout>
+
+## Tipos Branded para Seguridad de IDs
+
+OK, hora de contar historias. Una vez pasé tres días — TRES DÍAS — debuggeando un problema de corrupción de datos en producción. Las órdenes aparecían con la información del cliente equivocado. La facturación estaba mal. Fue una pesadilla.
+
+¿La causa raíz? En algún lugar profundo de la base de código, alguien estaba pasando un `userId` donde se esperaba un `orderId`. Ambos son strings. Ambos se ven como UUIDs. TypeScript dijo "sip, string es igual a string, ¡a producción!" Y a producción lo mandamos. Directo a la corrupción de datos en producción.
+
+La solución fueron dos líneas. Ahora uso tipos branded religiosamente, no porque sea inteligente, sino porque estoy traumatizado.
+
+```typescript
+// La técnica de branding
+declare const __brand: unique symbol;
+
+type Brand<T, B extends string> = T & { [__brand]: B };
+
+type UserId = Brand<string, 'UserId'>;
+type OrderId = Brand<string, 'OrderId'>;
+type ProductId = Brand<string, 'ProductId'>;
+
+// Funciones constructoras
+function UserId(id: string): UserId {
+  return id as UserId;
+}
+
+function OrderId(id: string): OrderId {
+  return id as OrderId;
+}
+
+// Ahora TypeScript previene las mezclas
+function getOrder(orderId: OrderId) {
+  return db.orders.findUnique({ where: { id: orderId } });
+}
+
+const userId = UserId('user_abc123');
+const orderId = OrderId('order_xyz789');
+
+getOrder(orderId);  // OK
+getOrder(userId);   // ¡Error de compilación! El tipo 'UserId' no es asignable a 'OrderId'
+```
+
+Y aquí viene la parte hermosa: esto cuesta CERO en tiempo de ejecución. Nada. Nada de nada. Los brands se borran completamente durante la compilación. Es puramente una red de seguridad en tiempo de compilación. Obtienes la prevención de bugs gratis. GRATIS.
+
+En una app de Next.js, los defino en un archivo compartido `types/ids.ts` y los uso en todo el stack. Server components, rutas de API, client components — en todos lados donde se pasa un ID, lleva su brand. La sesión de debugging de tres días se convirtió en un error de compilación de dos segundos. Ese es el tipo de intercambio por el que vivo.
+
+## Aserciones Const y Objetos de Configuración
+
+Opinión controversial: `as const` es la feature más subestimada de TypeScript. La mayoría de la gente la aprende, piensa "ah, qué interesante," y nunca la usa. Esas personas se están perdiendo de una inferencia de tipos genuinamente hermosa.
+
+```typescript
+// Sin as const — los tipos son amplios
+const ROUTES = {
+  home: '/',
+  dashboard: '/dashboard',
+  settings: '/settings/profile',
+};
+// tipo: { home: string; dashboard: string; settings: string }
+
+// Con as const — los tipos son estrechos y exactos
+const ROUTES = {
+  home: '/',
+  dashboard: '/dashboard',
+  settings: '/settings/profile',
+} as const;
+// tipo: { readonly home: "/"; readonly dashboard: "/dashboard"; readonly settings: "/settings/profile" }
+
+// Ahora puedes derivar tipos de valores
+type Route = typeof ROUTES[keyof typeof ROUTES];
+// type Route = "/" | "/dashboard" | "/settings/profile"
+```
+
+¿Ves la diferencia? Sin `as const`, TypeScript ve `string`. Con él, TypeScript ve `"/"` — el valor literal real. Esto suena como algo menor hasta que te das cuenta de que puedes derivar tipos de unión completos de tus objetos de configuración. Define la verdad una vez, deriva todo lo demás. No más mantener un `type Route = ...` sincronizado manualmente con tu objeto `ROUTES`. Literalmente no pueden desincronizarse.
+
+Uso esto constantemente para objetos de configuración, nombres de eventos y mapas de endpoints de API. Es uno de esos patrones donde una vez que empiezas a ver las aplicaciones, no puedes parar.
+
+### Combinando con satisfies
+
+OK, `satisfies` (TypeScript 4.9+) es sin duda una de las mejores adiciones al lenguaje en años. Esto es lo que nadie explica bien: valida que un valor coincida con un tipo SIN ampliarlo. Esa distinción lo es todo.
+
+```typescript
+type RouteConfig = {
+  [key: string]: {
+    path: string;
+    requiresAuth: boolean;
+  };
+};
+
+// satisfies verifica la forma, as const preserva los tipos literales
+const ROUTES = {
+  home: { path: '/', requiresAuth: false },
+  dashboard: { path: '/dashboard', requiresAuth: true },
+  settings: { path: '/settings', requiresAuth: true },
+} as const satisfies RouteConfig;
+
+// Obtienes AMBOS: seguridad de tipos Y tipos estrechos
+ROUTES.home.path;          // tipo: "/" (no string)
+ROUTES.dashboard.requiresAuth; // tipo: true (no boolean)
+
+// Y esto sería un error de compilación:
+const BAD_ROUTES = {
+  home: { path: '/', requiresAuth: 'yes' }, // Error: string no es boolean
+} as const satisfies RouteConfig;
+```
+
+Antes de `satisfies`, tenías que elegir: o anotas el tipo (y pierdes la inferencia literal) o no lo anotas (y pierdes la validación). Era genuinamente frustrante. `satisfies` te da ambos. Me acuerdo del día que salió — me fui a tres proyectos y refactoricé cada objeto de configuración. Mis compañeros pensaron que estaba loco. Al final me dieron la razón.
+
+<Callout type="tip" title="Cuándo Usar satisfies">
+Usa `satisfies` siempre que tengas un objeto de configuración que deba coincidir con una forma pero donde también quieras inferencia de tipos literales. Configuraciones de navegación, tokens de tema, feature flags, mapas de permisos — todos son candidatos perfectos. Si estás anotando una variable con un tipo y después frustrado porque perdiste la inferencia literal, `satisfies` es tu respuesta.
+</Callout>
+
+## Tipos de Template Literal
+
+Los tipos de template literal son una de esas features que te hacen decir "espera, ¿el sistema de tipos puede hacer ESO?" Te permiten construir tipos de string a partir de otros tipos, y son fantásticos para APIs con patrones de URL predecibles.
+
+```typescript
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+type ApiVersion = 'v1' | 'v2';
+type Resource = 'users' | 'orders' | 'products';
+
+type ApiEndpoint = `/${ApiVersion}/${Resource}`;
+// type ApiEndpoint = "/v1/users" | "/v1/orders" | "/v1/products"
+//                  | "/v2/users" | "/v2/orders" | "/v2/products"
+
+// Ejemplo práctico: convenciones de nombres de eventos
+type DomainEvent =
+  | `user.${'created' | 'updated' | 'deleted'}`
+  | `order.${'placed' | 'shipped' | 'delivered' | 'cancelled'}`
+  | `payment.${'initiated' | 'completed' | 'failed'}`;
+
+function emitEvent(event: DomainEvent, payload: unknown) {
+  // El autocompletado de TypeScript te da cada nombre de evento válido
+  eventBus.emit(event, payload);
+}
+
+emitEvent('order.placed', { orderId: '123' });  // OK
+emitEvent('order.pending', { orderId: '123' });  // Error de compilación
+```
+
+Un junior de mi equipo intentó emitir `'order.pending'` una vez. TypeScript lo atrapó de inmediato. Sin este patrón, habría sido un no-op silencioso en producción — el evento se habría disparado, nada lo habría escuchado, y habríamos pasado horas descifrando por qué nunca se envió el email de confirmación del pedido. Adivina cómo sé que este es un escenario real. Anda, adivina.
+
+## Zod para Validación en Tiempo de Ejecución
+
+Esto es lo que nadie te advierte sobre TypeScript: **tus tipos son mentiras**. Bueno, no exactamente mentiras, pero se desvanecen. Completamente. En tiempo de ejecución, TypeScript no existe. ¿Tu objeto `User` bellamente tipado? En runtime, es solo un objeto de JavaScript, y podría contener literalmente cualquier cosa.
+
+Esto está bien para código interno — tú controlas los tipos, el compilador los verifica, todo genial. Pero en el momento en que los datos cruzan un límite de confianza — respuestas de API, entradas de formularios, parámetros de URL, variables de entorno, payloads de webhooks — tus tipos son solo pensamiento positivo. Esperanza. Oraciones. (Narrador: los datos no eran lo que los tipos decían que eran.)
+
+Zod soluciona esto dándote una única fuente de verdad para validación en tiempo de ejecución y tipos de TypeScript:
+
+```typescript
+import { z } from 'zod';
+
+// Define el esquema una vez
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  name: z.string().min(1).max(100),
+  role: z.enum(['admin', 'member', 'viewer']),
+  createdAt: z.string().datetime(),
+});
+
+// Deriva el tipo TypeScript del esquema
+type User = z.infer<typeof UserSchema>;
+// Equivalente a:
+// type User = {
+//   id: string;
+//   email: string;
+//   name: string;
+//   role: 'admin' | 'member' | 'viewer';
+//   createdAt: string;
+// }
+
+// Usa en los límites de la API
+async function fetchUser(id: string): Promise<User> {
+  const response = await fetch(`/api/users/${id}`);
+  const data = await response.json();
+  return UserSchema.parse(data);
+  // Lanza ZodError si los datos no coinciden — sin corrupción silenciosa
+}
+```
+
+La magia es `z.infer` — escribes el esquema una vez, y Zod te da el tipo de TypeScript gratis. No más mantener un `type User` Y una función de validación Y rezar para que se mantengan sincronizados. Literalmente no pueden desincronizarse porque el tipo ES el esquema. Este es el tipo de patrón que te hace preguntarte por qué alguna vez lo hiciste de la otra manera.
+
+### Validación de Variables de Entorno
+
+Este es uno de mis patrones favoritos con Zod, y voy a explicar por qué con una historia de guerra.
+
+Una vez desplegué un servicio que funcionaba perfectamente en staging. Impecable. Lo mandamos a producción un viernes por la tarde (lo sé, LO SÉ). Todo se veía bien. Luego a las 3 AM del sábado, las transacciones empezaron a fallar silenciosamente. ¿La causa raíz? La variable de entorno `STRIPE_SECRET_KEY` estaba configurada... con la llave de staging. TypeScript estaba perfectamente feliz — ¡es un string, al fin y al cabo! ¿A quién le importa qué contiene?
+
+Ahora valido TODAS las variables de entorno al inicio, no cuando se acceden por primera vez:
+
+```typescript
+// lib/env.ts
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  NEXTAUTH_SECRET: z.string().min(32),
+  STRIPE_SECRET_KEY: z.string().startsWith('sk_'),
+  NEXT_PUBLIC_APP_URL: z.string().url(),
+  NODE_ENV: z.enum(['development', 'test', 'production']),
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+});
+
+// Esto se ejecuta una vez al inicio y crashea rápido si el entorno está mal configurado
+export const env = EnvSchema.parse(process.env);
+
+// Ahora env.DATABASE_URL tiene tipo string (no string | undefined)
+// Y sabes que es una URL válida
+```
+
+La app crashea INMEDIATAMENTE si el entorno está mal. Ruidosamente. Visiblemente. Antes de servir una sola petición. Esto es infinitamente mejor que "silenciosamente cobra en la cuenta de Stripe equivocada a las 3 AM del sábado." Confía en mí en esta.
+
+<Callout type="info" title="Falla Temprano, Falla Ruidosamente">
+Una variable de entorno mal configurada que causa un crash al inicio es infinitamente mejor que una que causa corrupción silenciosa de datos a las 3 AM de un sábado. Lo digo por experiencia. Valida todo en el límite. Tu yo del fin de semana te lo agradecerá.
+</Callout>
+
+## Patrones de Límites de Módulos
+
+Esto es lo que nadie te dice sobre proyectos grandes de TypeScript: cómo organizas tus exports importa MUCHO más de lo que crees. Con 10 archivos, da igual. Con 500 archivos, el enfoque equivocado crea dependencias circulares, bundles inflados, y un espagueti de importaciones que te hace cuestionar tus decisiones de carrera.
+
+### El Debate de los Barrel Files
+
+Los barrel files (`index.ts` que re-exporta todo) son el tabs-vs-spaces de la arquitectura de proyectos TypeScript. Todo el mundo tiene una opinión. Aquí va la mía, después de haberme quemado con ambos extremos:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              Barrel Files: The Tradeoffs                      │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  Pros:                                                        │
+│  + Clean imports: import { Button } from '@/ui'              │
+│  + Encapsulation: hide internal structure                     │
+│  + Refactoring: move files without changing imports           │
+│                                                               │
+│  Cons:                                                        │
+│  - Circular dependencies in deep module graphs               │
+│  - Bundle bloat if tree-shaking fails                        │
+│  - Slower TypeScript compiler (more files to parse)          │
+│  - IDE auto-import picks the barrel over the source          │
+│                                                               │
+│  My Rule:                                                     │
+│  ✓ Use for shared UI libraries (@/components/ui)             │
+│  ✗ Avoid for application features and pages                  │
+│                                                               │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Aprendí el lado de los "contras" por las malas. Teníamos barrel files para cada módulo de features en una app grande de Next.js. Los tiempos de build fueron subiendo de 30 segundos a 4 minutos. Warnings de dependencias circulares por todos lados. El compilador pasaba más tiempo resolviendo re-exports que verificando tipos. Eliminar los barrel files y cambiar a importaciones explícitas redujo nuestro tiempo de build un 60%. SESENTA POR CIENTO. Por quitar código.
+
+### Contratos Explícitos de Módulos
+
+En lugar de barrel files para features, ahora defino APIs públicas explícitas. Piénsalo como la palabra clave `pub` en Rust o `public` en Java — estás siendo intencional sobre qué es parte del contrato de tu módulo:
+
+```typescript
+// features/billing/public.ts — el contrato
+export { BillingDashboard } from './components/BillingDashboard';
+export { useBillingStatus } from './hooks/useBillingStatus';
+export type { Invoice, BillingPlan, PaymentMethod } from './types';
+
+// Todo lo demás en features/billing/ es privado
+// Forzar con eslint-plugin-boundaries o un linter de importaciones
+```
+
+```typescript
+// En otra feature — importaciones limpias y explícitas
+import { BillingDashboard, type BillingPlan } from '@/features/billing/public';
+
+// Esto sería marcado por el linter:
+// import { calculateProration } from '@/features/billing/utils/proration';
+// ❌ Metiendo la mano en los internos de otra feature
+```
+
+¿Por qué importa esto? Porque sin esto, cada archivo es implícitamente público. Algún desarrollador en la feature de checkout importa tu utilidad interna `calculateProration` porque le conviene. Después tú refactorizas billing, mueves esa utilidad, y de repente checkout está roto. Con contratos explícitos, el linter atrapa esa importación antes de que se mande a producción. Límites. Importan.
+
+### Path Aliases en Next.js
+
+Cada proyecto Next.js debería configurar path aliases desde el día uno. No me importa si tu proyecto tiene 5 archivos. Hazlo ahora. El infierno de importaciones relativas (`../../../../components/Button`) es un desastre de DX, y solo empeora conforme crece el proyecto.
+
+```json
+// tsconfig.json
+{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@/ui": ["./src/components/ui/index.ts"],
+      "@/lib/*": ["./src/lib/*"],
+      "@/features/*": ["./src/features/*"]
+    }
+  }
+}
+```
+
+Si estás leyendo esto y tu proyecto no tiene path aliases configurados, deja de leer. Ve a configurarlos. Yo espero. En serio. Los cinco minutos que inviertas ahora te van a ahorrar cientos de dolores de cabeza con `../../../` después.
+
+## Tipos Utilitarios Que Jalan su Peso
+
+Los tipos utilitarios integrados de TypeScript son poderosos, pero esto es lo que he notado: la mayoría de los equipos usan `Partial` y `Record` y luego actúan como si el capítulo de tipos utilitarios se hubiera acabado. Hay unas joyas seriamente subutilizadas aquí.
+
+```typescript
+// Pick solo lo que un componente necesita — no la entidad completa
+type UserCardProps = Pick<User, 'name' | 'email' | 'avatarUrl'>;
+
+// Hacer campos opcionales para operaciones de patch/update
+type UpdateUserInput = Partial<Pick<User, 'name' | 'email' | 'role'>>;
+
+// Extraer miembros de unión por discriminante
+type ErrorState = Extract<RequestState, { status: 'error' }>;
+// type ErrorState = { status: 'error'; error: string }
+
+// Construir mapped types para estado de formularios
+type FormErrors<T> = {
+  [K in keyof T]?: string;
+};
+
+interface SignupForm {
+  email: string;
+  password: string;
+  name: string;
+}
+
+const errors: FormErrors<SignupForm> = {
+  email: 'Formato de email inválido',
+  // password y name son opcionales — sin error significa sin problema
+};
+```
+
+El patrón de `Pick` para props de componentes es algo que desearía haber adoptado años antes. Pasar objetos de entidad completos a componentes que solo necesitan tres campos es la receta para terminar con componentes que se re-renderizan cuando cambian campos que ni les importan. Pregúntame cuántos bugs de performance he rastreado hasta esto. (La respuesta es "demasiados.")
+
+<Callout type="warning" title="Evita la Gimnasia de Tipos">
+Si tu tipo utilitario requiere más de dos niveles de anidamiento o inferencia condicional, detente. En serio, detente. Aléjate del teclado. Escribe un tipo más simple o usa validación en tiempo de ejecución. He revisado PRs con conditional mapped types de cinco niveles que NADIE en el equipo podía leer, incluyendo la persona que los escribió. Los tipos ilegibles son peores que `any` porque dan falsa confianza — CREES que estás seguro, pero nadie puede verificarlo.
+</Callout>
+
+## Juntando Todo: Una Ruta API de Next.js
+
+Bueno, la teoría está genial, pero déjame mostrarte cómo todos estos patrones se combinan en una ruta API real de Next.js. Esto es básicamente mi template para cada nueva ruta — uniones discriminadas para el tipo de respuesta, Zod para validación de entrada, tipos branded para IDs, y `satisfies` para asegurarte de que la respuesta coincida con la unión:
+
+```typescript
+// app/api/orders/route.ts
+import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
+import { OrderId, UserId } from '@/types/ids';
+import { getServerSession } from '@/lib/auth';
+import { db } from '@/lib/database';
+
+const CreateOrderSchema = z.object({
+  productId: z.string().uuid(),
+  quantity: z.number().int().positive().max(100),
+  shippingAddress: z.object({
+    street: z.string().min(1),
+    city: z.string().min(1),
+    state: z.string().length(2),
+    zip: z.string().regex(/^\d{5}(-\d{4})?$/),
+  }),
+});
+
+type CreateOrderInput = z.infer<typeof CreateOrderSchema>;
+
+type ApiResult =
+  | { status: 'success'; orderId: OrderId }
+  | { status: 'validation_error'; errors: z.ZodIssue[] }
+  | { status: 'unauthorized' }
+  | { status: 'server_error'; message: string };
+
+export async function POST(request: NextRequest) {
+  const session = await getServerSession();
+  if (!session) {
+    return NextResponse.json(
+      { status: 'unauthorized' } satisfies ApiResult,
+      { status: 401 }
+    );
+  }
+
+  const body = await request.json();
+  const parsed = CreateOrderSchema.safeParse(body);
+
+  if (!parsed.success) {
+    return NextResponse.json(
+      { status: 'validation_error', errors: parsed.error.issues } satisfies ApiResult,
+      { status: 400 }
+    );
+  }
+
+  const order = await db.order.create({
+    data: {
+      userId: UserId(session.user.id),
+      ...parsed.data,
+    },
+  });
+
+  return NextResponse.json(
+    { status: 'success', orderId: OrderId(order.id) } satisfies ApiResult,
+    { status: 201 }
+  );
+}
+```
+
+Mira cómo `satisfies ApiResult` funciona en cada respuesta. Si accidentalmente devuelves `{ status: 'sucess' }` (nota el typo), el compilador lo atrapa. Si olvidas incluir `orderId` en el caso de éxito, el compilador lo atrapa. Si agregas una nueva variante a la unión y olvidas manejarla en algún lado, el compilador lo atrapa. Es hermoso. Es aburrido. Ese es todo el punto.
+
+## Patrones Que He Dejado de Usar
+
+La experiencia también me ha enseñado qué evitar activamente. Estos son patrones que yo antes defendía y de los que ahora alejo a los equipos:
+
+1. **Enums** — Estoy dispuesto a morir en esta colina. Usa objetos `as const` o tipos de unión en su lugar. Los enums tienen comportamiento en tiempo de ejecución sorprendente (¡emiten objetos JavaScript!), no hacen tree-shake bien, y tienen un tipado nominal raro que confunde a todos. He perdido la cuenta de las veces que me han preguntado "espera, ¿por qué este string no coincide con el enum?"
+2. **Fusión de namespaces** — Suena poderoso en teoría. En la práctica, hace confusa la navegación del código y engañosos los resultados de grep. Usa importaciones explícitas como una persona normal.
+3. **Tipos condicionales complejos en código de aplicación** — Estos son para autores de bibliotecas. Tu código de aplicación debería ser legible por un ingeniero mid-level que no se ha memorizado el manual de TypeScript. Si no pueden entender tu tipo, tu tipo está mal.
+4. **`interface` para todo** — Hot take: usa `type` por defecto. Las interfaces tienen fusión de declaraciones, que casi siempre es una trampa en código de aplicación. ¿Sabes qué es divertido? Que algún archivo random extienda tu interface sin que lo sepas. (Narrador: no fue divertido.) Reserva `interface` para cuando realmente QUIERAS extensión.
+
+## Conclusión
+
+Los patrones de TypeScript que escalan no son los ingeniosos — son los predecibles y aburridos. Las uniones discriminadas, los tipos branded, `satisfies` y Zod te dan seguridad real en los límites donde los bugs realmente ocurren. Todo lo demás es disciplina: contratos de módulos explícitos, configuraciones validadas, y resistir la tentación de codificar cada regla de negocio en el sistema de tipos.
+
+La mejor base de código TypeScript en la que he trabajado casi no tenía genéricos avanzados. Tenía uniones discriminadas en todas partes, Zod en cada límite de API, y contratos de módulos estrictos. Los desarrolladores nuevos podían leer y entender los tipos en su primer día. Era aburrida. Era confiable. Nadie recibía alertas a las 3 AM por un bug a nivel de tipos.
+
+Ese es el objetivo. No "impresionante." No "ingenioso." Aburrido y confiable. El tipo de base de código donde puedes irte de vacaciones sin revisar Slack.
+
+---
+
+## Referencias
+
+TypeScript Team. (2024). *TypeScript Handbook: Narrowing*. https://www.typescriptlang.org/docs/handbook/2/narrowing.html
+
+Colvin, C. (2024). *Zod documentation*. https://zod.dev
+
+Vercel. (2024). *Next.js TypeScript configuration*. https://nextjs.org/docs/app/building-your-application/configuring/typescript
+
+Rauschmayer, A. (2023). *Tackling TypeScript: Upgrading from JavaScript*. Exploring JS. https://exploringjs.com/tackling-ts/
+
+---
+
+*¿Trabajando en una base de código TypeScript que necesita mejores patrones? [Hablemos](/contact) sobre estrategias de arquitectura. Ya cometí todos los errores para que tú no tengas que hacerlo.*

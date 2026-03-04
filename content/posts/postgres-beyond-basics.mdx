@@ -1,0 +1,500 @@
+---
+title: "PostgreSQL Beyond the Basics: Patterns I Use in Every Project"
+description: "Fifteen years of PostgreSQL war stories distilled into the patterns I actually use — partial indexes, JSONB with GIN, row-level security, advisory locks, LISTEN/NOTIFY, connection pooling, and partitioning. With the mistakes that taught me each one."
+date: 2026-02-06
+published: true
+category: "Backend Engineering"
+tags: ["PostgreSQL", "Database", "Performance", "SQL", "Backend"]
+author: "Osvaldo Restrepo"
+pinned: false
+tldr: "PostgreSQL has powerful features that most teams criminally underuse. Partial indexes, JSONB with GIN, row-level security, advisory locks, LISTEN/NOTIFY, and partitioning can replace entire categories of infrastructure you'd otherwise need to build, deploy, and debug at 3 AM. I've learned all of these the hard way so you don't have to."
+faqs:
+  - question: "When should I use partial indexes in PostgreSQL?"
+    answer: "Use partial indexes when your queries consistently filter on a condition that matches a small subset of rows. Common examples: indexing only active users, unprocessed jobs, or recent orders. They are smaller and faster than full indexes."
+  - question: "Is JSONB a good replacement for relational columns?"
+    answer: "No. Use JSONB for truly dynamic or variable-structure data like user preferences, API payloads, or metadata. Keep core business data in typed columns for integrity constraints, joins, and query performance. Mixing both is the right approach."
+  - question: "How does row-level security work for multi-tenant applications?"
+    answer: "RLS adds automatic WHERE clauses to every query based on the current session context. You set the tenant ID in a session variable at connection time, and PostgreSQL ensures queries only see rows belonging to that tenant — even if application code forgets to filter."
+  - question: "Should I use PgBouncer in production?"
+    answer: "Almost always yes. PostgreSQL connections are expensive (each is a separate OS process). PgBouncer pools connections efficiently, typically letting you serve thousands of application connections through dozens of database connections. Use transaction-level pooling for most workloads."
+relatedPosts: ["multi-tenant-saas-architecture", "event-driven-data-pipelines"]
+---
+
+PostgreSQL is the database I reach for on every project. Not because it's trendy — it's literally older than some of the engineers I work with — but because after ten years of using it, I *keep* discovering features that eliminate entire categories of problems. Problems I used to solve with application code, cron jobs, Redis, extra microservices, or "temporary" infrastructure that became permanent. Every time I think I've seen everything Postgres can do, it pulls another rabbit out of the hat.
+
+This post covers the patterns I now consider essential. Every one of them has either saved me significant time or prevented a production disaster. A few of them have done both. Let me save you some pain.
+
+## Partial Indexes: The Performance Win Nobody Uses
+
+Most developers know how to create indexes. Congratulations, you passed the interview. Far fewer know about partial indexes — indexes that only include rows matching a condition. They're smaller, faster to maintain, and for common query patterns they're so much better it's almost unfair.
+
+Here's the scenario. You have a jobs table with millions of rows. 99% are completed. You only ever query the pending ones. So why are you indexing all ten million rows?
+
+```sql
+-- Full index: indexes all 10 million rows
+CREATE INDEX idx_jobs_status ON jobs(status);
+
+-- Partial index: indexes only the ~100K pending rows
+CREATE INDEX idx_jobs_pending ON jobs(status, created_at)
+  WHERE status IN ('pending', 'running');
+```
+
+The partial index is roughly 100x smaller. Let that sink in. One hundred times. Inserts into completed jobs don't touch it. Queries for pending jobs are faster because the index actually fits in memory instead of competing for cache space with nine million rows you'll never look at. I once shaved 200ms off a critical query just by switching to a partial index. My ops team thought I'd found some exotic optimization. Nope. Just stopped indexing garbage.
+
+<Callout type="tip" title="Where I Use Partial Indexes">
+Anywhere there's a "hot" subset of data: active sessions, unread notifications, unpaid invoices, unprocessed events. If your queries always filter to a small fraction of the table, a partial index is almost always the right move. I've started adding them reflexively at this point. It's like muscle memory, except for SQL.
+</Callout>
+
+### Real Example: Notification System
+
+This pattern comes up in nearly every application I build, and if you've built a SaaS app you've probably got the same problem:
+
+```sql
+-- Users only see unread notifications
+CREATE INDEX idx_notifications_unread
+  ON notifications(user_id, created_at DESC)
+  WHERE read_at IS NULL;
+
+-- The query planner uses this perfectly
+EXPLAIN ANALYZE
+SELECT * FROM notifications
+WHERE user_id = 'usr_123'
+  AND read_at IS NULL
+ORDER BY created_at DESC
+LIMIT 20;
+
+-- Index Scan using idx_notifications_unread
+-- Rows: 20, Time: 0.3ms
+-- vs Full table scan without partial index
+-- Rows: 20, Time: 45ms
+```
+
+From 45ms to 0.3ms. That's a 150x improvement. From adding a WHERE clause to an index. If that doesn't make you a little bit giddy, I don't know what to tell you.
+
+## JSONB with GIN Indexes: Flexible Without Sacrificing Speed
+
+I used to waste so much energy on the relational-vs-document database holy war. "Should we use Postgres or MongoDB?" Wrong question. The right answer — and I wish someone had told me this a decade ago — is: use both, in the same table. PostgreSQL's JSONB type with GIN indexes gives you document-store flexibility with relational guarantees. Best of both worlds, no extra infrastructure.
+
+### When JSONB Makes Sense
+
+Use JSONB for data that varies between rows or changes frequently in structure. Keep your core business data in proper typed columns. This isn't an either/or — it's a "use the right tool for each column":
+
+```sql
+CREATE TABLE products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    price_cents INTEGER NOT NULL,
+    -- Fixed schema for core business data above
+    -- Flexible schema for variable attributes below
+    attributes JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- GIN index for fast JSONB queries
+CREATE INDEX idx_products_attributes ON products USING GIN (attributes);
+```
+
+Now different product categories can have different attributes without schema changes, without migrations, without any of that nonsense:
+
+```sql
+-- Electronics
+INSERT INTO products (name, category, price_cents, attributes) VALUES
+('USB-C Hub', 'electronics', 4999, '{
+  "ports": 7,
+  "power_delivery": true,
+  "max_wattage": 100,
+  "compatible_with": ["MacBook", "iPad Pro", "ThinkPad"]
+}');
+
+-- Clothing
+INSERT INTO products (name, category, price_cents, attributes) VALUES
+('Wool Sweater', 'clothing', 8900, '{
+  "size": "M",
+  "color": "navy",
+  "material": "merino wool",
+  "care_instructions": "hand wash cold"
+}');
+
+-- Query across different attribute shapes
+SELECT name, price_cents
+FROM products
+WHERE attributes @> '{"power_delivery": true}'
+  AND attributes @> '{"max_wattage": 100}';
+```
+
+<Callout type="warning" title="Do Not Put Everything in JSONB">
+Okay, I need to say this because I've seen it too many times: JSONB is not an excuse to abandon schema design. I once inherited a codebase where literally everything was in a single JSONB column. User email? JSONB. Account balance? JSONB. Foreign keys? What foreign keys? It was like MongoDB cosplay inside Postgres. You lose type checking, foreign keys, NOT NULL constraints, and efficient joins. Keep your core data model relational. Use JSONB for the edges where flexibility genuinely matters. Your future self will thank you. (My past self did not thank the person who built that system.)
+</Callout>
+
+### JSONB Computed Columns
+
+Here's a neat trick for when you have JSONB attributes you query frequently — pull them out into generated columns:
+
+```sql
+ALTER TABLE products
+ADD COLUMN color TEXT GENERATED ALWAYS AS (attributes->>'color') STORED;
+
+-- Now you can index and query it like a normal column
+CREATE INDEX idx_products_color ON products(color) WHERE color IS NOT NULL;
+```
+
+Best of both worlds: flexible storage in JSONB, but fast typed queries on the fields that matter. I love this pattern. It's like having your cake and eating it too, except the cake is a B-tree index.
+
+## CTEs vs Subqueries: The Performance Truth
+
+Common Table Expressions make complex queries readable. They're beautiful. They're elegant. And for years, they had a dirty secret that bit people in production.
+
+Until PostgreSQL 12, CTEs were optimization fences — the planner couldn't push predicates into them. Your beautiful, readable CTE was also secretly preventing the query planner from doing its job. Since PostgreSQL 12, CTEs are inlined by default unless they have side effects or are referenced multiple times. So if you're on a modern Postgres (and if you're not, we need to have a different conversation), you're probably fine.
+
+The practical implication:
+
+```sql
+-- This is fine in PostgreSQL 12+ (CTE gets inlined)
+WITH active_users AS (
+    SELECT id, email, last_login
+    FROM users
+    WHERE status = 'active'
+)
+SELECT au.email, count(o.id) as order_count
+FROM active_users au
+JOIN orders o ON o.user_id = au.id
+WHERE o.created_at > now() - interval '30 days'
+GROUP BY au.email;
+
+-- For recursive or materialized CTEs, be explicit
+WITH MATERIALIZED expensive_calculation AS (
+    -- Forces PostgreSQL to compute this once, not inline it
+    SELECT user_id, complex_aggregation(data)
+    FROM large_table
+    GROUP BY user_id
+)
+SELECT * FROM expensive_calculation WHERE user_id = 'usr_123';
+```
+
+<Callout type="info" title="My Rule of Thumb">
+Use CTEs freely for readability — they're one of the best things to happen to SQL. If you suspect a performance issue, check EXPLAIN ANALYZE and add MATERIALIZED or NOT MATERIALIZED explicitly. Do not pre-optimize. The query planner is smarter than you think. (It's honestly smarter than me most of the time, and I've been doing this for ten years.)
+</Callout>
+
+## Row-Level Security for Multi-Tenant Applications
+
+Alright, this is the pattern that fundamentally changed how I build SaaS products, and I'm a little evangelical about it, so bear with me. Row-level security (RLS) enforces tenant isolation at the database level, making data leaks from application bugs nearly impossible.
+
+Here's the thing nobody tells you about multi-tenant apps: somewhere in your codebase, someone will forget a WHERE clause. Maybe it's a junior developer. Maybe it's you at 11 PM trying to ship a hotfix. Maybe it's a new endpoint that nobody reviewed properly. And without RLS, that missing WHERE clause means Tenant A just saw Tenant B's data. With RLS, the database itself says "nope" regardless of what your application code does. It's a seatbelt for your data layer.
+
+### The Setup
+
+```sql
+-- Enable RLS on the table
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+
+-- Force RLS even for table owner (critical!)
+ALTER TABLE documents FORCE ROW LEVEL SECURITY;
+
+-- Create policy: users only see their tenant's data
+CREATE POLICY tenant_isolation ON documents
+    USING (tenant_id = current_setting('app.current_tenant')::UUID);
+
+-- Create policy for inserts: can only insert for own tenant
+CREATE POLICY tenant_insert ON documents
+    FOR INSERT
+    WITH CHECK (tenant_id = current_setting('app.current_tenant')::UUID);
+```
+
+### Application Integration
+
+Set the tenant context on every connection. Every. Single. One.
+
+```python
+from contextlib import asynccontextmanager
+import asyncpg
+
+@asynccontextmanager
+async def tenant_connection(pool: asyncpg.Pool, tenant_id: str):
+    """Acquire a connection with tenant context set."""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "SET app.current_tenant = $1", tenant_id
+        )
+        try:
+            yield conn
+        finally:
+            # Reset to prevent leaking context to next user
+            await conn.execute("RESET app.current_tenant")
+
+# Usage
+async with tenant_connection(pool, request.tenant_id) as conn:
+    # This query automatically filters by tenant — no WHERE clause needed
+    rows = await conn.fetch("SELECT * FROM documents ORDER BY created_at DESC")
+```
+
+Look at that usage code. No `WHERE tenant_id = ...` anywhere. The database handles it. Every query, every time, no exceptions, no "oops I forgot." That's the beauty of it.
+
+<Callout type="warning" title="Never Use Superuser in Application Code">
+Superuser bypasses all RLS policies. ALL of them. Your beautiful tenant isolation becomes decorative if your application connects as superuser. I create a dedicated `app_user` role with only the permissions it needs. This is the one thing you absolutely must not get wrong, because if you do, you don't have multi-tenancy — you have a shared database with a false sense of security, which is worse than no security because at least with no security you're scared enough to be careful.
+</Callout>
+
+## Advisory Locks: Coordination Without Extra Infrastructure
+
+Need distributed locking? Most people immediately reach for Redis. "I'll just add Redis for locking." Sure. Now you have a Redis cluster to manage, monitor, and debug when it decides to misbehave at 3 AM. But here's the thing: if you're already running PostgreSQL (and you are, because you're reading this article), you already have distributed locking built in.
+
+PostgreSQL advisory locks are surprisingly powerful and don't require any additional infrastructure.
+
+### Preventing Duplicate Processing
+
+```sql
+-- Worker tries to acquire a lock based on job ID
+-- pg_try_advisory_xact_lock returns true if acquired, false if already held
+SELECT pg_try_advisory_xact_lock(hashtext('process_payment_' || payment_id))
+FROM pending_payments
+WHERE status = 'pending'
+LIMIT 1;
+```
+
+In application code:
+
+```python
+async def process_payment_safely(conn, payment_id: str):
+    """Process a payment with advisory lock to prevent double-processing."""
+    lock_key = hash(f"payment_{payment_id}") & 0x7FFFFFFFFFFFFFFF
+
+    # Try to acquire lock (non-blocking)
+    acquired = await conn.fetchval(
+        "SELECT pg_try_advisory_xact_lock($1)", lock_key
+    )
+
+    if not acquired:
+        logger.info(f"Payment {payment_id} already being processed, skipping")
+        return
+
+    # Lock acquired — safe to process
+    # Lock auto-releases when transaction ends
+    await do_payment_processing(conn, payment_id)
+```
+
+I once spent two weeks debugging a double-payment issue in a system that was using application-level locking with Redis. Race condition between the Redis check and the actual database write. Switched to advisory locks — problem gone, and we got to remove Redis from that part of the stack. Fewer moving parts, fewer things to break. That's always the right direction.
+
+<Callout type="tip" title="Transaction vs Session Locks">
+Use `pg_try_advisory_xact_lock` (transaction-scoped) by default. It auto-releases when the transaction ends, so you literally cannot leak locks even if your code crashes. Session-scoped locks (`pg_advisory_lock`) persist until explicitly released or the connection closes — use them only when you need cross-transaction locking, and treat them like live grenades. I've seen leaked session locks cause production deadlocks that took hours to diagnose.
+</Callout>
+
+## LISTEN/NOTIFY: Lightweight Real-Time
+
+Here's another one of Postgres's hidden gems that saves you from adding infrastructure: a built-in pub/sub system. It's not a replacement for Kafka or Redis Pub/Sub at scale — let's be real — but for a surprising number of use cases, it eliminates the need for additional infrastructure entirely.
+
+### Setting Up a Notification Trigger
+
+```sql
+-- Automatically notify when orders change status
+CREATE OR REPLACE FUNCTION notify_order_status_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        PERFORM pg_notify(
+            'order_updates',
+            json_build_object(
+                'order_id', NEW.id,
+                'old_status', OLD.status,
+                'new_status', NEW.status,
+                'updated_at', NEW.updated_at
+            )::text
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER order_status_trigger
+    AFTER UPDATE ON orders
+    FOR EACH ROW
+    EXECUTE FUNCTION notify_order_status_change();
+```
+
+### Listening in Python
+
+```python
+import asyncpg
+import json
+
+async def listen_for_order_updates(dsn: str):
+    conn = await asyncpg.connect(dsn)
+    await conn.add_listener('order_updates', handle_notification)
+
+    # Keep connection alive
+    while True:
+        await asyncio.sleep(1)
+
+def handle_notification(conn, pid, channel, payload):
+    data = json.loads(payload)
+    print(f"Order {data['order_id']}: {data['old_status']} → {data['new_status']}")
+    # Push to WebSocket, update cache, trigger workflow, etc.
+```
+
+I use this pattern for dashboards that need near-real-time updates. It works beautifully for up to a few hundred notifications per second. Beyond that, yeah, move to a dedicated message broker. But for the 90% of projects that will never hit that scale? This is free. It's already there. It's already running. Stop adding infrastructure you don't need. (I say this as someone who has added infrastructure he didn't need many, many times.)
+
+## Connection Pooling with PgBouncer
+
+Okay, let's talk about something that will bite you exactly once, and then you'll never forget it. PostgreSQL spawns a new OS process for each connection. Not a thread — a full process. At 200+ connections, you start feeling it: memory usage climbs, context switching murders your performance, and eventually you hit `max_connections` and your app starts throwing errors and your phone starts ringing.
+
+PgBouncer sits between your application and PostgreSQL, multiplexing many application connections through a smaller number of database connections. It's one of those things that, once you set it up, you wonder why it isn't the default.
+
+### Configuration That Works
+
+Here's the config I start with on most projects and then tune from there:
+
+```ini
+; pgbouncer.ini
+[databases]
+myapp = host=127.0.0.1 port=5432 dbname=myapp
+
+[pgbouncer]
+listen_port = 6432
+listen_addr = 0.0.0.0
+
+; Transaction pooling: connection returned to pool after each transaction
+pool_mode = transaction
+
+; Size limits
+default_pool_size = 25
+max_client_conn = 1000
+max_db_connections = 50
+
+; Timeouts
+server_idle_timeout = 300
+client_idle_timeout = 600
+query_timeout = 30
+```
+
+```
+Application Architecture with PgBouncer
+──────────────────────────────────────────────
+
+  App Server 1 ──┐
+  (200 conns)    │
+                  │     PgBouncer        PostgreSQL
+  App Server 2 ──┼──►  (50 pool)  ──►  (50 conns)
+  (200 conns)    │
+                  │
+  App Server 3 ──┘
+  (200 conns)
+
+  600 app connections → 50 DB connections
+```
+
+600 application connections funneled through 50 database connections. That ratio alone should make you want to install PgBouncer right now.
+
+<Callout type="warning" title="Transaction Pooling Gotcha">
+With `pool_mode = transaction`, you cannot use session-level features like prepared statements, SET commands, or LISTEN/NOTIFY across transactions. Each transaction may hit a different backend connection. This trips people up constantly — I've seen it confuse senior engineers. If you need session features, use `pool_mode = session` for those specific connections.
+</Callout>
+
+And here's where it gets interesting: this directly impacts the RLS pattern I described above. If you're using `SET app.current_tenant` with transaction pooling, you must set it inside every transaction, not once per connection. Because with transaction pooling, "your connection" is a lie — it's a different backend connection every time. Yes, I learned this the hard way. Yes, it was in production. No, I don't want to discuss the details.
+
+## Table Partitioning for Large Datasets
+
+When tables grow past tens of millions of rows, everything starts getting... sluggish. Queries slow down, VACUUM takes forever, and archiving old data becomes a multi-day project involving downtime and prayers. Partitioning is the answer.
+
+### Range Partitioning by Date
+
+The most common pattern I use (and the one you'll probably need first):
+
+```sql
+-- Create partitioned table
+CREATE TABLE events (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL,
+    event_type TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+) PARTITION BY RANGE (created_at);
+
+-- Create monthly partitions
+CREATE TABLE events_2026_01 PARTITION OF events
+    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+
+CREATE TABLE events_2026_02 PARTITION OF events
+    FOR VALUES FROM ('2026-02-01') TO ('2026-03-01');
+
+CREATE TABLE events_2026_03 PARTITION OF events
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+-- Indexes are per-partition (smaller, faster)
+CREATE INDEX idx_events_2026_01_tenant ON events_2026_01(tenant_id, created_at);
+CREATE INDEX idx_events_2026_02_tenant ON events_2026_02(tenant_id, created_at);
+```
+
+### Automated Partition Management
+
+Do not — I repeat, do NOT — create partitions by hand. I made this mistake exactly once. Forgot to create the next month's partition. Midnight on the 1st, inserts start failing. Fun times. Automate it:
+
+```sql
+-- Function to create next month's partition
+CREATE OR REPLACE FUNCTION create_monthly_partition(
+    table_name TEXT,
+    target_month DATE
+) RETURNS VOID AS $$
+DECLARE
+    partition_name TEXT;
+    start_date DATE;
+    end_date DATE;
+BEGIN
+    start_date := date_trunc('month', target_month);
+    end_date := start_date + interval '1 month';
+    partition_name := table_name || '_' || to_char(start_date, 'YYYY_MM');
+
+    EXECUTE format(
+        'CREATE TABLE IF NOT EXISTS %I PARTITION OF %I
+         FOR VALUES FROM (%L) TO (%L)',
+        partition_name, table_name, start_date, end_date
+    );
+
+    RAISE NOTICE 'Created partition: %', partition_name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create partitions 3 months ahead
+SELECT create_monthly_partition('events', now() + interval '1 month');
+SELECT create_monthly_partition('events', now() + interval '2 months');
+SELECT create_monthly_partition('events', now() + interval '3 months');
+```
+
+Three months of runway. Run this monthly (or put it in a cron job that runs weekly — belt and suspenders). Never get paged at midnight because your partitions ran out.
+
+<Callout type="tip" title="Partition Pruning Is Automatic">
+When your query includes a WHERE clause on the partition key, PostgreSQL automatically skips irrelevant partitions. A query for last week's data only scans one partition, not the entire table. This is huge. Check with EXPLAIN to confirm pruning is happening — look for "Partitions pruned" in the output. If you don't see it, your WHERE clause probably isn't matching the partition key correctly.
+</Callout>
+
+### Dropping Old Data Is Instant
+
+Okay, this is the killer feature of partitioning and the reason I get unreasonably excited about it. Dropping old data goes from "multi-hour operation that locks the table and might crash your app" to literally instant:
+
+```sql
+-- Instead of: DELETE FROM events WHERE created_at < '2025-01-01'
+-- (which locks the table, generates tons of WAL, takes hours, and
+-- requires a VACUUM afterward that takes MORE hours)
+
+-- Just drop the partition:
+DROP TABLE events_2024_12;
+-- Instant. No vacuum needed. No lock contention. No drama.
+```
+
+If you've ever sat there watching a DELETE crawl through a hundred million rows while your application slowly dies, you understand why this makes me emotional.
+
+## Putting It All Together
+
+These patterns aren't isolated tricks you pull out at dinner parties to impress other engineers (though they work for that too). They compose beautifully. In a typical SaaS project, I use:
+
+- **Partial indexes** on the hot working set (active subscriptions, pending jobs)
+- **JSONB** for tenant configuration and flexible metadata
+- **RLS** for tenant isolation at the database layer
+- **Advisory locks** for payment processing and job deduplication
+- **LISTEN/NOTIFY** for real-time dashboard updates
+- **PgBouncer** for connection management
+- **Partitioning** on event and audit log tables
+
+PostgreSQL handles all of this in a single system. No Redis for locking, no message broker for simple notifications, no document database for flexible schemas. Each additional piece of infrastructure you don't need is infrastructure you don't have to monitor, back up, debug at 3 AM, or explain to the new hire. Simplicity isn't just elegant — it's operational sanity.
+
+That's the real lesson after ten years: PostgreSQL isn't just a database. It's a platform. And the engineers who learn its features deeply build fundamentally simpler systems than the ones who reach for a new tool every time they hit a new problem. I've been both of those engineers. Trust me — being the first one is way better for your sleep schedule.
+
+---
+
+*Building data-intensive applications with PostgreSQL? [Get in touch](/contact) to discuss architecture, performance optimization, and scaling strategies. I promise I'll only judge your schema a little bit.*

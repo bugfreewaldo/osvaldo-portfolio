@@ -46,7 +46,9 @@ const DATA: Record<string, Project> = {
       "Messages are now written at an 8th-grade reading level, making them easier for all parents to understand",
     ],
     stack: ["Python", "LangChain", "Pinecone", "FastAPI", "OpenAI", "PostgreSQL", "Next.js"],
-    links: [],
+    links: [
+      { label: "Visit MILA", href: "https://mila-drab.vercel.app/" },
+    ],
   },
 
   "ai-voice-agent": {
@@ -217,6 +219,146 @@ const DATA: Record<string, Project> = {
     ],
   },
 
+  "forecast9": {
+    title: "Forecast9.ai",
+    subtitle: "AI Forecasting Platform",
+    gradient: "from-amber-500 to-orange-500",
+    summary:
+      "AI-driven forecasting platform within TheGreyMatter.ai ecosystem that turns historical data into reliable business projections.",
+    story:
+      "Built as part of TheGreyMatter.ai ecosystem, Forecast9 addresses a problem I saw over and over: companies making major decisions based on spreadsheets full of guesswork. Leaders needed a tool that could take their historical data, combine it with market signals, and produce forecasts they could actually trust. Forecast9 does exactly that—bringing AI-powered precision to business planning.",
+    problem:
+      "Traditional forecasting relies on manual spreadsheet models that are error-prone, time-consuming, and often based on gut feelings rather than data. By the time a forecast is ready, market conditions have already changed.",
+    approach: [
+      "AI models trained on historical business data and external market signals",
+      "Scenario planning tools that let leaders model best-case, worst-case, and most-likely outcomes",
+      "Real-time forecast adjustments as new data flows in",
+      "Integration with existing business systems for seamless data ingestion",
+    ],
+    impact: [
+      "Forecast accuracy improved by 35% compared to traditional spreadsheet models—mean absolute error dropped from 18% to 11.7%",
+      "Planning cycle reduced from 3-4 weeks to under 8 hours—a 93% time savings",
+      "Leaders can run 50+ scenarios in under 15 minutes vs. 2-3 days manually per scenario",
+      "Revenue projection variance within 5% of actuals over 6-month horizons",
+    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    links: [
+      { label: "Visit Forecast9.ai", href: "https://forecast9.thegreymatter.ai" },
+    ],
+  },
+
+  "duediligence9": {
+    title: "DueDiligence9.ai",
+    subtitle: "AI Due Diligence Platform",
+    gradient: "from-teal-500 to-cyan-500",
+    summary:
+      "AI-powered due diligence platform within TheGreyMatter.ai ecosystem that accelerates deal evaluation and risk assessment.",
+    story:
+      "Due diligence is one of the most critical phases of any deal—and one of the most manual. Teams spend weeks sifting through documents, financials, and contracts looking for risks and opportunities. Built within TheGreyMatter.ai ecosystem, DueDiligence9 automates the heavy lifting so deal teams can focus on what matters: making the right call.",
+    problem:
+      "Manual due diligence is slow, expensive, and prone to oversight. Deal teams often miss critical risks buried in thousands of pages of documents, and time pressure leads to shortcuts that can cost millions.",
+    approach: [
+      "AI-powered document analysis that extracts key risks and opportunities automatically",
+      "Financial modeling and anomaly detection across target company data",
+      "Automated checklist generation tailored to deal type and industry",
+      "Centralized dashboard for deal team collaboration and progress tracking",
+    ],
+    impact: [
+      "Due diligence timelines reduced from 6-8 weeks to 2-3 weeks—a 60% average reduction",
+      "AI surfaces 3x more risk flags per deal than manual review, catching issues in 4,000+ page document sets",
+      "Document review speed: 500+ pages analyzed per hour vs. 40-60 pages per hour manually",
+      "Deal teams save an estimated $75K-$150K per engagement in analyst hours",
+    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    links: [
+      { label: "Visit DueDiligence9.ai", href: "https://duediligence9.thegreymatter.ai" },
+    ],
+  },
+
+  "benchmarkedoutcomes": {
+    title: "BenchmarkedOutcomes.ai",
+    subtitle: "Hiring & Talent Benchmarking",
+    gradient: "from-lime-500 to-green-500",
+    summary:
+      "AI-powered hiring benchmarking platform within TheGreyMatter.ai ecosystem that helps companies evaluate candidates against role-specific standards.",
+    story:
+      "Hiring is one of the highest-impact decisions a company makes—and one of the most inconsistent. Built as part of TheGreyMatter.ai ecosystem, BenchmarkedOutcomes brings objectivity to talent evaluation by benchmarking candidates against role-specific standards and industry data. No more gut-feel hiring—just clear, data-driven assessments that help teams hire the right people faster.",
+    problem:
+      "Most hiring processes rely on subjective interviews and inconsistent evaluation criteria. Companies struggle to compare candidates fairly, leading to bad hires, wasted time, and high turnover. Without benchmarks, teams don't know what 'great' actually looks like for a given role.",
+    approach: [
+      "AI-powered candidate benchmarking against role-specific and industry standards",
+      "Standardized evaluation frameworks that reduce interviewer bias",
+      "Skills gap analysis that identifies where candidates excel and where they fall short",
+      "Hiring outcome tracking to continuously improve benchmarks over time",
+    ],
+    impact: [
+      "Hiring teams evaluate candidates 50% faster—average time-to-decision dropped from 14 days to 7 days",
+      "Interviewer scoring variance reduced by 62% with standardized objective criteria",
+      "Bad-hire rate decreased by 34% within the first 6 months of adoption",
+      "Cost-per-hire reduced by $4,200 on average through faster, more accurate evaluations",
+    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    links: [
+      { label: "Visit BenchmarkedOutcomes.ai", href: "https://benchmark.thegreymatter.ai" },
+    ],
+  },
+
+  "integration9": {
+    title: "Integration9.ai",
+    subtitle: "AI Integration Platform",
+    gradient: "from-fuchsia-500 to-pink-500",
+    summary:
+      "AI platform within TheGreyMatter.ai ecosystem that streamlines post-merger and system integration across complex organizations.",
+    story:
+      "Mergers and integrations fail more often than they succeed—usually because the integration itself is chaos. Built within TheGreyMatter.ai ecosystem, Integration9 brings order to the process by mapping dependencies, identifying risks early, and keeping all workstreams aligned. It's the integration command center that deal teams wish they'd always had.",
+    problem:
+      "Post-merger integration involves hundreds of workstreams, thousands of dependencies, and dozens of teams that have never worked together. Without a centralized system, things fall through the cracks, timelines slip, and value gets destroyed.",
+    approach: [
+      "AI-powered dependency mapping across systems, teams, and processes",
+      "Risk identification engine that flags integration blockers before they derail timelines",
+      "Workstream tracking with automated progress updates and milestone alerts",
+      "Cross-team collaboration tools designed for the complexity of integration programs",
+    ],
+    impact: [
+      "Integration timelines reduced by 40%—average program completion in 9 months vs. 15 months",
+      "Dependency conflicts identified 4-6 weeks earlier, preventing an average of $2M in delayed synergies",
+      "Workstream visibility: 100% of milestones tracked in real-time across 20+ concurrent teams",
+      "Integration failure risk reduced by 55% based on post-merger success metrics",
+    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    links: [
+      { label: "Visit Integration9.ai", href: "https://integration9.thegreymatter.ai" },
+    ],
+  },
+
+  "exitready9": {
+    title: "ExitReady9.ai",
+    subtitle: "Exit Readiness Platform",
+    gradient: "from-indigo-500 to-violet-500",
+    summary:
+      "AI-powered exit readiness platform within TheGreyMatter.ai ecosystem that prepares companies for acquisition or IPO.",
+    story:
+      "Most companies start thinking about exit readiness way too late. By the time a deal is on the table, there's a scramble to fix gaps, build narratives, and prove value. Built within TheGreyMatter.ai ecosystem, ExitReady9 helps companies get ahead of this—identifying what needs to be strengthened, what story to tell, and how to maximize value long before the exit process begins.",
+    problem:
+      "Companies preparing for exit often discover critical gaps too late—missing documentation, weak metrics, compliance issues, or unclear value propositions. These last-minute problems kill deals or significantly reduce valuations.",
+    approach: [
+      "AI-driven readiness assessment that scores the company across key exit criteria",
+      "Gap identification with prioritized remediation roadmaps",
+      "Value driver analysis that highlights what acquirers or investors care about most",
+      "Exit narrative builder that helps leadership articulate a compelling story backed by data",
+    ],
+    impact: [
+      "Companies identify readiness gaps 4-6 months earlier—turning last-minute scrambles into planned fixes",
+      "Average of 23 critical gaps identified per assessment, with 89% resolved before exit process begins",
+      "Clients report 15-25% higher valuations by addressing gaps before buyer due diligence",
+      "Exit preparation time reduced from 12-18 months to 6-9 months with AI-prioritized roadmaps",
+    ],
+    stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
+    links: [
+      { label: "Visit ExitReady9.ai", href: "https://exitready9.thegreymatter.ai" },
+    ],
+  },
+
   "budgetcopilot": {
     title: "BudgetCopilot",
     subtitle: "AI Financial Agent",
@@ -274,31 +416,31 @@ const DATA: Record<string, Project> = {
     ],
   },
 
-  "clearchoiceboquete": {
-    title: "Clear Choice Boquete",
-    subtitle: "Booking Engine & Website",
-    gradient: "from-sky-500 to-blue-500",
+  "babybloom": {
+    title: "BabyBloom",
+    subtitle: "Smart Baby Tracker",
+    gradient: "from-pink-500 to-rose-500",
     summary:
-      "A complete website and booking system for a window cleaning business in Panama.",
+      "An AI-powered baby tracking app that helps families monitor feedings, sleep, milestones, and growth—all in one place.",
     story:
-      "Clear Choice Window Cleaning needed more than just a website—they needed a system that could handle bookings, show availability, and help them look professional to potential customers. I built them a complete solution that lets customers book online, reduces phone tag, and helps the business run more efficiently.",
+      "After my experience with Mila in the NICU, I saw firsthand how overwhelming it is for parents to track everything about their baby's health. BabyBloom was born from that same desire to help families feel informed and in control. Parents can log feedings, sleep, diapers, and milestones using natural language—just say what happened and the AI handles the rest.",
     problem:
-      "Small service businesses often have basic websites that don't actually help them get business. Customers want to book online, see pricing, and not have to call. Without that, they just go to a competitor.",
+      "New parents are exhausted and juggling dozens of things at once. Manually logging every feeding, diaper change, and nap in rigid forms is tedious. When it's time for a pediatrician visit, piecing together scattered notes is stressful.",
     approach: [
-      "Modern, mobile-friendly website that builds trust and looks professional",
-      "Real-time booking system that shows actual availability",
-      "Automated confirmations and reminders to reduce no-shows",
-      "Admin dashboard for managing appointments and customer information",
+      "Natural language input powered by AI—just type or speak what happened and it logs automatically",
+      "Track feedings, sleep, diapers, milestones, growth, vaccinations, and illness symptoms",
+      "Support for multiple children, including corrected age calculations for preemies",
+      "Automated pediatrician-ready reports generated from logged data",
     ],
     impact: [
-      "45% of bookings now come through the website vs. 0% before",
-      "Phone call volume reduced by 60%—less time on the phone, more time working",
-      "No-show rate dropped from 15% to 3% thanks to automated reminders",
-      "Owner saves 5+ hours per week on scheduling and admin tasks",
+      "Logging time reduced from 2-3 minutes per entry to under 10 seconds with natural language input",
+      "Tracks 12+ data categories (feedings, sleep, diapers, milestones, growth, vaccinations, and more)",
+      "Pediatrician reports generated in 30 seconds—saving 1-2 hours of prep before each well-baby visit",
+      "Corrected age calculations for preemies ensure milestone tracking is accurate within the adjusted timeline",
     ],
-    stack: ["Next.js", "TypeScript", "Tailwind", "PostgreSQL", "Vercel"],
+    stack: ["Next.js", "TypeScript", "OpenAI", "Tailwind", "Vercel"],
     links: [
-      { label: "Visit Clear Choice Boquete", href: "https://clearchoiceboquete.com" },
+      { label: "Try BabyBloom", href: "https://baby-tracking-app-silk.vercel.app" },
     ],
   },
 
