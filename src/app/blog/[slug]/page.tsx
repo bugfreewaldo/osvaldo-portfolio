@@ -76,10 +76,12 @@ export default async function BlogPostPage({ params }: PageProps) {
       `https://osvaldorestrepo.dev/blog/${slug}/opengraph-image`,
     datePublished: post.frontmatter.date,
     dateModified: post.frontmatter.updated || post.frontmatter.date,
+    inLanguage: "en",
     author: {
       "@type": "Person",
       name: post.frontmatter.author,
       url: "https://osvaldorestrepo.dev",
+      "@id": "https://osvaldorestrepo.dev/#person",
     },
     publisher: {
       "@type": "Person",
@@ -93,6 +95,40 @@ export default async function BlogPostPage({ params }: PageProps) {
     keywords: post.frontmatter.tags?.join(", ") || "",
     wordCount: post.content.split(/\s+/).length,
     timeRequired: `PT${post.readingTimeMinutes}M`,
+    ...(spanishPost
+      ? {
+          translationOfWork: {
+            "@type": "Article",
+            url: `https://osvaldorestrepo.dev/es/blog/${slug}`,
+            inLanguage: "es",
+          },
+        }
+      : {}),
+  };
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: "https://osvaldorestrepo.dev",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: "https://osvaldorestrepo.dev/blog",
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: post.frontmatter.title,
+        item: `https://osvaldorestrepo.dev/blog/${slug}`,
+      },
+    ],
   };
 
   const faqJsonLd =
@@ -116,6 +152,10 @@ export default async function BlogPostPage({ params }: PageProps) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       {faqJsonLd && (
         <script

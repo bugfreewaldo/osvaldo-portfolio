@@ -84,6 +84,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
       "@type": "Person",
       name: post.frontmatter.author,
       url: "https://osvaldorestrepo.dev",
+      "@id": "https://osvaldorestrepo.dev/#person",
     },
     publisher: {
       "@type": "Person",
@@ -98,6 +99,40 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
     keywords: post.frontmatter.tags?.join(", ") || "",
     wordCount: post.content.split(/\s+/).length,
     timeRequired: `PT${post.readingTimeMinutes}M`,
+    ...(englishPost
+      ? {
+          translationOfWork: {
+            "@type": "Article",
+            url: `https://osvaldorestrepo.dev/blog/${slug}`,
+            inLanguage: "en",
+          },
+        }
+      : {}),
+  };
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Inicio",
+        item: "https://osvaldorestrepo.dev",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: "https://osvaldorestrepo.dev/es/blog",
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: post.frontmatter.title,
+        item: `https://osvaldorestrepo.dev/es/blog/${slug}`,
+      },
+    ],
   };
 
   const faqJsonLd =
@@ -121,6 +156,10 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       {faqJsonLd && (
         <script

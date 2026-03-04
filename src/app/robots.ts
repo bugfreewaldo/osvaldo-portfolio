@@ -11,7 +11,18 @@ export default function robots(): MetadataRoute.Robots {
       },
       {
         // Allow AI crawlers to index the site
-        userAgent: ["GPTBot", "ChatGPT-User", "Claude-Web", "Anthropic-AI", "Google-Extended"],
+        userAgent: [
+          "GPTBot",
+          "ChatGPT-User",
+          "Claude-Web",
+          "Anthropic-AI",
+          "Google-Extended",
+          "PerplexityBot",
+          "Bytespider",
+          "CCBot",
+          "cohere-ai",
+          "Meta-ExternalFetcher",
+        ],
         allow: "/",
       },
     ],
