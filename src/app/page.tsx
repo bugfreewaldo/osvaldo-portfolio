@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
-import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper } from "lucide-react";
+import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper, Database, Globe, Shield, BarChart3, Code2, Workflow } from "lucide-react";
 
 // Rotating text phrases
 const rotatingPhrases = [
@@ -45,44 +45,89 @@ function RotatingText() {
   );
 }
 
-// Animated background grid
+// Animated background with floating gradient orbs and grid
 function GridBackground() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
+      <motion.div
+        className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl"
+        animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"
+        animate={{ x: [0, -30, 0], y: [0, 20, 0] }}
+        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute top-1/3 right-1/3 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl"
+        animate={{ x: [0, 20, 0], y: [0, 30, 0] }}
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+      />
     </div>
   );
 }
 
-// Floating nodes animation - fixed positions to avoid hydration mismatch
-const floatingNodes = [
-  { id: 0, x: 15, y: 20, delay: 0 },
-  { id: 1, x: 85, y: 15, delay: 0.5 },
-  { id: 2, x: 25, y: 70, delay: 1 },
-  { id: 3, x: 75, y: 80, delay: 1.5 },
-  { id: 4, x: 50, y: 40, delay: 0.8 },
-  { id: 5, x: 10, y: 50, delay: 1.2 },
+// Constellation particle network
+const particles = [
+  { id: 0, x: 12, y: 18, size: 3 },
+  { id: 1, x: 88, y: 12, size: 2 },
+  { id: 2, x: 22, y: 72, size: 2.5 },
+  { id: 3, x: 78, y: 78, size: 3 },
+  { id: 4, x: 50, y: 35, size: 2 },
+  { id: 5, x: 8, y: 48, size: 2.5 },
+  { id: 6, x: 92, y: 45, size: 2 },
+  { id: 7, x: 35, y: 90, size: 3 },
+  { id: 8, x: 65, y: 8, size: 2 },
+  { id: 9, x: 45, y: 60, size: 2.5 },
 ];
 
-function FloatingNodes() {
+const connections = [
+  [0, 4], [1, 4], [2, 5], [3, 6], [4, 9],
+  [5, 0], [6, 1], [7, 2], [8, 1], [9, 3],
+];
+
+function ParticleNetwork() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {floatingNodes.map((node) => (
+      {/* Connecting lines */}
+      <svg className="absolute inset-0 w-full h-full">
+        {connections.map(([a, b], i) => (
+          <motion.line
+            key={`line-${i}`}
+            x1={`${particles[a].x}%`}
+            y1={`${particles[a].y}%`}
+            x2={`${particles[b].x}%`}
+            y2={`${particles[b].y}%`}
+            stroke="currentColor"
+            className="text-indigo-400/10 dark:text-indigo-400/[0.07]"
+            strokeWidth="1"
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 2, delay: 1 + i * 0.15, ease: "easeOut" }}
+          />
+        ))}
+      </svg>
+      {/* Particles */}
+      {particles.map((p) => (
         <motion.div
-          key={node.id}
-          className="absolute w-2 h-2 bg-indigo-400/40 rounded-full"
-          style={{ left: `${node.x}%`, top: `${node.y}%` }}
+          key={p.id}
+          className="absolute rounded-full bg-indigo-400/30 dark:bg-indigo-400/20"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+          }}
+          initial={{ scale: 0, opacity: 0 }}
           animate={{
-            y: [0, -20, 0],
-            opacity: [0.3, 0.8, 0.3],
+            scale: [1, 1.5, 1],
+            opacity: [0.3, 0.7, 0.3],
           }}
           transition={{
-            duration: 3,
-            delay: node.delay,
-            repeat: Infinity,
-            ease: "easeInOut",
+            scale: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
+            opacity: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
           }}
         />
       ))}
@@ -90,30 +135,112 @@ function FloatingNodes() {
   );
 }
 
+// Parallax mouse-tracking wrapper for the hero profile
+function ParallaxProfile({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const rotateX = useTransform(mouseY, [-0.5, 0.5], [5, -5]);
+  const rotateY = useTransform(mouseX, [-0.5, 0.5], [-5, 5]);
+
+  useEffect(() => {
+    function handleMouse(e: MouseEvent) {
+      if (!ref.current) return;
+      const rect = ref.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      mouseX.set((e.clientX - centerX) / rect.width);
+      mouseY.set((e.clientY - centerY) / rect.height);
+    }
+    window.addEventListener("mousemove", handleMouse);
+    return () => window.removeEventListener("mousemove", handleMouse);
+  }, [mouseX, mouseY]);
+
+  return (
+    <motion.div
+      ref={ref}
+      style={{ rotateX, rotateY, transformPerspective: 800 }}
+      className="will-change-transform"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+// Stagger container variants
+const heroContainer = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+  },
+};
+
+const heroItem = {
+  hidden: { opacity: 0, y: 30, filter: "blur(10px)" },
+  show: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.7, ease: "easeOut" as const },
+  },
+};
+
 const capabilities = [
   {
     icon: Brain,
     title: "LLMs & RAG",
-    description: "Building intelligent systems with retrieval-augmented generation and fine-tuned language models",
+    description: "Retrieval-augmented generation, prompt engineering, fine-tuning, and eval pipelines for production LLM apps",
     gradient: "from-purple-500 to-indigo-500",
+    tech: ["LangChain", "OpenAI", "Pinecone", "ChromaDB"],
   },
   {
     icon: MessageSquare,
     title: "AI Agents",
-    description: "Autonomous agents with tool-calling, memory, and multi-step reasoning capabilities",
+    description: "Autonomous agents with tool-calling, memory, multi-step reasoning, and human-in-the-loop handoffs",
     gradient: "from-indigo-500 to-cyan-500",
+    tech: ["Claude", "CrewAI", "Function Calling", "MCP"],
   },
   {
     icon: Cpu,
-    title: "Voice Systems",
-    description: "End-to-end voice AI with speech recognition, synthesis, and real-time conversation",
+    title: "Voice AI",
+    description: "End-to-end voice systems — STT, TTS, real-time conversation, phone agents, and IVR replacement",
     gradient: "from-cyan-500 to-emerald-500",
+    tech: ["Twilio", "Whisper", "ElevenLabs", "WebRTC"],
   },
   {
     icon: Zap,
     title: "Automation",
-    description: "Intelligent workflow automation connecting AI to real business operations",
+    description: "Intelligent workflow automation connecting AI to CRMs, ERPs, billing, and business operations",
     gradient: "from-emerald-500 to-yellow-500",
+    tech: ["Stripe", "QuickBooks", "Zapier", "n8n"],
+  },
+  {
+    icon: Globe,
+    title: "Full-Stack Apps",
+    description: "Production web apps with modern frameworks, real-time features, auth, payments, and deployment",
+    gradient: "from-blue-500 to-indigo-500",
+    tech: ["Next.js", "React", "Node.js", "TypeScript"],
+  },
+  {
+    icon: Database,
+    title: "Data & ML Pipelines",
+    description: "ETL pipelines, vector databases, embedding workflows, and data infrastructure for AI-first products",
+    gradient: "from-teal-500 to-cyan-500",
+    tech: ["PostgreSQL", "Redis", "Python", "Pandas"],
+  },
+  {
+    icon: Shield,
+    title: "AI Safety & Evals",
+    description: "Guardrails, content filtering, hallucination detection, and systematic evaluation frameworks",
+    gradient: "from-rose-500 to-pink-500",
+    tech: ["Evals", "Guardrails", "RLHF", "Red-teaming"],
+  },
+  {
+    icon: Workflow,
+    title: "API & Integrations",
+    description: "RESTful APIs, webhooks, third-party integrations, and microservice architectures that scale",
+    gradient: "from-amber-500 to-orange-500",
+    tech: ["REST", "GraphQL", "WebSockets", "Docker"],
   },
 ];
 
@@ -202,18 +329,19 @@ export default function Home() {
   return (
     <main className="relative min-h-screen">
       <GridBackground />
-      <FloatingNodes />
+      <ParticleNetwork />
 
       {/* Hero */}
       <section className="relative min-h-[70vh] flex items-center justify-center px-4">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
           {/* Text Content */}
-          <div className="text-center md:text-left order-2 md:order-1">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-            >
+          <motion.div
+            className="text-center md:text-left order-2 md:order-1"
+            variants={heroContainer}
+            initial="hidden"
+            animate="show"
+          >
+            <motion.div variants={heroItem}>
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-sm mb-6">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -225,30 +353,28 @@ export default function Home() {
 
             <motion.h1
               className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.1 }}
+              variants={heroItem}
             >
               <span className="text-slate-900 dark:text-white">Hey, I&apos;m </span>
-              <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
+              <motion.span
+                className="inline-block bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent bg-[size:200%_auto]"
+                animate={{ backgroundPosition: ["0% center", "200% center"] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+              >
                 Waldo
-              </span>
+              </motion.span>
             </motion.h1>
 
             <motion.div
               className="mt-4 text-lg sm:text-xl"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.3 }}
+              variants={heroItem}
             >
               <RotatingText />
             </motion.div>
 
             <motion.p
               className="mt-4 text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.5 }}
+              variants={heroItem}
             >
               Full-Stack & Applied AI Engineer specializing in LLMs, autonomous agents,
               and voice systems. Based in Panama, building globally.
@@ -256,163 +382,228 @@ export default function Home() {
 
             <motion.div
               className="mt-8 flex flex-wrap justify-center md:justify-start gap-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6, delay: 0.7 }}
+              variants={heroItem}
             >
               <Link
                 href="/projects"
-                className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
+                className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:-translate-y-0.5"
               >
                 View Projects
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </Link>
-
             </motion.div>
 
             <motion.div
-              className="mt-6 flex justify-center md:justify-start gap-4"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.6, delay: 0.9 }}
+              className="mt-6 flex justify-center md:justify-start gap-2"
+              variants={heroItem}
             >
-              <a
-                href="https://github.com/bugfreewaldo"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Github className="w-5 h-5" />
-              </a>
-              <a
-                href="https://linkedin.com/in/osvaldorestrepo"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Linkedin className="w-5 h-5" />
-              </a>
-              <a
-                href="mailto:me@osvaldorestrepo.dev"
-                className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Mail className="w-5 h-5" />
-              </a>
-              <a
-                href="https://www.instagram.com/waldos.code.lab/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                <Instagram className="w-5 h-5" />
-              </a>
+              {[
+                { href: "https://github.com/bugfreewaldo", icon: Github, label: "GitHub" },
+                { href: "https://linkedin.com/in/osvaldorestrepo", icon: Linkedin, label: "LinkedIn" },
+                { href: "mailto:me@osvaldorestrepo.dev", icon: Mail, label: "Email" },
+                { href: "https://www.instagram.com/waldos.code.lab/", icon: Instagram, label: "Instagram" },
+              ].map((social, i) => (
+                <motion.a
+                  key={social.label}
+                  href={social.href}
+                  target={social.href.startsWith("mailto") ? undefined : "_blank"}
+                  rel={social.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
+                  className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  whileHover={{ scale: 1.15, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1 + i * 0.08 }}
+                  aria-label={social.label}
+                >
+                  <social.icon className="w-5 h-5" />
+                </motion.a>
+              ))}
             </motion.div>
-          </div>
+          </motion.div>
 
           {/* Profile Picture */}
           <motion.div
             className="flex justify-center order-1 md:order-2"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
+            initial={{ opacity: 0, scale: 0.6, rotate: -5 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
           >
-            <div className="relative">
-              {/* Gradient glow behind image */}
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 rounded-full blur-2xl opacity-30 scale-110" />
+            <ParallaxProfile>
+              <div className="relative">
+                {/* Animated gradient glow behind image */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 rounded-full blur-2xl scale-110"
+                  animate={{ opacity: [0.2, 0.4, 0.2] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                />
 
-              {/* Rotating gradient border */}
-              <div className="relative p-1 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500">
-                <div className="p-1 rounded-full bg-white dark:bg-slate-950">
-                  <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 lg:w-72 lg:h-72">
-                    {/* Tech background pattern */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 opacity-60">
-                      {/* Animated grid pattern */}
-                      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
-                      {/* Radial glow */}
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
-                      {/* Subtle animated pulse */}
-                      <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-cyan-500/5 rounded-full blur-xl animate-pulse" />
+                {/* Spinning ring */}
+                <motion.div
+                  className="absolute -inset-3 rounded-full border border-dashed border-indigo-300/20 dark:border-indigo-500/10"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+                />
+
+                {/* Gradient border */}
+                <div className="relative p-1 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500">
+                  <div className="p-1 rounded-full bg-white dark:bg-slate-950">
+                    <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 lg:w-72 lg:h-72">
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 opacity-60">
+                        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
+                        <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-cyan-500/5 rounded-full blur-xl animate-pulse" />
+                      </div>
+                      <Image
+                        src="/images/waldoprofilepic.png"
+                        alt="Waldo - AI Engineer"
+                        width={280}
+                        height={280}
+                        className="relative z-10 rounded-full object-cover w-full h-full"
+                        priority
+                      />
                     </div>
-                    <Image
-                      src="/images/waldoprofilepic.png"
-                      alt="Waldo - AI Engineer"
-                      width={280}
-                      height={280}
-                      className="relative z-10 rounded-full object-cover w-full h-full"
-                      priority
-                    />
                   </div>
                 </div>
-              </div>
 
-              {/* Floating tech badges */}
-              <motion.div
-                className="absolute -top-2 -right-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-              >
-                <Brain className="w-5 h-5 text-indigo-500" />
-              </motion.div>
-              <motion.div
-                className="absolute -bottom-2 -left-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-              >
-                <Cpu className="w-5 h-5 text-cyan-500" />
-              </motion.div>
-              <motion.div
-                className="absolute top-1/2 -right-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-              >
-                <Zap className="w-5 h-5 text-yellow-500" />
-              </motion.div>
-            </div>
+                {/* Orbital floating tech badges */}
+                <motion.div
+                  className="absolute -top-2 -right-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 0.8, duration: 0.4 },
+                    scale: { delay: 0.8, duration: 0.4, type: "spring" },
+                    y: { delay: 1.2, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Brain className="w-5 h-5 text-indigo-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute -bottom-2 -left-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.0, duration: 0.4 },
+                    scale: { delay: 1.0, duration: 0.4, type: "spring" },
+                    y: { delay: 1.4, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Cpu className="w-5 h-5 text-cyan-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute top-1/2 -right-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.2, duration: 0.4 },
+                    scale: { delay: 1.2, duration: 0.4, type: "spring" },
+                    y: { delay: 1.6, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Zap className="w-5 h-5 text-yellow-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute top-1/3 -left-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.4, duration: 0.4 },
+                    scale: { delay: 1.4, duration: 0.4, type: "spring" },
+                    y: { delay: 1.8, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <MessageSquare className="w-5 h-5 text-purple-500" />
+                </motion.div>
+              </div>
+            </ParallaxProfile>
           </motion.div>
         </div>
       </section>
 
       {/* Capabilities */}
-      <section className="relative py-16 px-4">
+      <section className="relative py-20 px-4">
         <div className="max-w-6xl mx-auto">
           <motion.div
-            className="text-center mb-10"
+            className="text-center mb-14"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-sm font-medium mb-4">
+              <Code2 className="w-4 h-4" />
+              Full-Stack AI Engineering
+            </div>
             <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
               What I Build
             </h2>
-            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-              AI systems that integrate with real operations, not just demos
+            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+              End-to-end AI systems that integrate with real operations — from prototype to production, not just demos
             </p>
           </motion.div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {capabilities.map((cap, i) => (
               <motion.div
                 key={cap.title}
-                className="group relative p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300"
+                className="group relative p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 overflow-hidden"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
+                transition={{ duration: 0.5, delay: (i % 4) * 0.1 }}
                 whileHover={{ y: -4 }}
               >
-                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cap.gradient} mb-4`}>
+                {/* Hover gradient glow */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${cap.gradient} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-300`} />
+
+                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cap.gradient} mb-4 shadow-lg shadow-indigo-500/10`}>
                   <cap.icon className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
                   {cap.title}
                 </h3>
-                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
                   {cap.description}
                 </p>
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {cap.tech.map((t) => (
+                    <span
+                      key={t}
+                      className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
               </motion.div>
             ))}
           </div>
+
+          {/* Stats bar */}
+          <motion.div
+            className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-6"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
+            {[
+              { value: "10+", label: "Years Engineering" },
+              { value: "20+", label: "Production Systems" },
+              { value: "20+", label: "AI Products Shipped" },
+              { value: "10+", label: "Countries Served" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center p-4 rounded-xl bg-white/30 dark:bg-slate-900/30 border border-slate-200/50 dark:border-slate-800/50">
+                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
+                  {stat.value}
+                </div>
+                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </motion.div>
         </div>
       </section>
 
