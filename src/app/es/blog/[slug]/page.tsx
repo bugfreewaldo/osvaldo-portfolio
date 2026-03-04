@@ -9,6 +9,8 @@ import PostContent from "@/components/blog/PostContent";
 import TableOfContents from "@/components/blog/TableOfContents";
 import FAQSection from "@/components/blog/FAQSection";
 import AuthorCard from "@/components/blog/AuthorCard";
+import ReadingProgressBar from "@/components/blog/ReadingProgressBar";
+import NewsletterSignup from "@/components/blog/NewsletterSignup";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -168,6 +170,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
         />
       )}
 
+      <ReadingProgressBar />
       <main className="relative min-h-screen">
         {/* Background */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -269,6 +272,9 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           {post.frontmatter.faqs && post.frontmatter.faqs.length > 0 && (
             <FAQSection faqs={post.frontmatter.faqs} />
           )}
+
+          {/* Newsletter Signup */}
+          <NewsletterSignup locale="es" />
 
           {/* Author Card */}
           <AuthorCard />
