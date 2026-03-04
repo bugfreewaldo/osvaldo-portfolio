@@ -47,6 +47,22 @@ const TESTIMONIALS: Testimonial[] = [
     link: "https://www.linkedin.com/in/jorge-ng-chinkee-a9413a61/",
     highlight: "Clinicians trusted it",
   },
+  {
+    quote:
+      "Osvaldo doesn't just write code — he understands the architecture behind the business problem. He ramped up fast, asked the right questions, and delivered production-grade AI features that our clients actually use. Hard to find that combination.",
+    name: "JP Morgenthal",
+    title: "Chief Technology Officer, 9Vectors",
+    link: "https://www.linkedin.com/in/jpmorgenthal/",
+    highlight: "production-grade AI features",
+  },
+  {
+    quote:
+      "We needed someone who could bridge the gap between what AI can do and what the business actually needs. Osvaldo did exactly that — shipped fast, communicated clearly, and built systems that scaled without drama.",
+    name: "Edwin Miller",
+    title: "Chief Executive Officer, 9Vectors",
+    link: "https://www.linkedin.com/in/edwinmiller/",
+    highlight: "bridge the gap",
+  },
 ];
 
 function GridBackground() {

@@ -27,6 +27,20 @@ const TESTIMONIALS: Testimonial[] = [
     title: "Chief Medical Officer, Hospital Materno Infantil José Domingo de Obaldía",
     link: "https://www.linkedin.com/in/jorge-ng-chinkee-a9413a61/",
   },
+  {
+    quote:
+      "Osvaldo doesn't just write code — he understands the architecture behind the business problem. He ramped up fast, asked the right questions, and delivered production-grade AI features that our clients actually use.",
+    name: "JP Morgenthal",
+    title: "Chief Technology Officer, 9Vectors",
+    link: "https://www.linkedin.com/in/jpmorgenthal/",
+  },
+  {
+    quote:
+      "We needed someone who could bridge the gap between what AI can do and what the business actually needs. Osvaldo did exactly that — shipped fast, communicated clearly, and built systems that scaled without drama.",
+    name: "Edwin Miller",
+    title: "Chief Executive Officer, 9Vectors",
+    link: "https://www.linkedin.com/in/edwinmiller/",
+  },
 ];
 
 export default function Testimonials() {
