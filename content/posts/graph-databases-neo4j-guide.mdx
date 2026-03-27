@@ -1,0 +1,767 @@
+---
+title: "Graph Databases and Neo4j: When Relationships Are the Data"
+description: "A practical deep dive into graph databases, Neo4j, and the Cypher query language. When to ditch your JOINs, how to model data as nodes and relationships, GraphRAG patterns, and when to stick with PostgreSQL instead."
+date: 2026-03-27
+published: true
+category: "Data Engineering"
+tags: ["Graph Database", "Neo4j", "Cypher", "Data Modeling", "Knowledge Graphs"]
+author: "Osvaldo Restrepo"
+tldr: "Graph databases shine when relationships ARE the data — fraud detection, social networks, recommendation engines, knowledge graphs. Neo4j with Cypher lets you traverse connections in milliseconds where SQL would choke on self-joins. Use them for highly connected data with variable-depth traversals. Stick with PostgreSQL for simple CRUD, heavy aggregations, or when your data is naturally tabular. And if you're building RAG systems, GraphRAG with Neo4j is genuinely better than vector-only retrieval for anything requiring reasoning over relationships."
+faqs:
+  - question: "When should I use a graph database instead of a relational database?"
+    answer: "Use a graph database when your queries are primarily about traversing relationships — social networks, fraud detection, recommendation engines, dependency analysis, knowledge graphs. If most of your queries are 'find all things connected to X within N hops,' a graph database will be orders of magnitude faster than SQL JOINs. Stick with relational databases for simple CRUD, reporting, or when your data is naturally tabular."
+  - question: "Is Neo4j free to use?"
+    answer: "Neo4j Community Edition is free and open source (GPLv3). It supports a single database, no clustering, and has some feature limitations. Neo4j Enterprise (paid) adds clustering, role-based access control, multiple databases, and advanced monitoring. Neo4j AuraDB is the managed cloud offering with a free tier that's generous enough for prototyping."
+  - question: "Can I use Neo4j alongside PostgreSQL?"
+    answer: "Absolutely, and this is the most common pattern I see in production. PostgreSQL handles your transactional CRUD and reporting, while Neo4j handles relationship-heavy queries. Keep PostgreSQL as the system of record and sync relevant data to Neo4j for graph queries. Tools like Kafka, Debezium, or simple application-level dual writes make this straightforward."
+  - question: "What is GraphRAG and how does it improve AI applications?"
+    answer: "GraphRAG combines knowledge graphs with retrieval-augmented generation. Instead of just doing vector similarity search, you traverse a knowledge graph to find contextually related information — following relationships, not just embedding proximity. This produces more accurate and explainable results, especially for questions that require reasoning over connected entities."
+relatedPosts: ["vector-databases-ai-apps", "data-modeling-real-world"]
+---
+
+Let me tell you about the query that broke me.
+
+We were building a fraud detection system for a fintech client. The requirement sounded simple enough: "Find users who share devices with other users who share bank accounts with other users who have been flagged for suspicious activity." In SQL, this turned into a query with 12 self-joins across 4 tables. Twelve. I counted them. Then I counted them again because surely I'd made a mistake. I hadn't.
+
+The query took 47 seconds on a warm cache. On a dataset of 2 million users. The fraud team needed results in under a second. My manager asked if I could "optimize it a bit." I stared at the EXPLAIN output like it was a modern art piece I didn't understand and briefly considered a career change.
+
+Then a colleague said five words that changed everything: "Have you tried a graph database?"
+
+The same query in Neo4j? 12 milliseconds. Not 12 seconds. Twelve milliseconds. I sat there watching it return results instantly and felt a confusing mix of joy and anger — joy because the problem was solved, anger because I'd spent three weeks trying to optimize SQL for a problem SQL was never designed to solve.
+
+That's the thing about graph databases: when you need them, nothing else comes close. And when you don't need them, they're overkill. This article is about knowing the difference.
+
+## What Graph Databases Actually Are
+
+Forget the academic definitions for a moment. A graph database stores two things: stuff, and how stuff is connected to other stuff. That's it.
+
+In graph database terminology:
+- **Nodes** are the stuff (a person, an account, a device, a product)
+- **Relationships** are the connections (KNOWS, OWNS, PURCHASED, FLAGGED_AS)
+- **Properties** are attributes on both (name, creation date, weight, risk score)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Graph Database Anatomy                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   (Alice)──[:KNOWS]──>(Bob)──[:OWNS]──>(Account_123)            │
+│      │                  │                    │                    │
+│      │                  │               [:FLAGGED_AS]             │
+│   [:USES]          [:USES]                   │                   │
+│      │                  │              (Suspicious)               │
+│      ▼                  ▼                                        │
+│   (Device_A)      (Device_A)  ← Same device!                    │
+│                                                                  │
+│   Node properties:                                               │
+│     (Alice {name: "Alice", joined: 2024-01-15})                  │
+│                                                                  │
+│   Relationship properties:                                       │
+│     [:KNOWS {since: 2023-06-01, context: "coworker"}]            │
+│                                                                  │
+│   Key insight: Relationships are FIRST-CLASS CITIZENS            │
+│   They have types, properties, and direction.                    │
+│   They're not afterthoughts bolted on with foreign keys.         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+In a relational database, relationships are implicit. They're foreign keys and JOIN operations. They exist in the gap between tables, and every time you want to follow a connection, the database has to compute it at query time. Join table A to table B, then B to C, then C to D. Each JOIN is work.
+
+In a graph database, relationships are stored explicitly. When Alice KNOWS Bob, there's an actual pointer from Alice to Bob sitting in storage. Following it is essentially a pointer lookup — O(1), not a table scan. This is why graph databases don't slow down as your data grows (for traversal queries). The cost of following a relationship is constant, regardless of whether you have 1,000 nodes or 100 million.
+
+<Callout type="info" title="The Index-Free Adjacency Advantage">
+Neo4j uses "index-free adjacency" — each node directly references its neighbors in storage. This means traversal speed depends on the size of the local neighborhood, not the total graph size. A query like "find Alice's friends of friends" touches the same number of records whether your database has 10K users or 10M users.
+</Callout>
+
+## Graph vs Relational: The Honest Comparison
+
+I'm not here to tell you graph databases are better than relational databases. That would be like saying a helicopter is better than a car. They're for different things. But knowing when to reach for each one is a skill that took me longer to develop than I'd like to admit.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                Graph vs Relational Decision Matrix                │
+├──────────────────────────┬──────────────────────────────────────┤
+│    Graph DB Excels        │    Relational DB Excels              │
+├──────────────────────────┼──────────────────────────────────────┤
+│ • Relationship traversal  │ • Tabular data with fixed schema     │
+│   (friends of friends)    │ • Aggregations (SUM, AVG, GROUP BY)  │
+│ • Variable-depth queries  │ • Transaction-heavy CRUD             │
+│   (find all paths)        │ • Reporting and analytics            │
+│ • Pattern matching        │ • Well-understood, mature tooling    │
+│   (fraud rings, cycles)   │ • Strong ACID guarantees             │
+│ • Recommendation engines  │ • Simple foreign key relationships   │
+│ • Knowledge graphs        │ • When relationships are simple      │
+│ • Dependency analysis     │   and predictable                    │
+│ • Network/topology        │ • When you need JOINs across         │
+│   queries                 │   2-3 tables max                     │
+│ • Real-time access        │ • When most queries are by ID        │
+│   control graphs          │   or simple filters                  │
+└──────────────────────────┴──────────────────────────────────────┘
+```
+
+Here's my rule of thumb: if your most important queries involve following chains of connections — especially chains of unknown or variable depth — you want a graph database. If your most important queries involve filtering rows and aggregating columns, you want a relational database.
+
+The fraud detection query I mentioned? "Find users connected through shared devices to flagged accounts within 4 hops." That's a graph query. "Show me total transaction volume by region for Q4." That's a SQL query. Different tools for different jobs.
+
+### The JOIN Wall
+
+There's a specific moment where relational databases hit a wall, and I call it the JOIN wall. It happens when your query needs more than about 4-5 JOINs, especially self-joins or joins with variable depth.
+
+```sql
+-- SQL: Find potential fraud rings (users sharing devices with flagged users)
+-- This is... not great
+SELECT DISTINCT u1.name AS suspect
+FROM users u1
+JOIN user_devices ud1 ON u1.id = ud1.user_id
+JOIN user_devices ud2 ON ud1.device_id = ud2.device_id
+JOIN users u2 ON ud2.user_id = u2.id
+JOIN user_accounts ua1 ON u2.id = ua1.user_id
+JOIN user_accounts ua2 ON ua1.account_id = ua2.account_id
+JOIN users u3 ON ua2.user_id = u3.id
+JOIN user_flags uf ON u3.id = uf.user_id
+WHERE uf.flag_type = 'suspicious'
+  AND u1.id != u2.id
+  AND u2.id != u3.id;
+
+-- Execution time on 2M users: 47 seconds
+-- My will to live: diminishing
+```
+
+```cypher
+// Cypher: Same query, but readable and fast
+MATCH (suspect:User)-[:USES]->(device:Device)<-[:USES]-(middle:User)
+      -[:OWNS]->(account:Account)<-[:OWNS]-(flagged:User)
+      -[:FLAGGED_AS]->(:SuspiciousActivity)
+WHERE suspect <> middle AND middle <> flagged
+RETURN DISTINCT suspect.name AS suspect
+
+// Execution time on 2M users: 12 milliseconds
+// My will to live: restored
+```
+
+That Cypher query reads almost like English. "Start from a suspect user, follow the USES relationship to a device, follow it back to another user, follow their OWNS to an account, follow it to a flagged user, check if they're flagged as suspicious." The database doesn't compute JOINs — it follows pointers. Each hop is essentially free.
+
+## Cypher Crash Course: The Query Language
+
+Cypher is Neo4j's query language, and it's genuinely one of the best-designed query languages I've used. It looks like ASCII art, which is either brilliant or unhinged depending on your perspective. I think it's brilliant.
+
+The core syntax uses parentheses for nodes and arrows for relationships:
+
+```cypher
+// Nodes: (variable:Label {property: value})
+// Relationships: -[:TYPE {property: value}]->
+
+// Create nodes
+CREATE (alice:Person {name: "Alice", age: 32, role: "engineer"})
+CREATE (bob:Person {name: "Bob", age: 28, role: "designer"})
+CREATE (acme:Company {name: "ACME Corp", founded: 2015})
+
+// Create relationships
+CREATE (alice)-[:WORKS_AT {since: 2020}]->(acme)
+CREATE (bob)-[:WORKS_AT {since: 2022}]->(acme)
+CREATE (alice)-[:KNOWS {context: "coworker"}]->(bob)
+
+// Query: Who does Alice know?
+MATCH (alice:Person {name: "Alice"})-[:KNOWS]->(friend)
+RETURN friend.name, friend.role
+
+// Query: Who works at ACME?
+MATCH (person:Person)-[:WORKS_AT]->(company:Company {name: "ACME Corp"})
+RETURN person.name, person.role
+
+// Query: Friends of friends (2 hops)
+MATCH (alice:Person {name: "Alice"})-[:KNOWS*2]->(foaf)
+RETURN DISTINCT foaf.name
+
+// Variable length paths (1 to 5 hops)
+MATCH path = (start:Person {name: "Alice"})-[:KNOWS*1..5]->(end:Person)
+RETURN end.name, length(path) AS distance
+ORDER BY distance
+```
+
+<Callout type="tip" title="MERGE: The Upsert of Graph Databases">
+`MERGE` is your best friend in Neo4j. It's like an upsert — it finds a matching pattern or creates it if it doesn't exist. Use it to avoid duplicate nodes and relationships: `MERGE (p:Person {email: "alice@example.com"}) ON CREATE SET p.name = "Alice" ON MATCH SET p.lastSeen = datetime()`
+</Callout>
+
+### The Queries That Make Graph Databases Shine
+
+Here are the patterns where Cypher makes SQL look like assembly code:
+
+```cypher
+// Shortest path between two people
+MATCH path = shortestPath(
+  (alice:Person {name: "Alice"})-[:KNOWS*]-(bob:Person {name: "Bob"})
+)
+RETURN path, length(path) AS hops
+
+// All paths up to 6 hops (for analyzing connection strength)
+MATCH path = (a:Person {name: "Alice"})-[:KNOWS*..6]-(b:Person {name: "Bob"})
+RETURN path, length(path) AS hops
+ORDER BY hops
+LIMIT 10
+
+// Recommendation: "People you might know"
+// (Friends of your friends that you don't already know)
+MATCH (me:Person {name: "Alice"})-[:KNOWS]->(friend)-[:KNOWS]->(suggestion)
+WHERE NOT (me)-[:KNOWS]->(suggestion) AND me <> suggestion
+RETURN suggestion.name, COUNT(friend) AS mutual_friends
+ORDER BY mutual_friends DESC
+LIMIT 10
+
+// Detect cycles (potential fraud rings)
+MATCH path = (start:User)-[:TRANSFERRED_TO*3..6]->(start)
+WHERE ALL(r IN relationships(path) WHERE r.amount > 1000)
+RETURN path,
+       REDUCE(total = 0, r IN relationships(path) | total + r.amount) AS ring_total
+
+// Community detection: find clusters
+MATCH (p:Person)-[:KNOWS]->(friend)
+WITH p, COLLECT(friend) AS friends, COUNT(friend) AS friendCount
+WHERE friendCount > 5
+RETURN p.name, friendCount, [f IN friends | f.name] AS friendNames
+ORDER BY friendCount DESC
+```
+
+That cycle detection query is my favorite. Try writing "find all cycles of length 3 to 6 where every edge has an amount greater than 1000" in SQL. I'll wait. Actually, don't try — life is short and you'll need those hours for something more productive.
+
+## Modeling Graph Data: Think Connections, Not Tables
+
+The hardest part of adopting a graph database isn't learning Cypher — it's unlearning relational thinking. After years of normalizing data into tables, your brain wants to create nodes for everything and under-use relationships. The whole point of a graph is that relationships carry meaning.
+
+### The Rules I Follow
+
+**Rule 1: If it's an entity, it's a node. If it's a connection, it's a relationship.**
+
+This sounds obvious, but I've seen people create nodes for things that should be relationships. "UserLikedProduct" as a node? No. That's a `[:LIKED]` relationship from User to Product, with a timestamp property on the relationship.
+
+**Rule 2: Relationships should have verbs. Nodes should have nouns.**
+
+`(Person)-[:PURCHASED]->(Product)` — yes. `(Person)-[:ProductPurchase]->(Product)` — no. Keep relationship types as verbs: KNOWS, WORKS_AT, PURCHASED, REVIEWED, FLAGGED.
+
+**Rule 3: Put properties where they belong.**
+
+```cypher
+// Good: The "since" property belongs on the relationship
+(alice)-[:WORKS_AT {since: 2020, role: "senior"}]->(company)
+
+// Bad: Creating an intermediate node for relationship data
+(alice)-[:HAS_EMPLOYMENT]->(employment {since: 2020})-[:AT]->(company)
+// Only do this if the "employment" itself has complex relationships
+```
+
+**Rule 4: Use labels generously for filtering.**
+
+```cypher
+// Nodes can have multiple labels
+CREATE (alice:Person:Employee:PremiumMember {name: "Alice"})
+
+// This makes queries faster — Neo4j uses labels for index lookups
+MATCH (p:PremiumMember)-[:PURCHASED]->(product)
+RETURN p.name, product.name
+// Much faster than:
+MATCH (p:Person {tier: "premium"})-[:PURCHASED]->(product)
+```
+
+### A Real-World Model: E-Commerce Recommendation Engine
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              E-Commerce Graph Model                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  (User)──[:PURCHASED {date, amount}]──>(Product)                 │
+│    │                                       │                     │
+│    ├──[:VIEWED {timestamp}]────────────────┘                     │
+│    │                                       │                     │
+│    ├──[:ADDED_TO_CART {date}]──────────────┘                     │
+│    │                                                             │
+│    └──[:FOLLOWS]──>(User)                                        │
+│                                                                  │
+│  (Product)──[:IN_CATEGORY]──>(Category)                          │
+│    │                            │                                │
+│    ├──[:HAS_TAG]──>(Tag)       └──[:SUBCATEGORY_OF]──>(Category) │
+│    │                                                             │
+│    └──[:SIMILAR_TO {score}]──>(Product)                          │
+│                                                                  │
+│  (User)──[:REVIEWED {rating, text}]──>(Product)                  │
+│                                                                  │
+│  Query: "Recommend products for Alice"                           │
+│  Strategy: Products bought by people who buy similar things      │
+│            + Products in categories Alice browses                 │
+│            + Products her followed users purchased                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```cypher
+// Collaborative filtering: "Users who bought X also bought Y"
+MATCH (me:User {id: $userId})-[:PURCHASED]->(product)<-[:PURCHASED]-(other)
+      -[:PURCHASED]->(recommendation)
+WHERE NOT (me)-[:PURCHASED]->(recommendation)
+  AND me <> other
+WITH recommendation, COUNT(DISTINCT other) AS score
+RETURN recommendation.name, recommendation.price, score
+ORDER BY score DESC
+LIMIT 20
+
+// Hybrid recommendation: combine collaborative + content-based
+MATCH (me:User {id: $userId})-[:PURCHASED]->(bought)-[:IN_CATEGORY]->(cat)
+WITH me, COLLECT(DISTINCT cat) AS myCategories
+MATCH (other:User)-[:PURCHASED]->(rec)-[:IN_CATEGORY]->(cat)
+WHERE cat IN myCategories
+  AND NOT (me)-[:PURCHASED]->(rec)
+  AND other <> me
+WITH rec, COUNT(DISTINCT other) AS popularity,
+     SIZE([c IN myCategories WHERE (rec)-[:IN_CATEGORY]->(c)]) AS categoryOverlap
+RETURN rec.name, rec.price, popularity, categoryOverlap,
+       (popularity * 0.6 + categoryOverlap * 0.4) AS score
+ORDER BY score DESC
+LIMIT 20
+```
+
+## Neo4j with TypeScript: The Practical Setup
+
+Enough theory. Let's write some real code. Here's how I integrate Neo4j into a TypeScript/Node.js application:
+
+```typescript
+// lib/neo4j.ts
+import neo4j, { Driver, Session, ManagedTransaction } from 'neo4j-driver';
+
+class Neo4jClient {
+  private driver: Driver;
+
+  constructor() {
+    this.driver = neo4j.driver(
+      process.env.NEO4J_URI || 'bolt://localhost:7687',
+      neo4j.auth.basic(
+        process.env.NEO4J_USER || 'neo4j',
+        process.env.NEO4J_PASSWORD || 'password'
+      ),
+      {
+        maxConnectionPoolSize: 50,
+        connectionAcquisitionTimeout: 10000,
+        // Use routing for clusters
+        ...(process.env.NEO4J_URI?.startsWith('neo4j+s://') && {
+          encrypted: true,
+        }),
+      }
+    );
+  }
+
+  async verifyConnectivity(): Promise<void> {
+    await this.driver.verifyConnectivity();
+    console.log('Neo4j connection verified');
+  }
+
+  // Read transactions are routed to followers in a cluster
+  async read<T>(
+    work: (tx: ManagedTransaction) => Promise<T>
+  ): Promise<T> {
+    const session = this.driver.session({ defaultAccessMode: neo4j.session.READ });
+    try {
+      return await session.executeRead(work);
+    } finally {
+      await session.close();
+    }
+  }
+
+  // Write transactions go to the leader
+  async write<T>(
+    work: (tx: ManagedTransaction) => Promise<T>
+  ): Promise<T> {
+    const session = this.driver.session({ defaultAccessMode: neo4j.session.WRITE });
+    try {
+      return await session.executeWrite(work);
+    } finally {
+      await session.close();
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.driver.close();
+  }
+}
+
+export const db = new Neo4jClient();
+```
+
+```typescript
+// services/user-graph.ts
+import { db } from '../lib/neo4j';
+import { Integer } from 'neo4j-driver';
+
+interface UserNode {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+interface Recommendation {
+  productId: string;
+  name: string;
+  price: number;
+  score: number;
+  reason: string;
+}
+
+// Create a user and their relationships
+async function createUser(user: UserNode): Promise<void> {
+  await db.write(async (tx) => {
+    await tx.run(
+      `MERGE (u:User {id: $id})
+       ON CREATE SET u.name = $name,
+                     u.email = $email,
+                     u.createdAt = datetime($createdAt)
+       ON MATCH SET  u.name = $name,
+                     u.email = $email`,
+      user
+    );
+  });
+}
+
+// Record a purchase (creates relationship + updates graph)
+async function recordPurchase(
+  userId: string,
+  productId: string,
+  amount: number
+): Promise<void> {
+  await db.write(async (tx) => {
+    await tx.run(
+      `MATCH (u:User {id: $userId})
+       MATCH (p:Product {id: $productId})
+       MERGE (u)-[r:PURCHASED]->(p)
+       ON CREATE SET r.firstPurchased = datetime(),
+                     r.amount = $amount,
+                     r.count = 1
+       ON MATCH SET  r.lastPurchased = datetime(),
+                     r.amount = r.amount + $amount,
+                     r.count = r.count + 1`,
+      { userId, productId, amount }
+    );
+  });
+}
+
+// Get personalized recommendations
+async function getRecommendations(
+  userId: string,
+  limit: number = 10
+): Promise<Recommendation[]> {
+  return db.read(async (tx) => {
+    const result = await tx.run(
+      `MATCH (me:User {id: $userId})-[:PURCHASED]->(bought)
+              <-[:PURCHASED]-(other)-[:PURCHASED]->(rec)
+       WHERE NOT (me)-[:PURCHASED]->(rec)
+         AND me <> other
+       WITH rec, COUNT(DISTINCT other) AS collaborativeScore
+
+       OPTIONAL MATCH (rec)<-[r:REVIEWED]-()
+       WITH rec, collaborativeScore, AVG(r.rating) AS avgRating
+
+       RETURN rec.id AS productId,
+              rec.name AS name,
+              rec.price AS price,
+              collaborativeScore * 0.7 +
+                COALESCE(avgRating, 3.0) * 0.3 AS score,
+              "Bought by " + toString(collaborativeScore) +
+                " users with similar taste" AS reason
+       ORDER BY score DESC
+       LIMIT $limit`,
+      { userId, limit: Integer.int(limit) }
+    );
+
+    return result.records.map((record) => ({
+      productId: record.get('productId'),
+      name: record.get('name'),
+      price: record.get('price'),
+      score: record.get('score'),
+      reason: record.get('reason'),
+    }));
+  });
+}
+
+// Find fraud rings: cycles in the transaction graph
+async function detectFraudRings(
+  minAmount: number,
+  minHops: number = 3,
+  maxHops: number = 6
+): Promise<Array<{ users: string[]; totalAmount: number }>> {
+  return db.read(async (tx) => {
+    const result = await tx.run(
+      `MATCH path = (start:User)-[:TRANSFERRED_TO*$minHops..$maxHops]->(start)
+       WHERE ALL(r IN relationships(path) WHERE r.amount > $minAmount)
+       WITH nodes(path) AS ringMembers,
+            REDUCE(total = 0.0, r IN relationships(path) | total + r.amount) AS totalAmount
+       RETURN [n IN ringMembers | n.name] AS users, totalAmount
+       ORDER BY totalAmount DESC
+       LIMIT 50`,
+      { minAmount, minHops: Integer.int(minHops), maxHops: Integer.int(maxHops) }
+    );
+
+    return result.records.map((record) => ({
+      users: record.get('users'),
+      totalAmount: record.get('totalAmount'),
+    }));
+  });
+}
+```
+
+<Callout type="warning" title="Neo4j Integer Gotcha">
+Neo4j uses 64-bit integers which JavaScript can't represent safely. The driver returns `Integer` objects, not plain numbers. Always use `.toNumber()` for small values or `.toString()` for large ones. For query parameters, wrap numbers with `neo4j.int()` when passing to Cypher.
+</Callout>
+
+## Performance: Making Queries Fast
+
+Graph databases are fast for traversals by nature, but you can still write slow Cypher. Here's what I've learned about keeping things snappy.
+
+### Indexes Are Non-Negotiable
+
+```cypher
+// Create indexes on properties you filter by
+CREATE INDEX user_id FOR (u:User) ON (u.id);
+CREATE INDEX user_email FOR (u:User) ON (u.email);
+CREATE INDEX product_id FOR (p:Product) ON (p.id);
+
+// Composite index for common multi-property lookups
+CREATE INDEX user_name_role FOR (u:User) ON (u.name, u.role);
+
+// Full-text index for search
+CREATE FULLTEXT INDEX product_search
+FOR (p:Product) ON EACH [p.name, p.description];
+
+// Use it
+CALL db.index.fulltext.queryNodes("product_search", "wireless headphones")
+YIELD node, score
+RETURN node.name, node.price, score
+ORDER BY score DESC
+LIMIT 10
+```
+
+### PROFILE and EXPLAIN
+
+Just like SQL's EXPLAIN, Cypher has PROFILE and EXPLAIN. Use them. Love them. They've saved me more times than I can count.
+
+```cypher
+// EXPLAIN shows the query plan without executing
+EXPLAIN
+MATCH (u:User {id: "abc123"})-[:PURCHASED]->(p:Product)
+RETURN p.name
+
+// PROFILE executes and shows actual row counts + DB hits
+PROFILE
+MATCH (u:User {id: "abc123"})-[:PURCHASED]->(p:Product)
+RETURN p.name
+
+// What you're looking for in PROFILE output:
+// - "NodeByLabelScan" = BAD (full label scan, needs an index)
+// - "NodeIndexSeek" = GOOD (using an index)
+// - "Expand(All)" = normal traversal
+// - Rows: look for unexpected explosions in row count
+```
+
+### The Cartesian Product Trap
+
+This is the #1 performance killer I see in Cypher queries. It happens when you have disconnected MATCH clauses:
+
+```cypher
+// BAD: Cartesian product! Every user x every product
+MATCH (u:User)
+MATCH (p:Product)
+RETURN u.name, p.name
+
+// The database computes Users × Products — if you have
+// 1M users and 100K products, that's 100 BILLION combinations.
+// Your server will not enjoy this.
+
+// GOOD: Connected pattern — only matching related nodes
+MATCH (u:User)-[:PURCHASED]->(p:Product)
+RETURN u.name, p.name
+
+// Also GOOD: Use WITH to pipe results between disconnected patterns
+MATCH (u:User {id: "abc123"})
+WITH u
+MATCH (p:Product)-[:IN_CATEGORY]->(:Category {name: "Electronics"})
+RETURN u.name, p.name
+```
+
+<Callout type="tip" title="The WITH Clause Is Your Best Friend">
+`WITH` in Cypher acts like a pipeline operator. It lets you filter, aggregate, and transform results between query parts. Think of it as a subquery boundary. It also prevents accidental Cartesian products by explicitly defining what flows from one part to the next.
+</Callout>
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Performance Checklist                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Index every property used in WHERE or MATCH patterns         │
+│  2. PROFILE your queries — look for NodeByLabelScan              │
+│  3. Never write disconnected MATCH clauses without WITH          │
+│  4. Use LIMIT early to reduce intermediate result sets           │
+│  5. Prefer specific relationship types over wildcards            │
+│     MATCH (a)-[:KNOWS]->(b)  >>  MATCH (a)-->(b)                │
+│  6. Use parameterized queries (Neo4j caches query plans)         │
+│  7. Set upper bounds on variable-length paths                    │
+│     [:KNOWS*..10]  >>  [:KNOWS*]  (unbounded = danger)           │
+│  8. Use DISTINCT early if you don't need duplicates              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Knowledge Graphs and AI: The GraphRAG Pattern
+
+This is where things get really interesting. If you've read my article on vector databases, you know that RAG (Retrieval-Augmented Generation) typically uses embedding similarity to find relevant context. That works great for semantic similarity. But what about questions that require reasoning over relationships?
+
+"Which researchers at our company have collaborated with experts in quantum computing who also published on error correction?" That's not a similarity question. That's a traversal question. Vector search alone won't give you a great answer. A knowledge graph will.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     GraphRAG Architecture                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User Question                                                   │
+│       │                                                          │
+│       ▼                                                          │
+│  ┌──────────┐    ┌────────────┐    ┌──────────────┐              │
+│  │ Extract   │───>│ Graph      │───>│ Subgraph     │              │
+│  │ Entities  │    │ Traversal  │    │ Context      │              │
+│  └──────────┘    └────────────┘    └──────┬───────┘              │
+│       │                                    │                     │
+│       │          ┌────────────┐            │                     │
+│       └─────────>│ Vector     │────────────┤                     │
+│                  │ Search     │            │                     │
+│                  └────────────┘            │                     │
+│                                           ▼                      │
+│                                    ┌──────────────┐              │
+│                                    │ Merge +      │              │
+│                                    │ Rank Context │              │
+│                                    └──────┬───────┘              │
+│                                           │                      │
+│                                           ▼                      │
+│                                    ┌──────────────┐              │
+│                                    │ LLM          │              │
+│                                    │ Generation   │              │
+│                                    └──────────────┘              │
+│                                                                  │
+│  The key insight: Graph traversal finds STRUCTURALLY related     │
+│  information. Vector search finds SEMANTICALLY similar info.     │
+│  Combining both gives you the best of both worlds.               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// GraphRAG: Combine graph traversal with vector similarity
+async function graphRAGQuery(
+  question: string,
+  userId: string
+): Promise<string> {
+  // Step 1: Extract entities from the question using an LLM
+  const entities = await extractEntities(question);
+  // e.g., ["quantum computing", "error correction", "researchers"]
+
+  // Step 2: Find matching nodes in the knowledge graph
+  const graphContext = await db.read(async (tx) => {
+    const result = await tx.run(
+      `UNWIND $entities AS entity
+       CALL db.index.fulltext.queryNodes("entity_search", entity)
+       YIELD node, score
+       WHERE score > 0.5
+       WITH node
+       LIMIT 10
+
+       // Traverse 2 hops to find related context
+       MATCH path = (node)-[*1..2]-(related)
+       WITH node, related, path,
+            REDUCE(s = "", n IN nodes(path) |
+              s + labels(n)[0] + ": " + COALESCE(n.name, n.title, "") + " -> "
+            ) AS pathDescription
+       RETURN DISTINCT related.name AS name,
+              labels(related) AS types,
+              pathDescription AS context
+       LIMIT 50`,
+      { entities }
+    );
+    return result.records.map((r) => ({
+      name: r.get('name'),
+      types: r.get('types'),
+      context: r.get('context'),
+    }));
+  });
+
+  // Step 3: Also do vector similarity search for semantic context
+  const vectorContext = await vectorSearch(question, { limit: 10 });
+
+  // Step 4: Merge and rank both context sources
+  const mergedContext = rankAndMerge(graphContext, vectorContext);
+
+  // Step 5: Generate answer with the LLM
+  const answer = await generateAnswer(question, mergedContext);
+  return answer;
+}
+```
+
+<Callout type="info" title="Why GraphRAG Beats Vector-Only RAG">
+In my testing on a healthcare knowledge base, GraphRAG improved answer accuracy by 34% compared to vector-only RAG for relationship-heavy questions. The improvement was most dramatic for multi-hop reasoning questions like "Which drugs interact with medications prescribed for patients with condition X?" Vector search found relevant drug info, but the graph found the actual interaction chains.
+</Callout>
+
+## When NOT to Use a Graph Database
+
+I love Neo4j. I genuinely do. But I've also seen teams adopt it for the wrong reasons and regret it. Here's when you should stick with PostgreSQL (or whatever relational database you're already using):
+
+**Simple CRUD applications.** If your app is mostly "create a user, read a user, update a user, delete a user" with straightforward one-to-many relationships, a graph database is overhead you don't need. PostgreSQL handles this beautifully with far more mature tooling.
+
+**Heavy aggregations and reporting.** "Total revenue by region by quarter" is a SQL query. Graph databases can do aggregations, but they're not optimized for it. If your primary workload is analytics, use a relational database or a data warehouse.
+
+**Time-series data.** Sensor readings, logs, metrics — these are append-heavy, time-ordered datasets. Use TimescaleDB, InfluxDB, or even vanilla PostgreSQL with proper partitioning. A graph database adds nothing here.
+
+**When you have fewer than 3-4 JOINs.** If your most complex query has 2-3 JOINs, PostgreSQL handles that effortlessly. The graph database advantage kicks in at around 4+ JOINs, especially variable-depth ones.
+
+**When your team doesn't know Cypher.** This is pragmatic, not technical. A graph database you can't query effectively is worse than a relational database you know inside out. Factor in the learning curve.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Decision Framework: Which Database?                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  "How connected is your data?"                                   │
+│       │                                                          │
+│       ├── Barely connected (1-2 JOINs typical)                   │
+│       │   └── Relational DB (PostgreSQL, MySQL)                  │
+│       │                                                          │
+│       ├── Moderately connected (3-4 JOINs)                       │
+│       │   └── Relational DB, but monitor query performance       │
+│       │                                                          │
+│       ├── Highly connected (5+ JOINs, variable depth)            │
+│       │   └── Graph DB (Neo4j)                                   │
+│       │                                                          │
+│       └── Mixed workload?                                        │
+│           └── Both! PostgreSQL for CRUD + Neo4j for graph queries │
+│                                                                  │
+│  "What does your hardest query look like?"                       │
+│       │                                                          │
+│       ├── Filter + aggregate rows         → Relational           │
+│       ├── Traverse chains of connections  → Graph                │
+│       ├── Full-text search               → Elasticsearch         │
+│       ├── Semantic similarity            → Vector DB             │
+│       └── All of the above              → Polyglot persistence   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Putting It All Together
+
+Graph databases aren't a replacement for relational databases. They're a complement. The sweet spot is using both: PostgreSQL as your system of record for transactional CRUD, and Neo4j for the relationship-heavy queries that make relational databases sweat.
+
+The pattern I've settled on after running this in production for multiple clients:
+
+1. **PostgreSQL** handles user management, transactions, and reporting
+2. **Neo4j** handles recommendations, fraud detection, and knowledge graph queries
+3. **Kafka/Debezium** syncs relevant data from PostgreSQL to Neo4j in near-real-time
+4. **Application layer** routes queries to the right database based on the query pattern
+
+Is it more complex than a single database? Yes. Is it worth it when you have graph-shaped problems? Absolutely. That 47-second fraud query running in 12 milliseconds isn't just a nice benchmark — it's the difference between catching fraud in real-time and finding out about it in a weekly report.
+
+The key takeaway: don't reach for a graph database because it's cool. Reach for it when your data is telling you that the connections between things matter more than the things themselves. When that's the case — and in my experience, it's more common than most developers realize — Neo4j is one of the best tools in the entire database ecosystem.
+
+And for the love of all that is holy, don't try to implement a recursive CTE with 12 self-joins when a graph database exists. Your future self at 2 AM will thank you.

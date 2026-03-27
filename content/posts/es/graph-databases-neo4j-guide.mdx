@@ -1,0 +1,760 @@
+---
+title: "Bases de Datos de Grafos y Neo4j: Cuando las Relaciones Son los Datos"
+description: "Una inmersión práctica en bases de datos de grafos, Neo4j y el lenguaje de consultas Cypher. Cuándo abandonar tus JOINs, cómo modelar datos como nodos y relaciones, patrones de GraphRAG, y cuándo quedarte con PostgreSQL."
+date: 2026-03-27
+published: true
+category: "Ingeniería de Datos"
+tags: ["Base de Datos de Grafos", "Neo4j", "Cypher", "Modelado de Datos", "Grafos de Conocimiento"]
+author: "Osvaldo Restrepo"
+translationOf: "graph-databases-neo4j-guide"
+tldr: "Las bases de datos de grafos brillan cuando las relaciones SON los datos — detección de fraude, redes sociales, motores de recomendación, grafos de conocimiento. Neo4j con Cypher te permite recorrer conexiones en milisegundos donde SQL se ahogaría con self-joins. Úsalas para datos altamente conectados con recorridos de profundidad variable. Quédate con PostgreSQL para CRUD simple, agregaciones pesadas, o cuando tus datos son naturalmente tabulares. Y si estás construyendo sistemas RAG, GraphRAG con Neo4j es genuinamente mejor que la recuperación solo con vectores para cualquier cosa que requiera razonamiento sobre relaciones."
+faqs:
+  - question: "¿Cuándo debería usar una base de datos de grafos en lugar de una relacional?"
+    answer: "Usa una base de datos de grafos cuando tus consultas son principalmente sobre recorrer relaciones — redes sociales, detección de fraude, motores de recomendación, análisis de dependencias, grafos de conocimiento. Si la mayoría de tus consultas son 'encontrar todas las cosas conectadas a X dentro de N saltos,' una base de datos de grafos será órdenes de magnitud más rápida que JOINs de SQL. Quédate con bases de datos relacionales para CRUD simple, reportes, o cuando tus datos son naturalmente tabulares."
+  - question: "¿Neo4j es gratis?"
+    answer: "Neo4j Community Edition es gratuito y de código abierto (GPLv3). Soporta una sola base de datos, sin clustering, y tiene algunas limitaciones de funcionalidades. Neo4j Enterprise (de pago) agrega clustering, control de acceso basado en roles, múltiples bases de datos y monitoreo avanzado. Neo4j AuraDB es la oferta cloud administrada con un tier gratuito lo suficientemente generoso para prototipos."
+  - question: "¿Puedo usar Neo4j junto con PostgreSQL?"
+    answer: "Absolutamente, y este es el patrón más común que veo en producción. PostgreSQL maneja tu CRUD transaccional y reportes, mientras que Neo4j maneja las consultas pesadas en relaciones. Mantén PostgreSQL como el sistema de registro y sincroniza datos relevantes a Neo4j para consultas de grafos. Herramientas como Kafka, Debezium, o simples escrituras duales a nivel de aplicación hacen esto directo."
+  - question: "¿Qué es GraphRAG y cómo mejora las aplicaciones de IA?"
+    answer: "GraphRAG combina grafos de conocimiento con generación aumentada por recuperación. En lugar de solo hacer búsqueda por similitud vectorial, recorres un grafo de conocimiento para encontrar información contextualmente relacionada — siguiendo relaciones, no solo proximidad de embeddings. Esto produce resultados más precisos y explicables, especialmente para preguntas que requieren razonamiento sobre entidades conectadas."
+relatedPosts: ["vector-databases-ai-apps", "data-modeling-real-world"]
+---
+
+Déjame contarte sobre la consulta que me quebró.
+
+Estábamos construyendo un sistema de detección de fraude para un cliente fintech. El requerimiento sonaba bastante simple: "Encontrar usuarios que comparten dispositivos con otros usuarios que comparten cuentas bancarias con otros usuarios que han sido marcados por actividad sospechosa." En SQL, esto se convirtió en una consulta con 12 self-joins a través de 4 tablas. Doce. Los conté. Luego los conté de nuevo porque seguramente me había equivocado. No me había equivocado.
+
+La consulta tardaba 47 segundos con caché caliente. En un dataset de 2 millones de usuarios. El equipo de fraude necesitaba resultados en menos de un segundo. Mi jefe preguntó si podía "optimizarla un poco." Me quedé mirando el output del EXPLAIN como si fuera una obra de arte moderno que no entendía y brevemente consideré un cambio de carrera.
+
+Entonces un colega dijo cinco palabras que lo cambiaron todo: "¿Has probado una base de datos de grafos?"
+
+¿La misma consulta en Neo4j? 12 milisegundos. No 12 segundos. Doce milisegundos. Me quedé sentado viéndola devolver resultados instantáneamente y sentí una mezcla confusa de alegría y rabia — alegría porque el problema estaba resuelto, rabia porque había pasado tres semanas tratando de optimizar SQL para un problema que SQL nunca fue diseñado para resolver.
+
+Eso es lo que tienen las bases de datos de grafos: cuando las necesitas, nada más se acerca. Y cuando no las necesitas, son excesivas. Este artículo es sobre saber la diferencia.
+
+## Qué Son Realmente las Bases de Datos de Grafos
+
+Olvida las definiciones académicas por un momento. Una base de datos de grafos almacena dos cosas: cosas, y cómo las cosas están conectadas con otras cosas. Eso es todo.
+
+En terminología de bases de datos de grafos:
+- **Nodos** son las cosas (una persona, una cuenta, un dispositivo, un producto)
+- **Relaciones** son las conexiones (CONOCE, POSEE, COMPRÓ, MARCADO_COMO)
+- **Propiedades** son atributos en ambos (nombre, fecha de creación, peso, puntuación de riesgo)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Anatomía de Base de Datos de Grafos               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   (Alice)──[:CONOCE]──>(Bob)──[:POSEE]──>(Cuenta_123)            │
+│      │                  │                    │                    │
+│      │                  │              [:MARCADO_COMO]             │
+│   [:USA]            [:USA]                   │                   │
+│      │                  │              (Sospechoso)               │
+│      ▼                  ▼                                        │
+│   (Dispositivo_A)  (Dispositivo_A)  ← ¡Mismo dispositivo!       │
+│                                                                  │
+│   Propiedades de nodo:                                           │
+│     (Alice {nombre: "Alice", ingreso: 2024-01-15})               │
+│                                                                  │
+│   Propiedades de relación:                                       │
+│     [:CONOCE {desde: 2023-06-01, contexto: "colega"}]            │
+│                                                                  │
+│   Insight clave: Las relaciones son CIUDADANOS DE PRIMERA CLASE  │
+│   Tienen tipos, propiedades y dirección.                         │
+│   No son ideas tardías pegadas con llaves foráneas.              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+En una base de datos relacional, las relaciones son implícitas. Son llaves foráneas y operaciones JOIN. Existen en el espacio entre tablas, y cada vez que quieres seguir una conexión, la base de datos tiene que computarla en tiempo de consulta. Unir tabla A con tabla B, luego B con C, luego C con D. Cada JOIN es trabajo.
+
+En una base de datos de grafos, las relaciones se almacenan explícitamente. Cuando Alice CONOCE a Bob, hay un puntero real de Alice a Bob almacenado. Seguirlo es esencialmente una búsqueda de puntero — O(1), no un escaneo de tabla. Por esto las bases de datos de grafos no se ralentizan a medida que tus datos crecen (para consultas de recorrido). El costo de seguir una relación es constante, sin importar si tienes 1,000 nodos o 100 millones.
+
+<Callout type="info" title="La Ventaja de Adyacencia Sin Índice">
+Neo4j usa "adyacencia sin índice" — cada nodo referencia directamente a sus vecinos en almacenamiento. Esto significa que la velocidad de recorrido depende del tamaño del vecindario local, no del tamaño total del grafo. Una consulta como "encontrar los amigos de amigos de Alice" toca la misma cantidad de registros ya sea que tu base de datos tenga 10K o 10M usuarios.
+</Callout>
+
+## Grafos vs Relacional: La Comparación Honesta
+
+No estoy aquí para decirte que las bases de datos de grafos son mejores que las relacionales. Eso sería como decir que un helicóptero es mejor que un auto. Son para cosas diferentes. Pero saber cuándo recurrir a cada una es una habilidad que me tomó más tiempo desarrollar del que me gustaría admitir.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│             Matriz de Decisión Grafos vs Relacional               │
+├──────────────────────────┬──────────────────────────────────────┤
+│    BD de Grafos Excele    │    BD Relacional Excele              │
+├──────────────────────────┼──────────────────────────────────────┤
+│ • Recorrido de relaciones │ • Datos tabulares con esquema fijo   │
+│   (amigos de amigos)      │ • Agregaciones (SUM, AVG, GROUP BY)  │
+│ • Consultas de profundidad│ • CRUD pesado en transacciones       │
+│   variable (todos los     │ • Reportes y analítica               │
+│   caminos)                │ • Herramientas maduras y bien        │
+│ • Coincidencia de patrones│   entendidas                         │
+│   (anillos de fraude)     │ • Garantías ACID fuertes             │
+│ • Motores de recomendación│ • Relaciones simples de llave        │
+│ • Grafos de conocimiento  │   foránea                            │
+│ • Análisis de dependencias│ • Cuando las relaciones son simples  │
+│ • Consultas de red y      │   y predecibles                      │
+│   topología               │ • Cuando necesitas JOINs en          │
+│ • Control de acceso en    │   2-3 tablas máximo                   │
+│   tiempo real             │ • Cuando la mayoría de consultas     │
+│                           │   son por ID o filtros simples        │
+└──────────────────────────┴──────────────────────────────────────┘
+```
+
+Mi regla general: si tus consultas más importantes involucran seguir cadenas de conexiones — especialmente cadenas de profundidad desconocida o variable — quieres una base de datos de grafos. Si tus consultas más importantes involucran filtrar filas y agregar columnas, quieres una base de datos relacional.
+
+¿La consulta de detección de fraude que mencioné? "Encontrar usuarios conectados a través de dispositivos compartidos con cuentas marcadas dentro de 4 saltos." Eso es una consulta de grafos. "Muéstrame el volumen total de transacciones por región para Q4." Eso es una consulta SQL. Diferentes herramientas para diferentes trabajos.
+
+### El Muro de los JOINs
+
+Hay un momento específico donde las bases de datos relacionales chocan contra un muro, y yo lo llamo el muro de los JOINs. Sucede cuando tu consulta necesita más de 4-5 JOINs, especialmente self-joins o joins con profundidad variable.
+
+```sql
+-- SQL: Encontrar anillos de fraude potenciales
+-- Esto es... no ideal
+SELECT DISTINCT u1.name AS sospechoso
+FROM users u1
+JOIN user_devices ud1 ON u1.id = ud1.user_id
+JOIN user_devices ud2 ON ud1.device_id = ud2.device_id
+JOIN users u2 ON ud2.user_id = u2.id
+JOIN user_accounts ua1 ON u2.id = ua1.user_id
+JOIN user_accounts ua2 ON ua1.account_id = ua2.account_id
+JOIN users u3 ON ua2.user_id = u3.id
+JOIN user_flags uf ON u3.id = uf.user_id
+WHERE uf.flag_type = 'suspicious'
+  AND u1.id != u2.id
+  AND u2.id != u3.id;
+
+-- Tiempo de ejecución en 2M usuarios: 47 segundos
+-- Mis ganas de vivir: disminuyendo
+```
+
+```cypher
+// Cypher: La misma consulta, pero legible y rápida
+MATCH (sospechoso:User)-[:USES]->(device:Device)<-[:USES]-(medio:User)
+      -[:OWNS]->(account:Account)<-[:OWNS]-(marcado:User)
+      -[:FLAGGED_AS]->(:SuspiciousActivity)
+WHERE sospechoso <> medio AND medio <> marcado
+RETURN DISTINCT sospechoso.name AS sospechoso
+
+// Tiempo de ejecución en 2M usuarios: 12 milisegundos
+// Mis ganas de vivir: restauradas
+```
+
+Esa consulta Cypher se lee casi como lenguaje natural. "Empieza desde un usuario sospechoso, sigue la relación USES hacia un dispositivo, síguelo de vuelta a otro usuario, sigue su OWNS hacia una cuenta, síguelo hasta un usuario marcado, verifica si está marcado como sospechoso." La base de datos no computa JOINs — sigue punteros. Cada salto es esencialmente gratis.
+
+## Curso Intensivo de Cypher: El Lenguaje de Consultas
+
+Cypher es el lenguaje de consultas de Neo4j, y es genuinamente uno de los lenguajes de consulta mejor diseñados que he usado. Parece arte ASCII, lo cual es brillante o desquiciado dependiendo de tu perspectiva. Yo creo que es brillante.
+
+La sintaxis central usa paréntesis para nodos y flechas para relaciones:
+
+```cypher
+// Nodos: (variable:Etiqueta {propiedad: valor})
+// Relaciones: -[:TIPO {propiedad: valor}]->
+
+// Crear nodos
+CREATE (alice:Persona {nombre: "Alice", edad: 32, rol: "ingeniera"})
+CREATE (bob:Persona {nombre: "Bob", edad: 28, rol: "diseñador"})
+CREATE (acme:Empresa {nombre: "ACME Corp", fundada: 2015})
+
+// Crear relaciones
+CREATE (alice)-[:TRABAJA_EN {desde: 2020}]->(acme)
+CREATE (bob)-[:TRABAJA_EN {desde: 2022}]->(acme)
+CREATE (alice)-[:CONOCE {contexto: "colega"}]->(bob)
+
+// Consulta: ¿A quién conoce Alice?
+MATCH (alice:Persona {nombre: "Alice"})-[:CONOCE]->(amigo)
+RETURN amigo.nombre, amigo.rol
+
+// Consulta: ¿Quién trabaja en ACME?
+MATCH (persona:Persona)-[:TRABAJA_EN]->(empresa:Empresa {nombre: "ACME Corp"})
+RETURN persona.nombre, persona.rol
+
+// Consulta: Amigos de amigos (2 saltos)
+MATCH (alice:Persona {nombre: "Alice"})-[:CONOCE*2]->(ada)
+RETURN DISTINCT ada.nombre
+
+// Caminos de longitud variable (1 a 5 saltos)
+MATCH path = (inicio:Persona {nombre: "Alice"})-[:CONOCE*1..5]->(fin:Persona)
+RETURN fin.nombre, length(path) AS distancia
+ORDER BY distancia
+```
+
+<Callout type="tip" title="MERGE: El Upsert de las Bases de Datos de Grafos">
+`MERGE` es tu mejor amigo en Neo4j. Es como un upsert — encuentra un patrón coincidente o lo crea si no existe. Úsalo para evitar nodos y relaciones duplicadas: `MERGE (p:Persona {email: "alice@ejemplo.com"}) ON CREATE SET p.nombre = "Alice" ON MATCH SET p.ultimaVez = datetime()`
+</Callout>
+
+### Las Consultas Donde las Bases de Datos de Grafos Brillan
+
+Aquí están los patrones donde Cypher hace que SQL parezca ensamblador:
+
+```cypher
+// Camino más corto entre dos personas
+MATCH path = shortestPath(
+  (alice:Persona {nombre: "Alice"})-[:CONOCE*]-(bob:Persona {nombre: "Bob"})
+)
+RETURN path, length(path) AS saltos
+
+// Todos los caminos hasta 6 saltos
+MATCH path = (a:Persona {nombre: "Alice"})-[:CONOCE*..6]-(b:Persona {nombre: "Bob"})
+RETURN path, length(path) AS saltos
+ORDER BY saltos
+LIMIT 10
+
+// Recomendación: "Personas que podrías conocer"
+MATCH (yo:Persona {nombre: "Alice"})-[:CONOCE]->(amigo)-[:CONOCE]->(sugerencia)
+WHERE NOT (yo)-[:CONOCE]->(sugerencia) AND yo <> sugerencia
+RETURN sugerencia.nombre, COUNT(amigo) AS amigos_en_comun
+ORDER BY amigos_en_comun DESC
+LIMIT 10
+
+// Detectar ciclos (anillos de fraude potenciales)
+MATCH path = (inicio:User)-[:TRANSFERRED_TO*3..6]->(inicio)
+WHERE ALL(r IN relationships(path) WHERE r.amount > 1000)
+RETURN path,
+       REDUCE(total = 0, r IN relationships(path) | total + r.amount) AS total_anillo
+
+// Detección de comunidades: encontrar clusters
+MATCH (p:Persona)-[:CONOCE]->(amigo)
+WITH p, COLLECT(amigo) AS amigos, COUNT(amigo) AS cantAmigos
+WHERE cantAmigos > 5
+RETURN p.nombre, cantAmigos, [a IN amigos | a.nombre] AS nombresAmigos
+ORDER BY cantAmigos DESC
+```
+
+Esa consulta de detección de ciclos es mi favorita. Intenta escribir "encontrar todos los ciclos de longitud 3 a 6 donde cada arista tiene un monto mayor a 1000" en SQL. Te espero. En realidad, no lo intentes — la vida es corta y vas a necesitar esas horas para algo más productivo.
+
+## Modelando Datos de Grafos: Piensa en Conexiones, No en Tablas
+
+La parte más difícil de adoptar una base de datos de grafos no es aprender Cypher — es desaprender el pensamiento relacional. Después de años de normalizar datos en tablas, tu cerebro quiere crear nodos para todo y sub-utilizar las relaciones. Todo el punto de un grafo es que las relaciones cargan significado.
+
+### Las Reglas que Sigo
+
+**Regla 1: Si es una entidad, es un nodo. Si es una conexión, es una relación.**
+
+Suena obvio, pero he visto gente crear nodos para cosas que deberían ser relaciones. "UsuarioLeDioLikeAProducto" como nodo? No. Eso es una relación `[:LE_DIO_LIKE]` de Usuario a Producto, con una propiedad de timestamp en la relación.
+
+**Regla 2: Las relaciones deberían tener verbos. Los nodos deberían tener sustantivos.**
+
+`(Persona)-[:COMPRÓ]->(Producto)` — sí. `(Persona)-[:CompraDeProducto]->(Producto)` — no. Mantén los tipos de relación como verbos: CONOCE, TRABAJA_EN, COMPRÓ, RESEÑÓ, MARCADO.
+
+**Regla 3: Pon las propiedades donde pertenecen.**
+
+```cypher
+// Bien: La propiedad "desde" pertenece a la relación
+(alice)-[:TRABAJA_EN {desde: 2020, rol: "senior"}]->(empresa)
+
+// Mal: Crear un nodo intermedio para datos de relación
+(alice)-[:TIENE_EMPLEO]->(empleo {desde: 2020})-[:EN]->(empresa)
+// Solo haz esto si el "empleo" en sí tiene relaciones complejas
+```
+
+**Regla 4: Usa etiquetas generosamente para filtrar.**
+
+```cypher
+// Los nodos pueden tener múltiples etiquetas
+CREATE (alice:Persona:Empleado:MiembroPremium {nombre: "Alice"})
+
+// Esto hace las consultas más rápidas — Neo4j usa etiquetas para búsquedas de índice
+MATCH (p:MiembroPremium)-[:COMPRÓ]->(producto)
+RETURN p.nombre, producto.nombre
+// Mucho más rápido que:
+MATCH (p:Persona {tier: "premium"})-[:COMPRÓ]->(producto)
+```
+
+### Un Modelo Real: Motor de Recomendación de E-Commerce
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│               Modelo de Grafo E-Commerce                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  (Usuario)──[:COMPRÓ {fecha, monto}]──>(Producto)                │
+│    │                                       │                     │
+│    ├──[:VIO {timestamp}]───────────────────┘                     │
+│    │                                       │                     │
+│    ├──[:AGREGÓ_AL_CARRITO {fecha}]─────────┘                     │
+│    │                                                             │
+│    └──[:SIGUE]──>(Usuario)                                       │
+│                                                                  │
+│  (Producto)──[:EN_CATEGORÍA]──>(Categoría)                       │
+│    │                              │                              │
+│    ├──[:TIENE_TAG]──>(Tag)       └──[:SUBCATEGORÍA_DE]──>(Cat)   │
+│    │                                                             │
+│    └──[:SIMILAR_A {score}]──>(Producto)                          │
+│                                                                  │
+│  (Usuario)──[:RESEÑÓ {rating, texto}]──>(Producto)               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```cypher
+// Filtrado colaborativo: "Usuarios que compraron X también compraron Y"
+MATCH (yo:User {id: $userId})-[:PURCHASED]->(product)<-[:PURCHASED]-(otro)
+      -[:PURCHASED]->(recomendacion)
+WHERE NOT (yo)-[:PURCHASED]->(recomendacion)
+  AND yo <> otro
+WITH recomendacion, COUNT(DISTINCT otro) AS score
+RETURN recomendacion.name, recomendacion.price, score
+ORDER BY score DESC
+LIMIT 20
+
+// Recomendación híbrida: combinar colaborativo + basado en contenido
+MATCH (yo:User {id: $userId})-[:PURCHASED]->(comprado)-[:IN_CATEGORY]->(cat)
+WITH yo, COLLECT(DISTINCT cat) AS misCategorias
+MATCH (otro:User)-[:PURCHASED]->(rec)-[:IN_CATEGORY]->(cat)
+WHERE cat IN misCategorias
+  AND NOT (yo)-[:PURCHASED]->(rec)
+  AND otro <> yo
+WITH rec, COUNT(DISTINCT otro) AS popularidad,
+     SIZE([c IN misCategorias WHERE (rec)-[:IN_CATEGORY]->(c)]) AS solapeCategorias
+RETURN rec.name, rec.price, popularidad, solapeCategorias,
+       (popularidad * 0.6 + solapeCategorias * 0.4) AS score
+ORDER BY score DESC
+LIMIT 20
+```
+
+## Neo4j con TypeScript: La Configuración Práctica
+
+Suficiente teoría. Escribamos código real. Así es como integro Neo4j en una aplicación TypeScript/Node.js:
+
+```typescript
+// lib/neo4j.ts
+import neo4j, { Driver, Session, ManagedTransaction } from 'neo4j-driver';
+
+class Neo4jClient {
+  private driver: Driver;
+
+  constructor() {
+    this.driver = neo4j.driver(
+      process.env.NEO4J_URI || 'bolt://localhost:7687',
+      neo4j.auth.basic(
+        process.env.NEO4J_USER || 'neo4j',
+        process.env.NEO4J_PASSWORD || 'password'
+      ),
+      {
+        maxConnectionPoolSize: 50,
+        connectionAcquisitionTimeout: 10000,
+        ...(process.env.NEO4J_URI?.startsWith('neo4j+s://') && {
+          encrypted: true,
+        }),
+      }
+    );
+  }
+
+  async verifyConnectivity(): Promise<void> {
+    await this.driver.verifyConnectivity();
+    console.log('Conexión a Neo4j verificada');
+  }
+
+  async read<T>(
+    work: (tx: ManagedTransaction) => Promise<T>
+  ): Promise<T> {
+    const session = this.driver.session({ defaultAccessMode: neo4j.session.READ });
+    try {
+      return await session.executeRead(work);
+    } finally {
+      await session.close();
+    }
+  }
+
+  async write<T>(
+    work: (tx: ManagedTransaction) => Promise<T>
+  ): Promise<T> {
+    const session = this.driver.session({ defaultAccessMode: neo4j.session.WRITE });
+    try {
+      return await session.executeWrite(work);
+    } finally {
+      await session.close();
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.driver.close();
+  }
+}
+
+export const db = new Neo4jClient();
+```
+
+```typescript
+// services/user-graph.ts
+import { db } from '../lib/neo4j';
+import { Integer } from 'neo4j-driver';
+
+interface UserNode {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+interface Recomendacion {
+  productId: string;
+  name: string;
+  price: number;
+  score: number;
+  reason: string;
+}
+
+// Crear un usuario y sus relaciones
+async function createUser(user: UserNode): Promise<void> {
+  await db.write(async (tx) => {
+    await tx.run(
+      `MERGE (u:User {id: $id})
+       ON CREATE SET u.name = $name,
+                     u.email = $email,
+                     u.createdAt = datetime($createdAt)
+       ON MATCH SET  u.name = $name,
+                     u.email = $email`,
+      user
+    );
+  });
+}
+
+// Registrar una compra
+async function recordPurchase(
+  userId: string,
+  productId: string,
+  amount: number
+): Promise<void> {
+  await db.write(async (tx) => {
+    await tx.run(
+      `MATCH (u:User {id: $userId})
+       MATCH (p:Product {id: $productId})
+       MERGE (u)-[r:PURCHASED]->(p)
+       ON CREATE SET r.firstPurchased = datetime(),
+                     r.amount = $amount,
+                     r.count = 1
+       ON MATCH SET  r.lastPurchased = datetime(),
+                     r.amount = r.amount + $amount,
+                     r.count = r.count + 1`,
+      { userId, productId, amount }
+    );
+  });
+}
+
+// Obtener recomendaciones personalizadas
+async function getRecommendations(
+  userId: string,
+  limit: number = 10
+): Promise<Recomendacion[]> {
+  return db.read(async (tx) => {
+    const result = await tx.run(
+      `MATCH (yo:User {id: $userId})-[:PURCHASED]->(comprado)
+              <-[:PURCHASED]-(otro)-[:PURCHASED]->(rec)
+       WHERE NOT (yo)-[:PURCHASED]->(rec)
+         AND yo <> otro
+       WITH rec, COUNT(DISTINCT otro) AS collaborativeScore
+
+       OPTIONAL MATCH (rec)<-[r:REVIEWED]-()
+       WITH rec, collaborativeScore, AVG(r.rating) AS avgRating
+
+       RETURN rec.id AS productId,
+              rec.name AS name,
+              rec.price AS price,
+              collaborativeScore * 0.7 +
+                COALESCE(avgRating, 3.0) * 0.3 AS score,
+              "Comprado por " + toString(collaborativeScore) +
+                " usuarios con gustos similares" AS reason
+       ORDER BY score DESC
+       LIMIT $limit`,
+      { userId, limit: Integer.int(limit) }
+    );
+
+    return result.records.map((record) => ({
+      productId: record.get('productId'),
+      name: record.get('name'),
+      price: record.get('price'),
+      score: record.get('score'),
+      reason: record.get('reason'),
+    }));
+  });
+}
+
+// Encontrar anillos de fraude: ciclos en el grafo de transacciones
+async function detectFraudRings(
+  minAmount: number,
+  minHops: number = 3,
+  maxHops: number = 6
+): Promise<Array<{ users: string[]; totalAmount: number }>> {
+  return db.read(async (tx) => {
+    const result = await tx.run(
+      `MATCH path = (inicio:User)-[:TRANSFERRED_TO*$minHops..$maxHops]->(inicio)
+       WHERE ALL(r IN relationships(path) WHERE r.amount > $minAmount)
+       WITH nodes(path) AS miembrosAnillo,
+            REDUCE(total = 0.0, r IN relationships(path) | total + r.amount) AS totalAmount
+       RETURN [n IN miembrosAnillo | n.name] AS users, totalAmount
+       ORDER BY totalAmount DESC
+       LIMIT 50`,
+      { minAmount, minHops: Integer.int(minHops), maxHops: Integer.int(maxHops) }
+    );
+
+    return result.records.map((record) => ({
+      users: record.get('users'),
+      totalAmount: record.get('totalAmount'),
+    }));
+  });
+}
+```
+
+<Callout type="warning" title="Trampa de Enteros en Neo4j">
+Neo4j usa enteros de 64 bits que JavaScript no puede representar de forma segura. El driver devuelve objetos `Integer`, no números planos. Siempre usa `.toNumber()` para valores pequeños o `.toString()` para grandes. Para parámetros de consulta, envuelve números con `neo4j.int()` al pasar a Cypher.
+</Callout>
+
+## Rendimiento: Haciendo las Consultas Rápidas
+
+Las bases de datos de grafos son rápidas para recorridos por naturaleza, pero aún puedes escribir Cypher lento. Esto es lo que he aprendido sobre mantener las cosas ágiles.
+
+### Los Índices Son Innegociables
+
+```cypher
+// Crear índices en propiedades por las que filtras
+CREATE INDEX user_id FOR (u:User) ON (u.id);
+CREATE INDEX user_email FOR (u:User) ON (u.email);
+CREATE INDEX product_id FOR (p:Product) ON (p.id);
+
+// Índice compuesto para búsquedas multi-propiedad comunes
+CREATE INDEX user_name_role FOR (u:User) ON (u.name, u.role);
+
+// Índice de texto completo para búsqueda
+CREATE FULLTEXT INDEX product_search
+FOR (p:Product) ON EACH [p.name, p.description];
+
+// Usarlo
+CALL db.index.fulltext.queryNodes("product_search", "auriculares inalámbricos")
+YIELD node, score
+RETURN node.name, node.price, score
+ORDER BY score DESC
+LIMIT 10
+```
+
+### PROFILE y EXPLAIN
+
+Igual que el EXPLAIN de SQL, Cypher tiene PROFILE y EXPLAIN. Úsalos. Ámalos. Me han salvado más veces de las que puedo contar.
+
+```cypher
+// EXPLAIN muestra el plan de consulta sin ejecutar
+EXPLAIN
+MATCH (u:User {id: "abc123"})-[:PURCHASED]->(p:Product)
+RETURN p.name
+
+// PROFILE ejecuta y muestra conteos reales de filas + hits a BD
+PROFILE
+MATCH (u:User {id: "abc123"})-[:PURCHASED]->(p:Product)
+RETURN p.name
+
+// Lo que buscas en el output de PROFILE:
+// - "NodeByLabelScan" = MALO (escaneo completo, necesita índice)
+// - "NodeIndexSeek" = BUENO (usando un índice)
+// - "Expand(All)" = recorrido normal
+// - Rows: busca explosiones inesperadas en conteo de filas
+```
+
+### La Trampa del Producto Cartesiano
+
+Este es el killer de rendimiento #1 que veo en consultas Cypher. Sucede cuando tienes cláusulas MATCH desconectadas:
+
+```cypher
+// MAL: ¡Producto cartesiano! Cada usuario x cada producto
+MATCH (u:User)
+MATCH (p:Product)
+RETURN u.name, p.name
+
+// La base de datos computa Usuarios × Productos — si tienes
+// 1M usuarios y 100K productos, son 100 MIL MILLONES de combinaciones.
+// Tu servidor no va a disfrutar esto.
+
+// BIEN: Patrón conectado — solo nodos relacionados
+MATCH (u:User)-[:PURCHASED]->(p:Product)
+RETURN u.name, p.name
+
+// También BIEN: Usar WITH para canalizar resultados
+MATCH (u:User {id: "abc123"})
+WITH u
+MATCH (p:Product)-[:IN_CATEGORY]->(:Category {name: "Electrónicos"})
+RETURN u.name, p.name
+```
+
+<Callout type="tip" title="La Cláusula WITH Es Tu Mejor Amiga">
+`WITH` en Cypher actúa como un operador de pipeline. Te permite filtrar, agregar y transformar resultados entre partes de la consulta. Piénsalo como un límite de subconsulta. También previene productos cartesianos accidentales al definir explícitamente qué fluye de una parte a la siguiente.
+</Callout>
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Checklist de Rendimiento                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. Indexar cada propiedad usada en WHERE o patrones MATCH       │
+│  2. Hacer PROFILE a tus consultas — buscar NodeByLabelScan       │
+│  3. Nunca escribir cláusulas MATCH desconectadas sin WITH        │
+│  4. Usar LIMIT temprano para reducir conjuntos intermedios       │
+│  5. Preferir tipos de relación específicos sobre comodines       │
+│     MATCH (a)-[:CONOCE]->(b)  >>  MATCH (a)-->(b)               │
+│  6. Usar consultas parametrizadas (Neo4j cachea planes)          │
+│  7. Poner límites superiores en caminos de longitud variable     │
+│     [:CONOCE*..10]  >>  [:CONOCE*]  (sin límite = peligro)      │
+│  8. Usar DISTINCT temprano si no necesitas duplicados            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Grafos de Conocimiento e IA: El Patrón GraphRAG
+
+Aquí es donde las cosas se ponen realmente interesantes. Si leíste mi artículo sobre bases de datos vectoriales, sabes que RAG (Generación Aumentada por Recuperación) típicamente usa similitud de embeddings para encontrar contexto relevante. Eso funciona genial para similitud semántica. Pero, ¿qué pasa con preguntas que requieren razonamiento sobre relaciones?
+
+"¿Qué investigadores de nuestra empresa han colaborado con expertos en computación cuántica que también publicaron sobre corrección de errores?" Esa no es una pregunta de similitud. Es una pregunta de recorrido. La búsqueda vectorial sola no te dará una gran respuesta. Un grafo de conocimiento sí.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Arquitectura GraphRAG                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Pregunta del Usuario                                            │
+│       │                                                          │
+│       ▼                                                          │
+│  ┌──────────┐    ┌────────────┐    ┌──────────────┐              │
+│  │ Extraer   │───>│ Recorrido  │───>│ Contexto de  │              │
+│  │ Entidades │    │ del Grafo  │    │ Subgrafo     │              │
+│  └──────────┘    └────────────┘    └──────┬───────┘              │
+│       │                                    │                     │
+│       │          ┌────────────┐            │                     │
+│       └─────────>│ Búsqueda   │────────────┤                     │
+│                  │ Vectorial  │            │                     │
+│                  └────────────┘            │                     │
+│                                           ▼                      │
+│                                    ┌──────────────┐              │
+│                                    │ Fusionar +   │              │
+│                                    │ Rankear      │              │
+│                                    └──────┬───────┘              │
+│                                           │                      │
+│                                           ▼                      │
+│                                    ┌──────────────┐              │
+│                                    │ Generación   │              │
+│                                    │ con LLM      │              │
+│                                    └──────────────┘              │
+│                                                                  │
+│  El insight clave: El recorrido del grafo encuentra información  │
+│  ESTRUCTURALMENTE relacionada. La búsqueda vectorial encuentra   │
+│  info SEMÁNTICAMENTE similar. Combinar ambos te da lo mejor.     │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// GraphRAG: Combinar recorrido de grafos con similitud vectorial
+async function graphRAGQuery(
+  question: string,
+  userId: string
+): Promise<string> {
+  // Paso 1: Extraer entidades de la pregunta usando un LLM
+  const entities = await extractEntities(question);
+
+  // Paso 2: Encontrar nodos coincidentes en el grafo de conocimiento
+  const graphContext = await db.read(async (tx) => {
+    const result = await tx.run(
+      `UNWIND $entities AS entity
+       CALL db.index.fulltext.queryNodes("entity_search", entity)
+       YIELD node, score
+       WHERE score > 0.5
+       WITH node
+       LIMIT 10
+
+       // Recorrer 2 saltos para encontrar contexto relacionado
+       MATCH path = (node)-[*1..2]-(related)
+       WITH node, related, path,
+            REDUCE(s = "", n IN nodes(path) |
+              s + labels(n)[0] + ": " + COALESCE(n.name, n.title, "") + " -> "
+            ) AS pathDescription
+       RETURN DISTINCT related.name AS name,
+              labels(related) AS types,
+              pathDescription AS context
+       LIMIT 50`,
+      { entities }
+    );
+    return result.records.map((r) => ({
+      name: r.get('name'),
+      types: r.get('types'),
+      context: r.get('context'),
+    }));
+  });
+
+  // Paso 3: También hacer búsqueda de similitud vectorial
+  const vectorContext = await vectorSearch(question, { limit: 10 });
+
+  // Paso 4: Fusionar y rankear ambas fuentes de contexto
+  const mergedContext = rankAndMerge(graphContext, vectorContext);
+
+  // Paso 5: Generar respuesta con el LLM
+  const answer = await generateAnswer(question, mergedContext);
+  return answer;
+}
+```
+
+<Callout type="info" title="Por Qué GraphRAG Supera a RAG Solo con Vectores">
+En mis pruebas con una base de conocimiento de salud, GraphRAG mejoró la precisión de respuestas en un 34% comparado con RAG solo con vectores para preguntas pesadas en relaciones. La mejora fue más dramática para preguntas de razonamiento multi-salto como "¿Qué medicamentos interactúan con medicamentos recetados para pacientes con la condición X?" La búsqueda vectorial encontró información relevante de medicamentos, pero el grafo encontró las cadenas de interacción reales.
+</Callout>
+
+## Cuándo NO Usar una Base de Datos de Grafos
+
+Amo Neo4j. Genuinamente. Pero también he visto equipos adoptarlo por las razones equivocadas y arrepentirse. Aquí es cuando deberías quedarte con PostgreSQL (o la base de datos relacional que ya estés usando):
+
+**Aplicaciones CRUD simples.** Si tu app es mayormente "crear usuario, leer usuario, actualizar usuario, eliminar usuario" con relaciones uno-a-muchos directas, una base de datos de grafos es overhead que no necesitas. PostgreSQL maneja esto hermosamente con herramientas mucho más maduras.
+
+**Agregaciones pesadas y reportes.** "Ingreso total por región por trimestre" es una consulta SQL. Las bases de datos de grafos pueden hacer agregaciones, pero no están optimizadas para ello. Si tu carga principal es analítica, usa una base de datos relacional o un data warehouse.
+
+**Datos de series temporales.** Lecturas de sensores, logs, métricas — estos son datasets de escritura intensiva y ordenados por tiempo. Usa TimescaleDB, InfluxDB, o PostgreSQL vanilla con particionamiento adecuado. Una base de datos de grafos no agrega nada aquí.
+
+**Cuando tienes menos de 3-4 JOINs.** Si tu consulta más compleja tiene 2-3 JOINs, PostgreSQL maneja eso sin esfuerzo. La ventaja de la base de datos de grafos entra alrededor de 4+ JOINs, especialmente los de profundidad variable.
+
+**Cuando tu equipo no conoce Cypher.** Esto es pragmático, no técnico. Una base de datos de grafos que no puedes consultar efectivamente es peor que una base de datos relacional que conoces por dentro y por fuera. Considera la curva de aprendizaje.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│            Framework de Decisión: ¿Cuál Base de Datos?           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  "¿Qué tan conectados están tus datos?"                          │
+│       │                                                          │
+│       ├── Poco conectados (1-2 JOINs típicos)                    │
+│       │   └── BD Relacional (PostgreSQL, MySQL)                  │
+│       │                                                          │
+│       ├── Moderadamente conectados (3-4 JOINs)                   │
+│       │   └── BD Relacional, pero monitorea rendimiento          │
+│       │                                                          │
+│       ├── Altamente conectados (5+ JOINs, profundidad variable)  │
+│       │   └── BD de Grafos (Neo4j)                               │
+│       │                                                          │
+│       └── ¿Carga mixta?                                          │
+│           └── ¡Ambas! PostgreSQL para CRUD + Neo4j para grafos   │
+│                                                                  │
+│  "¿Cómo luce tu consulta más difícil?"                           │
+│       │                                                          │
+│       ├── Filtrar + agregar filas         → Relacional           │
+│       ├── Recorrer cadenas de conexiones  → Grafos               │
+│       ├── Búsqueda de texto completo      → Elasticsearch        │
+│       ├── Similitud semántica             → BD Vectorial          │
+│       └── Todo lo anterior               → Persistencia políglota│
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Juntando Todo
+
+Las bases de datos de grafos no son un reemplazo para las bases de datos relacionales. Son un complemento. El sweet spot es usar ambas: PostgreSQL como tu sistema de registro para CRUD transaccional, y Neo4j para las consultas pesadas en relaciones que hacen sudar a las bases de datos relacionales.
+
+El patrón en el que me he estabilizado después de ejecutar esto en producción para múltiples clientes:
+
+1. **PostgreSQL** maneja gestión de usuarios, transacciones y reportes
+2. **Neo4j** maneja recomendaciones, detección de fraude y consultas de grafos de conocimiento
+3. **Kafka/Debezium** sincroniza datos relevantes de PostgreSQL a Neo4j en casi-tiempo-real
+4. **Capa de aplicación** enruta consultas a la base de datos correcta según el patrón de consulta
+
+¿Es más complejo que una sola base de datos? Sí. ¿Vale la pena cuando tienes problemas con forma de grafo? Absolutamente. Esa consulta de fraude de 47 segundos ejecutándose en 12 milisegundos no es solo un benchmark bonito — es la diferencia entre detectar fraude en tiempo real y enterarte en un reporte semanal.
+
+La conclusión clave: no recurras a una base de datos de grafos porque es cool. Recurre a ella cuando tus datos te están diciendo que las conexiones entre las cosas importan más que las cosas mismas. Cuando ese es el caso — y en mi experiencia, es más común de lo que la mayoría de los desarrolladores se dan cuenta — Neo4j es una de las mejores herramientas en todo el ecosistema de bases de datos.
+
+Y por el amor de todo lo sagrado, no intentes implementar un CTE recursivo con 12 self-joins cuando existe una base de datos de grafos. Tu yo del futuro a las 2 AM te lo agradecerá.
