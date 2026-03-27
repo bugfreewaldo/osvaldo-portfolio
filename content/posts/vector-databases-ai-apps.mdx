@@ -1,0 +1,940 @@
+---
+title: "Vector Databases Demystified: Choosing the Right One for Your AI App"
+description: "A battle-tested guide to vector databases for AI applications. Honest comparison of pgvector, Pinecone, Weaviate, Qdrant, and Chroma — with real code, ASCII diagrams, and a decision framework so you stop overthinking this."
+date: 2026-03-12
+published: true
+category: "AI Engineering"
+tags: ["Vector Database", "Embeddings", "Pinecone", "pgvector", "RAG"]
+author: "Osvaldo Restrepo"
+pinned: false
+tldr: "You probably don't need a dedicated vector database. pgvector handles most workloads up to ~5M vectors. Beyond that, or if you need sub-10ms latency at scale, Pinecone or Qdrant earn their keep. The best vector DB is the one your team can actually operate — not the one with the fanciest benchmarks."
+faqs:
+  - question: "Can I just use PostgreSQL with pgvector for everything?"
+    answer: "For most applications with fewer than 5 million vectors? Yes. pgvector with HNSW indexes gives you solid performance, and you keep everything in one database. You lose that operational simplicity once you outgrow it, but most teams never do."
+  - question: "What is the difference between HNSW and IVF indexes?"
+    answer: "HNSW (Hierarchical Navigable Small World) builds a multi-layer graph for fast traversal — great recall, higher memory usage. IVF (Inverted File Index) partitions vectors into clusters and searches only nearby clusters — lower memory, but you trade off some recall. HNSW is the default choice for most use cases."
+  - question: "How do I choose between Pinecone, Weaviate, Qdrant, and Chroma?"
+    answer: "Pinecone if you want zero ops and have budget. Qdrant if you want open-source with great performance and filtering. Weaviate if you need built-in multimodal support. Chroma if you're prototyping locally. pgvector if you already run Postgres and your dataset fits."
+  - question: "What embedding model should I use with a vector database?"
+    answer: "For general text, OpenAI's text-embedding-3-small is a solid default. For better quality, text-embedding-3-large. For open-source, Cohere's embed-v3 or BGE-large. Always benchmark on YOUR data — generic leaderboards lie."
+relatedPosts: ["building-production-rag-systems", "building-ai-agents-production"]
+---
+
+"Why can't I just use PostgreSQL for everything?"
+
+That was the exact question my coworker asked me six months ago when I was explaining why we needed a vector database for our RAG pipeline. And you know what? It's a fantastic question. One of those questions that sounds naive but is actually the smartest thing anyone said in that meeting, because the answer is: **sometimes you can.**
+
+The vector database space right now is what the NoSQL space was in 2013 — overhyped, confusing, and full of vendors telling you that their thing is the only thing that will save you from certain doom. Except the doom is "slow semantic search" instead of "relational databases can't scale" (they could, but I digress).
+
+I've spent the past year building AI applications that rely heavily on vector search — RAG systems for healthcare, semantic search for document platforms, and recommendation engines. I've used pgvector in production. I've used Pinecone in production. I've evaluated Weaviate, Qdrant, and Chroma. I've made good choices and bad choices, and I'm going to share all of them so you don't have to repeat my mistakes.
+
+Let's start from the beginning.
+
+## What Embeddings Actually Are (No, Really)
+
+Before we talk about databases, we need to talk about what they're storing. If you already know embeddings inside and out, skip ahead. But I've found that a lot of people have a fuzzy understanding, and that fuzziness leads to bad architectural decisions.
+
+An embedding is a list of numbers that represents the *meaning* of something. That's it. A piece of text, an image, a product — you run it through a model and you get back a vector (a list of floats) that captures the semantic essence of that thing.
+
+```
+"How do I reset my password?"  →  [0.021, -0.183, 0.442, ..., 0.089]  (1536 dimensions)
+"I forgot my login credentials" →  [0.019, -0.177, 0.438, ..., 0.092]  (1536 dimensions)
+"Best pizza in Panama City"     →  [0.891, 0.234, -0.651, ..., -0.445] (1536 dimensions)
+```
+
+Notice how the first two vectors would be very similar (close together in vector space) because they mean roughly the same thing. The pizza one is way off in a different direction. That's the whole game.
+
+<Callout type="info" title="The Intuition">
+Think of embeddings as coordinates in a very high-dimensional space. Similar meanings = nearby coordinates. Different meanings = far apart. A vector database is just a system optimized for answering "what are the K nearest points to this query point?" really, really fast.
+</Callout>
+
+Here's how you generate them:
+
+```python
+from openai import OpenAI
+
+client = OpenAI()
+
+def get_embedding(text: str, model: str = "text-embedding-3-small") -> list[float]:
+    """Get embedding vector for a text string."""
+    response = client.embeddings.create(
+        input=text,
+        model=model
+    )
+    return response.data[0].embedding
+
+# These two will be very close in vector space
+v1 = get_embedding("How do I reset my password?")
+v2 = get_embedding("I forgot my login credentials")
+
+# Cosine similarity will be ~0.92+
+```
+
+The magic is that this works across paraphrases, languages, and even concepts that are related but use different words. "Myocardial infarction" and "heart attack" end up near each other. That's why vector search is so powerful for AI apps — it understands meaning, not just keywords.
+
+## How Vector Search Works
+
+Okay, so we have vectors. Millions of them. Someone asks a question, we embed it, and now we need to find the K most similar vectors in our collection. How hard can that be?
+
+Well, if you have 100 vectors, not hard at all. Compare the query to every vector, sort by similarity, done. But if you have 10 million vectors, each with 1536 dimensions? Brute force means 10 million distance calculations per query. At, say, 1 microsecond per calculation, that's 10 seconds per query. Your users will have closed the tab, filed a complaint, and switched to a competitor before you return a result.
+
+This is where Approximate Nearest Neighbor (ANN) algorithms come in. The key word is **approximate** — we trade a tiny bit of accuracy for massive speed improvements. Instead of finding the *exact* nearest neighbors, we find neighbors that are *almost certainly* the nearest ones. In practice, the recall is 95-99%+, which is more than good enough.
+
+### The Big Three: HNSW, IVF, and PQ
+
+There are three algorithms you need to understand. Everything else is a variation on these themes.
+
+#### HNSW (Hierarchical Navigable Small World)
+
+This is the king. Most vector databases use HNSW as their default index. Here's the intuition:
+
+```
+Layer 2 (sparse):    A -------- D -------- G
+                     |                     |
+Layer 1 (medium):    A --- C --- D --- F --- G
+                     |    |     |     |     |
+Layer 0 (dense):     A - B - C - D - E - F - G - H - I
+
+Query: "Find nearest to X"
+
+1. Start at top layer → jump to nearest node (A or D or G)
+2. Drop to next layer → refine with more connections
+3. Drop to bottom layer → find exact nearest neighbors
+```
+
+It's like a skip list meets a graph. The top layers let you take big jumps to roughly the right area, then each lower layer refines the search. Think of it as zooming into a map — you start at the country level, then city, then street.
+
+**Pros**: Excellent recall, fast queries, works great up to ~50M vectors
+**Cons**: High memory usage (the graph structure lives in RAM), slow index build time
+
+#### IVF (Inverted File Index)
+
+IVF takes a different approach. It pre-clusters your vectors using k-means, then at query time, it only searches the nearest clusters:
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Vector Space                    │
+│                                                  │
+│    ┌──────┐    ┌──────┐    ┌──────┐             │
+│    │Clust.│    │Clust.│    │Clust.│             │
+│    │  1   │    │  2   │    │  3   │             │
+│    │ •••  │    │ •••  │    │ •••  │             │
+│    │ ••   │    │ ••   │    │ •••• │             │
+│    └──────┘    └──────┘    └──────┘             │
+│         ┌──────┐    ┌──────┐                    │
+│         │Clust.│    │Clust.│                    │
+│         │  4   │    │  5   │                    │
+│         │ ••   │    │ •••  │                    │
+│         │ •••  │    │ ••   │                    │
+│         └──────┘    └──────┘                    │
+│                                                  │
+│    Query X lands near Cluster 2                  │
+│    → Only search Clusters 2, 3, 5 (nprobe=3)    │
+└─────────────────────────────────────────────────┘
+```
+
+**Pros**: Lower memory usage, faster index builds, good for very large datasets
+**Cons**: Lower recall than HNSW (especially if nprobe is too low), requires training step
+
+#### Product Quantization (PQ)
+
+PQ is about compression. It chops each vector into subvectors and quantizes them, dramatically reducing memory usage at the cost of some accuracy. Think of it as JPEG for vectors — lossy compression that's usually good enough.
+
+You'll often see PQ combined with IVF (IVF-PQ) or HNSW for large-scale deployments where you can't fit the full vectors in memory.
+
+<Callout type="tip" title="Rule of Thumb">
+Start with HNSW. It gives you the best recall with the simplest tuning. Only switch to IVF or add PQ when you hit memory constraints. Premature optimization of your index type is the vector database equivalent of premature optimization everywhere else — it wastes your time and makes things worse.
+</Callout>
+
+## The Contenders: An Honest Comparison
+
+Alright, let's talk about the actual databases. I'm going to be honest here — not "vendor-neutral diplomatic" honest, but "I've used these in production and have opinions" honest.
+
+### The Comparison Table
+
+```
+┌───────────┬───────────┬───────────┬──────────┬───────────┬──────────┐
+│           │ pgvector  │ Pinecone  │ Weaviate │  Qdrant   │  Chroma  │
+├───────────┼───────────┼───────────┼──────────┼───────────┼──────────┤
+│ Type      │ Extension │ Managed   │ OSS/Cloud│ OSS/Cloud │ OSS      │
+│ Max Scale │ ~5-10M    │ Billions  │ Billions │ Billions  │ ~1M      │
+│ Self-host │ Yes       │ No        │ Yes      │ Yes       │ Yes      │
+│ Filtering │ SQL !!!   │ Good      │ Great    │ Excellent │ Basic    │
+│ Hybrid    │ Yes (BM25)│ Yes       │ Yes(BM25)│ Yes       │ No       │
+│ Ops Load  │ Postgres  │ Zero      │ Medium   │ Low-Med   │ Minimal  │
+│ Cost      │ Free/PG   │ $$-$$$   │ $-$$     │ $-$$      │ Free     │
+│ Maturity  │ Growing   │ Mature    │ Mature   │ Growing   │ Early    │
+└───────────┴───────────┴───────────┴──────────┴───────────┴──────────┘
+```
+
+Let me break down each one.
+
+### pgvector — The "You Already Have Postgres" Option
+
+This is the one I reach for first now, and I wish I'd started here on some earlier projects. pgvector is a PostgreSQL extension that adds vector data types and similarity search. It's not a separate database — it's Postgres. Your Postgres. The one you already have. The one your team already knows how to operate, back up, and monitor.
+
+```sql
+-- Enable the extension
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create a table with a vector column
+CREATE TABLE documents (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL,
+    metadata JSONB,
+    embedding vector(1536),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create an HNSW index
+CREATE INDEX ON documents
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 64);
+
+-- Search!
+SELECT id, content, metadata,
+       1 - (embedding <=> $1::vector) AS similarity
+FROM documents
+WHERE metadata->>'category' = 'technical'
+ORDER BY embedding <=> $1::vector
+LIMIT 10;
+```
+
+That SQL `WHERE` clause? That's the killer feature. You get the full power of PostgreSQL filtering combined with vector search. Try doing a complex filter in a dedicated vector DB and you'll appreciate this real quick.
+
+### Pinecone — The "I Don't Want to Think About Infrastructure" Option
+
+Pinecone is fully managed. You don't run servers. You don't tune indexes. You don't worry about sharding. You give them vectors, they give you results. That's the deal, and for many teams, it's a great deal.
+
+```python
+from pinecone import Pinecone
+
+pc = Pinecone(api_key="your-key")
+index = pc.Index("my-index")
+
+# Upsert vectors
+index.upsert(
+    vectors=[
+        {
+            "id": "doc-1",
+            "values": embedding,
+            "metadata": {
+                "source": "policy_v2.pdf",
+                "category": "technical",
+                "date": "2026-01-15"
+            }
+        }
+    ],
+    namespace="production"
+)
+
+# Query with metadata filtering
+results = index.query(
+    vector=query_embedding,
+    top_k=10,
+    filter={
+        "category": {"$eq": "technical"},
+        "date": {"$gte": "2026-01-01"}
+    },
+    include_metadata=True,
+    namespace="production"
+)
+```
+
+I used Pinecone for MILA (the healthcare RAG system), and it was the right call. In healthcare, you don't want to be debugging index performance at 2 AM. You want someone else to handle that while you focus on making sure the system doesn't hallucinate medical advice.
+
+<Callout type="warning" title="Pinecone Pricing Reality Check">
+Pinecone's pricing can sneak up on you. The serverless tier is reasonable for small workloads, but once you need dedicated pods for performance guarantees, costs jump significantly. I've seen teams hit $2K+/month for datasets that pgvector could handle on a $50/month Postgres instance. Do the math before you commit.
+</Callout>
+
+### Weaviate — The Multimodal Swiss Army Knife
+
+Weaviate does a lot. Vector search, hybrid search, built-in vectorization (it can call embedding APIs for you), multimodal support (text, images, etc.), and GraphQL API. It's the maximalist option.
+
+```python
+import weaviate
+import weaviate.classes as wvc
+
+client = weaviate.connect_to_local()
+
+# Create a collection with vectorizer config
+collection = client.collections.create(
+    name="Document",
+    vectorizer_config=wvc.config.Configure.Vectorizer.text2vec_openai(),
+    properties=[
+        wvc.config.Property(name="content", data_type=wvc.config.DataType.TEXT),
+        wvc.config.Property(name="category", data_type=wvc.config.DataType.TEXT),
+    ]
+)
+
+# Hybrid search (vector + keyword)
+results = collection.query.hybrid(
+    query="password reset procedure",
+    alpha=0.7,  # 0 = pure keyword, 1 = pure vector
+    limit=10,
+    filters=wvc.query.Filter.by_property("category").equal("technical")
+)
+```
+
+Weaviate is solid. My issue with it is complexity — there's a lot of surface area, and the operational overhead of running it yourself is non-trivial. If you're going cloud-managed, it's a great option. If you're self-hosting, make sure you have the DevOps bandwidth.
+
+### Qdrant — The Performance-Focused Open Source Option
+
+Qdrant is the one that's been impressing me most lately. Written in Rust (so it's fast), great filtering capabilities, reasonable operational complexity, and a genuinely good developer experience.
+
+```python
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    VectorParams, Distance, PointStruct,
+    Filter, FieldCondition, MatchValue
+)
+
+client = QdrantClient(url="http://localhost:6333")
+
+# Create collection
+client.create_collection(
+    collection_name="documents",
+    vectors_config=VectorParams(
+        size=1536,
+        distance=Distance.COSINE
+    )
+)
+
+# Upsert points
+client.upsert(
+    collection_name="documents",
+    points=[
+        PointStruct(
+            id=1,
+            vector=embedding,
+            payload={
+                "content": "Password reset requires admin approval...",
+                "category": "technical",
+                "access_level": 2
+            }
+        )
+    ]
+)
+
+# Search with filtering
+results = client.query_points(
+    collection_name="documents",
+    query=query_embedding,
+    query_filter=Filter(
+        must=[
+            FieldCondition(key="category", match=MatchValue(value="technical")),
+            FieldCondition(key="access_level", match=MatchValue(value=2))
+        ]
+    ),
+    limit=10
+)
+```
+
+What I love about Qdrant is that filtering doesn't degrade performance the way it does in some other databases. They built filtering into the search algorithm itself rather than as a post-processing step. That matters a lot when you have complex access control requirements.
+
+### Chroma — The Local-First Prototyping Champion
+
+Chroma is perfect for one thing: getting started quickly. It runs in-process, stores data locally, and has the simplest API of any option here.
+
+```python
+import chromadb
+
+client = chromadb.Client()
+
+collection = client.create_collection("documents")
+
+collection.add(
+    documents=["Password reset requires admin approval..."],
+    metadatas=[{"category": "technical"}],
+    ids=["doc-1"]
+)
+
+results = collection.query(
+    query_texts=["How do I reset a password?"],
+    n_results=5
+)
+```
+
+I use Chroma for prototyping and testing. It's fantastic for that. I would not use it in production for anything serious. It's not designed for it, the team will tell you as much, and that's okay. Not every tool needs to be a production tool.
+
+<Callout type="tip" title="My Recommendation">
+Start with Chroma for prototyping. Graduate to pgvector if you already run Postgres. Graduate to Pinecone/Qdrant if you outgrow pgvector or need features it doesn't have. This path minimizes both cost and operational complexity at every stage.
+</Callout>
+
+## pgvector Deep Dive: When Postgres Is Enough
+
+Let me spend some extra time here because pgvector is probably the right answer for more teams than realize it, and there are some tricks that aren't obvious from the docs.
+
+### Setup and Indexing
+
+```sql
+-- Install pgvector (on most managed Postgres, it's one command)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Table design for a RAG system
+CREATE TABLE knowledge_base (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    content TEXT NOT NULL,
+    content_hash TEXT GENERATED ALWAYS AS (md5(content)) STORED,
+    embedding vector(1536),
+    metadata JSONB NOT NULL DEFAULT '{}',
+    source_document TEXT,
+    chunk_index INTEGER,
+    token_count INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- HNSW index — this is what makes queries fast
+-- m = connections per node (higher = better recall, more memory)
+-- ef_construction = build-time search width (higher = better index, slower build)
+CREATE INDEX idx_knowledge_base_embedding ON knowledge_base
+USING hnsw (embedding vector_cosine_ops)
+WITH (m = 16, ef_construction = 200);
+
+-- Don't forget indexes on your filter columns!
+CREATE INDEX idx_knowledge_base_metadata ON knowledge_base USING gin (metadata);
+CREATE INDEX idx_knowledge_base_source ON knowledge_base (source_document);
+```
+
+<Callout type="warning" title="The Index Build Trap">
+HNSW index creation on pgvector is single-threaded and holds a lock on the table. For a table with 1M vectors, expect 10-30 minutes. Plan your migrations accordingly. Use `CREATE INDEX CONCURRENTLY` in production to avoid blocking writes.
+</Callout>
+
+### Tuning pgvector Performance
+
+The single most important parameter is `ef_search`, which controls how many candidates the HNSW algorithm considers at query time:
+
+```sql
+-- Default is 40. Increase for better recall, decrease for speed.
+SET hnsw.ef_search = 100;
+
+-- For a specific session/transaction
+SET LOCAL hnsw.ef_search = 200;
+```
+
+Here's a benchmark I ran on a real dataset (1.2M vectors, 1536 dimensions, on a db.r6g.xlarge RDS instance):
+
+```
+┌──────────────┬────────────┬───────────┬──────────┐
+│ ef_search    │ Recall@10  │ Latency   │ QPS      │
+├──────────────┼────────────┼───────────┼──────────┤
+│ 40 (default) │ 0.92       │ 8ms       │ 125      │
+│ 100          │ 0.97       │ 15ms      │ 67       │
+│ 200          │ 0.99       │ 28ms      │ 36       │
+│ 400          │ 0.995      │ 52ms      │ 19       │
+└──────────────┴────────────┴───────────┴──────────┘
+```
+
+For most RAG applications, `ef_search = 100` is the sweet spot. You get 97% recall at 15ms latency. Your users won't notice 15ms, and 97% recall means you almost never miss relevant documents.
+
+### Hybrid Search with pgvector + Full-Text Search
+
+This is where pgvector really shines — you can combine vector search with PostgreSQL's built-in full-text search in a single query:
+
+```sql
+-- Add a tsvector column for full-text search
+ALTER TABLE knowledge_base
+ADD COLUMN content_tsv tsvector
+GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+
+CREATE INDEX idx_knowledge_base_fts ON knowledge_base USING gin (content_tsv);
+
+-- Hybrid search: combine vector similarity + keyword relevance
+WITH vector_search AS (
+    SELECT id, content, metadata,
+           1 - (embedding <=> $1::vector) AS vector_score
+    FROM knowledge_base
+    WHERE metadata->>'department' = 'engineering'
+    ORDER BY embedding <=> $1::vector
+    LIMIT 20
+),
+keyword_search AS (
+    SELECT id, content, metadata,
+           ts_rank(content_tsv, plainto_tsquery('english', $2)) AS keyword_score
+    FROM knowledge_base
+    WHERE content_tsv @@ plainto_tsquery('english', $2)
+      AND metadata->>'department' = 'engineering'
+    LIMIT 20
+)
+SELECT
+    COALESCE(v.id, k.id) AS id,
+    COALESCE(v.content, k.content) AS content,
+    COALESCE(v.vector_score, 0) * 0.7 +
+    COALESCE(k.keyword_score, 0) * 0.3 AS combined_score
+FROM vector_search v
+FULL OUTER JOIN keyword_search k ON v.id = k.id
+ORDER BY combined_score DESC
+LIMIT 10;
+```
+
+This is genuinely powerful. You get semantic understanding from the vector search AND exact keyword matching from full-text search, all in one database, with one query, using SQL you already know. No separate search infrastructure. No synchronization headaches.
+
+## Scaling Vector Search
+
+Okay, let's say you've outgrown the simple setup. You have tens of millions of vectors, you need sub-10ms latency, or you need to handle hundreds of queries per second. What now?
+
+### Sharding Strategies
+
+```
+Strategy 1: Shard by namespace/tenant
+
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   Shard A    │  │   Shard B    │  │   Shard C    │
+│  Tenant 1-3  │  │  Tenant 4-6  │  │  Tenant 7-9  │
+│    2M vecs   │  │    3M vecs   │  │    1.5M vecs │
+└─────────────┘  └─────────────┘  └─────────────┘
+
+Strategy 2: Shard by content type
+
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│   Shard A    │  │   Shard B    │  │   Shard C    │
+│   Policies   │  │   Manuals    │  │   FAQs       │
+│   1536-dim   │  │   1536-dim   │  │   768-dim    │
+└─────────────┘  └─────────────┘  └─────────────┘
+```
+
+With managed solutions like Pinecone, sharding is handled for you (that's what you're paying for). With self-hosted solutions, you need to think about this yourself.
+
+<Callout type="info" title="When to Shard">
+Don't shard prematurely. A single pgvector instance handles 5M+ vectors comfortably. A single Qdrant node handles 10M+ vectors. Only shard when you've exhausted single-node optimization (proper indexes, tuned parameters, adequate RAM) and you're still hitting limits.
+</Callout>
+
+### Quantization: Trading Precision for Scale
+
+When your vectors don't fit in memory, quantization lets you compress them:
+
+```python
+# With Qdrant — scalar quantization reduces memory by ~4x
+from qdrant_client.models import (
+    ScalarQuantization, ScalarQuantizationConfig, ScalarType
+)
+
+client.create_collection(
+    collection_name="large_collection",
+    vectors_config=VectorParams(size=1536, distance=Distance.COSINE),
+    quantization_config=ScalarQuantization(
+        scalar=ScalarQuantizationConfig(
+            type=ScalarType.INT8,
+            quantile=0.99,
+            always_ram=True  # Keep quantized vectors in RAM
+        )
+    )
+)
+```
+
+```
+Memory comparison (1M vectors, 1536 dimensions):
+
+Full precision (float32):  ~5.7 GB
+Scalar quantization (int8): ~1.4 GB  (4x reduction)
+Binary quantization:        ~183 MB  (32x reduction, lower recall)
+```
+
+Scalar quantization (int8) typically loses less than 1% recall. Binary quantization loses more but is great for a first-pass re-ranking approach where you use binary quantization for the initial search and then re-score the top candidates with full-precision vectors.
+
+### Hybrid Search Architectures
+
+For production systems that need both semantic and keyword search, here's the architecture I've landed on:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Query Router                      │
+│   Analyzes query → decides search strategy           │
+└──────────┬──────────────────────┬────────────────────┘
+           │                      │
+           ▼                      ▼
+┌─────────────────┐    ┌─────────────────────┐
+│  Vector Search   │    │  Keyword Search      │
+│  (embeddings)    │    │  (BM25 / full-text)  │
+│                  │    │                      │
+│  "similar to"    │    │  "contains exactly"  │
+└────────┬─────────┘    └──────────┬───────────┘
+         │                         │
+         ▼                         ▼
+┌─────────────────────────────────────────────────────┐
+│                Reciprocal Rank Fusion                 │
+│   Combines results from both search methods           │
+│   RRF(d) = Σ 1/(k + rank(d))                         │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│              Re-Ranker (optional)                     │
+│   Cross-encoder model for final precision             │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+                  Top K Results
+```
+
+Here's that pattern implemented in Python:
+
+```python
+import numpy as np
+from dataclasses import dataclass
+
+@dataclass
+class SearchResult:
+    id: str
+    content: str
+    score: float
+    source: str  # "vector" or "keyword"
+
+def reciprocal_rank_fusion(
+    result_lists: list[list[SearchResult]],
+    k: int = 60
+) -> list[SearchResult]:
+    """
+    Combine multiple ranked result lists using RRF.
+    k=60 is the standard constant from the original paper.
+    """
+    scores: dict[str, float] = {}
+    docs: dict[str, SearchResult] = {}
+
+    for results in result_lists:
+        for rank, result in enumerate(results):
+            if result.id not in scores:
+                scores[result.id] = 0.0
+                docs[result.id] = result
+            scores[result.id] += 1.0 / (k + rank + 1)
+
+    # Sort by combined score
+    sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+    return [
+        SearchResult(
+            id=doc_id,
+            content=docs[doc_id].content,
+            score=scores[doc_id],
+            source="hybrid"
+        )
+        for doc_id in sorted_ids
+    ]
+
+async def hybrid_search(
+    query: str,
+    query_embedding: list[float],
+    top_k: int = 10
+) -> list[SearchResult]:
+    """Production hybrid search combining vector + keyword."""
+    # Run both searches in parallel
+    vector_results, keyword_results = await asyncio.gather(
+        vector_search(query_embedding, top_k=top_k * 2),
+        keyword_search(query, top_k=top_k * 2)
+    )
+
+    # Fuse results
+    fused = reciprocal_rank_fusion([vector_results, keyword_results])
+
+    return fused[:top_k]
+```
+
+## Real Patterns: RAG Pipeline with Vector DB
+
+Let me show you a complete, production-ready RAG pipeline. This is close to what I actually run, simplified for clarity but with all the important bits intact.
+
+### The Ingestion Pipeline
+
+```python
+import hashlib
+from dataclasses import dataclass
+from openai import OpenAI
+from pgvector.psycopg import register_vector
+import psycopg
+
+@dataclass
+class Chunk:
+    content: str
+    metadata: dict
+    source_document: str
+    chunk_index: int
+
+class DocumentIngestionPipeline:
+    def __init__(self, db_url: str):
+        self.openai = OpenAI()
+        self.conn = psycopg.connect(db_url)
+        register_vector(self.conn)
+
+    def chunk_document(self, text: str, source: str) -> list[Chunk]:
+        """Split document into overlapping chunks."""
+        # In production, use something smarter than fixed-size chunking.
+        # Semantic chunking or section-aware splitting is worth the effort.
+        chunks = []
+        words = text.split()
+        chunk_size = 400  # words
+        overlap = 50
+
+        for i in range(0, len(words), chunk_size - overlap):
+            chunk_words = words[i:i + chunk_size]
+            chunks.append(Chunk(
+                content=" ".join(chunk_words),
+                metadata={"word_count": len(chunk_words)},
+                source_document=source,
+                chunk_index=len(chunks)
+            ))
+        return chunks
+
+    def embed_chunks(self, chunks: list[Chunk]) -> list[list[float]]:
+        """Batch embed chunks. OpenAI supports up to 2048 inputs per call."""
+        texts = [c.content for c in chunks]
+        embeddings = []
+
+        # Batch in groups of 100 to stay well under limits
+        for i in range(0, len(texts), 100):
+            batch = texts[i:i + 100]
+            response = self.openai.embeddings.create(
+                input=batch,
+                model="text-embedding-3-small"
+            )
+            embeddings.extend([d.embedding for d in response.data])
+
+        return embeddings
+
+    def upsert_chunks(self, chunks: list[Chunk], embeddings: list[list[float]]):
+        """Insert or update chunks in the database."""
+        with self.conn.cursor() as cur:
+            for chunk, embedding in zip(chunks, embeddings):
+                content_hash = hashlib.md5(chunk.content.encode()).hexdigest()
+                cur.execute("""
+                    INSERT INTO knowledge_base
+                        (content, embedding, metadata, source_document, chunk_index, content_hash)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (content_hash)
+                    DO UPDATE SET
+                        embedding = EXCLUDED.embedding,
+                        updated_at = NOW()
+                """, (
+                    chunk.content,
+                    embedding,
+                    psycopg.types.json.Json(chunk.metadata),
+                    chunk.source_document,
+                    chunk.chunk_index,
+                    content_hash
+                ))
+        self.conn.commit()
+
+    def ingest(self, text: str, source: str):
+        """Full ingestion pipeline."""
+        chunks = self.chunk_document(text, source)
+        embeddings = self.embed_chunks(chunks)
+        self.upsert_chunks(chunks, embeddings)
+        print(f"Ingested {len(chunks)} chunks from {source}")
+```
+
+### The Query Pipeline
+
+```typescript
+// TypeScript version — because half of you are building Next.js apps
+
+import { OpenAI } from "openai";
+import { Pool } from "pg";
+import pgvector from "pgvector";
+
+interface SearchResult {
+  id: string;
+  content: string;
+  similarity: number;
+  metadata: Record<string, unknown>;
+}
+
+interface RAGResponse {
+  answer: string;
+  sources: SearchResult[];
+  model: string;
+  tokens_used: number;
+}
+
+class RAGPipeline {
+  private openai: OpenAI;
+  private pool: Pool;
+
+  constructor(dbUrl: string) {
+    this.openai = new OpenAI();
+    this.pool = new Pool({ connectionString: dbUrl });
+  }
+
+  async search(
+    query: string,
+    topK: number = 5,
+    filter?: Record<string, string>
+  ): Promise<SearchResult[]> {
+    // Generate query embedding
+    const embeddingResponse = await this.openai.embeddings.create({
+      input: query,
+      model: "text-embedding-3-small",
+    });
+    const queryEmbedding = embeddingResponse.data[0].embedding;
+
+    // Build filter clause
+    let filterClause = "";
+    const params: unknown[] = [pgvector.toSql(queryEmbedding), topK];
+
+    if (filter) {
+      const conditions = Object.entries(filter).map(([key, value], i) => {
+        params.push(value);
+        return `metadata->>'${key}' = $${i + 3}`;
+      });
+      filterClause = `WHERE ${conditions.join(" AND ")}`;
+    }
+
+    // Execute vector search
+    const result = await this.pool.query(
+      `SELECT id, content, metadata,
+              1 - (embedding <=> $1::vector) AS similarity
+       FROM knowledge_base
+       ${filterClause}
+       ORDER BY embedding <=> $1::vector
+       LIMIT $2`,
+      params
+    );
+
+    return result.rows;
+  }
+
+  async generateAnswer(
+    query: string,
+    context: SearchResult[]
+  ): Promise<RAGResponse> {
+    const contextText = context
+      .map((r, i) => `[Source ${i + 1}]: ${r.content}`)
+      .join("\n\n");
+
+    const response = await this.openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are a helpful assistant. Answer the user's question based ONLY on the provided context. If the context doesn't contain enough information, say so. Always cite your sources using [Source N] notation.`,
+        },
+        {
+          role: "user",
+          content: `Context:\n${contextText}\n\nQuestion: ${query}`,
+        },
+      ],
+      temperature: 0.1, // Low temperature for factual responses
+      max_tokens: 1000,
+    });
+
+    return {
+      answer: response.choices[0].message.content ?? "",
+      sources: context,
+      model: response.model,
+      tokens_used: response.usage?.total_tokens ?? 0,
+    };
+  }
+
+  async query(
+    question: string,
+    filter?: Record<string, string>
+  ): Promise<RAGResponse> {
+    const sources = await this.search(question, 5, filter);
+
+    if (sources.length === 0) {
+      return {
+        answer: "I couldn't find any relevant information to answer your question.",
+        sources: [],
+        model: "none",
+        tokens_used: 0,
+      };
+    }
+
+    return this.generateAnswer(question, sources);
+  }
+}
+```
+
+<Callout type="tip" title="Production Tip">
+Always set `temperature: 0.1` or lower for RAG responses. You want the LLM to be a faithful summarizer of the retrieved documents, not a creative writer. I once had a system with `temperature: 0.7` that started embellishing medical guidelines with "helpful" additions it made up. Not ideal.
+</Callout>
+
+## Decision Framework: Which Vector DB for Which Use Case
+
+After building with all of these, here's my honest decision framework. Print this out, tape it to your monitor, save yourself three weeks of analysis paralysis.
+
+```
+START HERE
+    │
+    ▼
+Are you prototyping / learning?
+    │
+    ├── YES → Use Chroma. Move on. Build the thing.
+    │
+    └── NO → Going to production
+             │
+             ▼
+         Do you already run PostgreSQL?
+             │
+             ├── YES → Is your dataset < 5M vectors?
+             │         │
+             │         ├── YES → Use pgvector. Done.
+             │         │
+             │         └── NO → Do you need sub-10ms p99 latency?
+             │                  │
+             │                  ├── YES → Pinecone or Qdrant
+             │                  │
+             │                  └── NO → pgvector with partitioning
+             │                           might still work. Benchmark first.
+             │
+             └── NO → Can you manage infrastructure?
+                      │
+                      ├── YES → Qdrant (best perf/ops ratio)
+                      │         or Weaviate (if you need multimodal)
+                      │
+                      └── NO → Pinecone. Pay the tax.
+                               It's worth it.
+```
+
+### The Real Decision Factors
+
+Let me be more specific about when I'd pick each option:
+
+**pgvector** when:
+- You already have Postgres (this is the biggest factor)
+- Your dataset is under 5M vectors
+- You need complex filtering (SQL is unbeatable here)
+- You want one database to manage, not two
+- Budget is a concern (free with your existing Postgres)
+
+**Pinecone** when:
+- You have zero DevOps capacity and need it to just work
+- You're in a regulated industry and need compliance certifications
+- Your dataset will grow unpredictably (auto-scaling is nice)
+- You can afford it and value your engineers' time over infrastructure costs
+
+**Qdrant** when:
+- You want open-source with production-grade performance
+- You need advanced filtering without performance degradation
+- You're comfortable with Docker/Kubernetes
+- You want the best performance per dollar on self-hosted infrastructure
+
+**Weaviate** when:
+- You need multimodal search (text + images)
+- You want built-in vectorization (it calls embedding APIs for you)
+- You like GraphQL-style APIs
+- You need complex data relationships alongside vector search
+
+**Chroma** when:
+- You're prototyping or building demos
+- You want in-process simplicity (no servers)
+- You're building local-first applications
+- Your dataset fits in memory on a single machine
+
+## Things I Wish Someone Had Told Me
+
+Let me close with the stuff I learned the hard way:
+
+**1. Embedding model matters more than the database.** I spent a week benchmarking vector databases only to realize that switching from `text-embedding-ada-002` to `text-embedding-3-small` improved recall by more than any index tuning I did. Always benchmark your embedding model first.
+
+**2. Metadata filtering is a first-class concern.** In every production system I've built, at least 50% of queries include metadata filters (by tenant, by date, by category, by access level). Choose a database that does filtered search well, not one where filtering is bolted on.
+
+**3. You will need hybrid search.** Pure vector search misses exact matches. "Find document POLICY-2024-0847" will fail with vector search because it's a lookup, not a semantic query. Every production system I've built ended up needing both.
+
+**4. Ingestion is harder than querying.** Getting data in — chunking, cleaning, embedding, deduplicating, updating — takes 70% of the effort. The query side is comparatively easy. Design your ingestion pipeline first.
+
+**5. Monitor your recall.** Set up evaluation datasets and track recall@k over time. Embedding models get updated, data distributions shift, and index parameters that were optimal six months ago might not be anymore. I run weekly recall benchmarks on all my production systems.
+
+<Callout type="info" title="The Bottom Line">
+The best vector database is the one you can operate, afford, and grow with. For most teams, that's pgvector today. For teams that need more scale or less ops burden, Pinecone and Qdrant are excellent choices. The worst choice is spending three months evaluating databases instead of building your application.
+</Callout>
+
+Now stop reading and go build something. Your vectors aren't going to search themselves.

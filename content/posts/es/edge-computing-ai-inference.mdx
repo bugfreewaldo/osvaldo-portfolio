@@ -1,0 +1,1036 @@
+---
+title: "Edge Computing para IA: Ejecutando Modelos Donde Importan"
+description: "Una guía práctica para ejecutar inferencia de IA en el edge — desde optimización y cuantización de modelos hasta despliegue en Jetson, Raspberry Pi y el navegador. Historias de guerra de un proyecto de monitoreo de salud donde la latencia del cloud casi mata el producto, y patrones reales para ONNX Runtime y TensorRT."
+date: 2026-03-25
+published: true
+category: "Ingeniería de IA"
+tags: ["Edge Computing", "Inferencia de IA", "Machine Learning", "Rendimiento", "IoT"]
+author: "Osvaldo Restrepo"
+translationOf: "edge-computing-ai-inference"
+tldr: "La inferencia en la nube está bien hasta que no lo está. Cuando necesitas predicciones en menos de 50ms — monitoreo de salud en tiempo real, seguridad industrial, experiencias en el navegador — ejecutas el modelo donde viven los datos. Cuantiza agresivamente (INT8 te lleva al 80% del camino), usa ONNX Runtime como tu formato universal y perfila todo porque el hardware edge te va a humillar. Aprendí esto después de que un viaje de ida y vuelta de 400ms al cloud en una app de monitoreo de salud casi nos costó el contrato. El modelo corría en 12ms en un Jetson. Doce. Milisegundos."
+faqs:
+  - question: "¿Cuándo debería usar inferencia de IA en el edge en vez del cloud?"
+    answer: "Usa inferencia en el edge cuando la latencia es crítica (requisitos de menos de 100ms), cuando necesitas trabajar offline o con conectividad poco confiable, cuando regulaciones de privacidad de datos impiden enviar datos a la nube, o cuando los costos de ancho de banda para transmitir datos crudos de sensores serían prohibitivos. Para todo lo demás, la inferencia en la nube es más sencilla de gestionar."
+  - question: "¿Qué es la cuantización de modelos y cuánto ayuda?"
+    answer: "La cuantización reduce los pesos del modelo de punto flotante de 32 bits a formatos de menor precisión como INT8 o incluso INT4. Esto típicamente reduce el tamaño del modelo en 4x, acelera la inferencia entre 2-4x y reduce el uso de memoria proporcionalmente — con solo 1-3% de pérdida de precisión para la mayoría de los modelos. Es la optimización de mayor impacto para el despliegue en edge."
+  - question: "¿Se pueden ejecutar modelos de IA en el navegador?"
+    answer: "Sí. ONNX Runtime Web usa WebAssembly y WebGL/WebGPU para ejecutar modelos directamente en el navegador. El rendimiento es sorprendentemente bueno para modelos pequeños (menos de 50M de parámetros). Esto elimina los costos de servidor completamente y proporciona la menor latencia posible ya que no hay ningún salto de red."
+  - question: "¿Qué hardware debería usar para inferencia de IA en el edge?"
+    answer: "Para prototipado y bajo volumen: NVIDIA Jetson Orin Nano (~$200) te da capacidad seria de inferencia en GPU. Para IoT sensible a costos: Raspberry Pi 5 con Coral USB Accelerator. Para móvil: usa el NPU integrado del dispositivo vía CoreML (Apple) o NNAPI (Android). Para navegador: no necesitas hardware, solo ONNX Runtime Web."
+relatedPosts: ["building-ai-agents-production", "streaming-llm-responses-guide"]
+---
+
+Déjame contarte de la vez que la latencia del cloud casi mata un proyecto que realmente me importaba.
+
+Estábamos construyendo un sistema de monitoreo de pacientes en tiempo real — del tipo que observa signos vitales de sensores wearable y señala anomalías antes de que se conviertan en emergencias. El modelo de ML en sí era sólido. Un modelo ligero de detección de anomalías entrenado con miles de horas de datos de pacientes, validado por médicos de verdad, todo el paquete. Podía detectar irregularidades cardíacas unos 45 segundos antes de que fueran clínicamente obvias. Cosas genuinamente impresionantes.
+
+Desplegamos el modelo detrás de una API REST en AWS. El playbook estándar. Función Lambda, API Gateway, todo el combo. Y en nuestra linda oficina con fibra óptica y un servidor corriendo en us-east-1, todo era hermoso. La inferencia tomaba unos 30ms del lado del servidor. Se sentía rápido. Nos chocamos las manos. Éramos genios.
+
+Luego desplegamos en el hospital real. Clínica rural. Internet satelital. Y de repente nuestra hermosa inferencia de 30ms tenía un viaje de ida y vuelta de 400ms envolviéndola. A veces 800ms. A veces la solicitud simplemente... no regresaba. Cuando estás monitoreando el ritmo cardíaco de un paciente y tu sistema dice "espera, déjame consultar con la nube rapidito," eso no es una funcionalidad. Es un riesgo legal.
+
+¿La solución? Ejecutar el modelo en un NVIDIA Jetson de $200 sentado en la clínica. Tiempo de inferencia: 12 milisegundos. Sin salto de red. Sin dependencia del cloud. Funciona cuando se cae el internet (que, en esta clínica, era todos los martes por la tarde como relojito). Esa cajita Jetson se convirtió en la pieza de tecnología más confiable del edificio.
+
+Ese proyecto me enseñó algo que cambió cómo pienso sobre el despliegue de ML: **el mejor modelo del mundo es inútil si no puede responder lo suficientemente rápido.** Y "lo suficientemente rápido" lo define el caso de uso, no el SLA de latencia de tu proveedor de cloud.
+
+## Cloud vs Edge vs Híbrido: Un Marco de Decisión
+
+Antes de que empieces a portar modelos a dispositivos edge, seamos honestos sobre cuándo realmente lo necesitas. El despliegue en el edge agrega complejidad. Mucha. Estás cambiando simplicidad operativa por latencia, y ese intercambio no siempre vale la pena.
+
+Este es el marco de decisión que uso:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              ¿Dónde Debería Correr Tu Modelo?                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  CLOUD                    EDGE                 HÍBRIDO           │
+│  ──────                   ────                 ───────           │
+│  Latencia > 200ms OK      Latencia < 50ms      Modelo chico edge│
+│  Siempre online            Offline requerido    Modelo grande cloud│
+│  Modelos grandes (>1B)    Modelos chicos (<50M) Edge para triage │
+│  Reentrenamiento freq.    Modelos estables      Cloud para detalle│
+│  Infraestructura compart. Datos quedan local    Sync cuando online│
+│  Escalado fácil            Capacidad fija                        │
+│                                                                  │
+│  Ejemplos:                Ejemplos:            Ejemplos:         │
+│  - Chatbots               - Monitoreo vital    - Cámaras segur. │
+│  - Procesamiento batch    - Seguridad indust.  - Asistentes voz │
+│  - Generación contenido   - Features AR/VR     - Nav. autónoma  │
+│  - Ranking de búsqueda    - Inferencia browser - Retail intelig. │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+El patrón híbrido es donde terminan la mayoría de los sistemas del mundo real. Corres un modelo pequeño y rápido en el edge para decisiones inmediatas y un modelo más grande en la nube para análisis más profundo. El modelo edge dice "esto podría ser un problema," y el modelo cloud dice "aquí está exactamente cuál es el problema y qué hacer al respecto."
+
+<Callout type="info" title="La Regla de Oro de la Latencia">
+Si tu caso de uso puede tolerar un viaje de ida y vuelta de 200ms+ y tienes conectividad confiable, empieza con inferencia en la nube. Es más simple, más barato de mantener y más fácil de actualizar. Solo muévete al edge cuando hayas medido un problema real que el edge resuelve. "Sería cool correrlo en el dispositivo" no es un problema real.
+</Callout>
+
+### Los Costos Reales de los Que Nadie Habla
+
+La IA en el edge no es solo "despliega modelo en dispositivo." Esto es lo que los blog posts se saltan:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Costos Ocultos de la IA en Edge                  │
+├──────────────────────┬──────────────────────────────────────────┤
+│  Categoría de Costo  │  Lo Que Realmente Significa              │
+├──────────────────────┼──────────────────────────────────────────┤
+│  Actualizaciones     │  ¿Cómo empujas modelos nuevos a 10,000  │
+│  de modelo           │  dispositivos sin romperlos?             │
+├──────────────────────┼──────────────────────────────────────────┤
+│  Monitoreo           │  ¿Cómo sabes si un modelo se está       │
+│                      │  degradando en un dispositivo en un      │
+│                      │  almacén?                                │
+├──────────────────────┼──────────────────────────────────────────┤
+│  Varianza de         │  Tu modelo corre perfecto en Jetson Orin.│
+│  hardware            │  Alguien compra Jetson Nano. Sorpresa.   │
+├──────────────────────┼──────────────────────────────────────────┤
+│  Thermal throttling  │  Dispositivos edge en un closet de       │
+│                      │  servidores a 40°C no rinden como tu     │
+│                      │  banco de desarrollo.                    │
+├──────────────────────┼──────────────────────────────────────────┤
+│  Restricciones de    │  ¿Con batería? Tu presupuesto de modelo  │
+│  energía             │  se acaba de reducir a la mitad. O más.  │
+├──────────────────────┼──────────────────────────────────────────┤
+│  Seguridad           │  Los pesos del modelo ahora están        │
+│                      │  físicamente en un dispositivo que       │
+│                      │  alguien puede robar.                    │
+└──────────────────────┴──────────────────────────────────────────┘
+```
+
+He enfrentado cada uno de estos en producción. El de thermal throttling fue mi favorito: nuestro modelo corría perfecto en el lab, luego desplegamos en el sitio de un cliente donde el Jetson estaba montado dentro de un gabinete de equipos sin flujo de aire. El tiempo de inferencia pasó de 12ms a 90ms cuando el dispositivo empezó a hacer throttling. Nadie lo detectó hasta que una enfermera se quejó de que las alertas se sentían "lentas." El despliegue edge es ingeniería de sistemas, no solo ingeniería de ML.
+
+## Optimización de Modelos para Despliegue Edge
+
+Ok, entonces decidiste que el edge es la decisión correcta. Ahora necesitas hacer tu modelo lo suficientemente pequeño y rápido para que realmente corra en hardware limitado. Aquí es donde empieza el trabajo de verdad.
+
+Hay tres técnicas principales, y se acumulan:
+
+### 1. Cuantización (La Gran Victoria)
+
+La cuantización convierte los pesos de tu modelo de FP32 (punto flotante de 32 bits) a formatos de menor precisión. Esta es la optimización individual de mayor impacto que puedes hacer, y a menudo es la única que necesitas.
+
+```python
+import onnxruntime as ort
+from onnxruntime.quantization import quantize_dynamic, QuantType
+
+# Cuantización dinámica — el punto de inicio más fácil
+# Convierte pesos a INT8, mantiene activaciones en FP32
+# Típicamente 2-4x de aceleración con <2% de pérdida de precisión
+quantize_dynamic(
+    model_input="model_fp32.onnx",
+    model_output="model_int8.onnx",
+    weight_type=QuantType.QInt8
+)
+
+# Cuantización estática — mejor rendimiento, más trabajo
+# Requiere un dataset de calibración para determinar factores de escala óptimos
+from onnxruntime.quantization import quantize_static, CalibrationDataReader
+
+class MyCalibrationReader(CalibrationDataReader):
+    """Alimenta datos representativos para determinar parámetros de cuantización."""
+
+    def __init__(self, calibration_data: list):
+        self.data = iter(calibration_data)
+
+    def get_next(self):
+        try:
+            sample = next(self.data)
+            return {"input": sample}
+        except StopIteration:
+            return None
+
+# Usa 100-500 muestras representativas
+calibration_reader = MyCalibrationReader(calibration_samples)
+
+quantize_static(
+    model_input="model_fp32.onnx",
+    model_output="model_int8_static.onnx",
+    calibration_data_reader=calibration_reader,
+)
+```
+
+Aquí va la hoja de trucos:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Comparación de Precisión de Cuantización             │
+├──────────┬────────────┬─────────────┬──────────┬────────────────┤
+│  Formato │  Tamaño vs │  Aceleración│  Pérdida │  Cuándo Usar   │
+│          │  FP32      │  (típica)   │  Precisión│                │
+├──────────┼────────────┼─────────────┼──────────┼────────────────┤
+│  FP32    │  1x (base) │  1x (base)  │  0%      │  Entrenamiento,│
+│          │            │             │          │  referencia    │
+├──────────┼────────────┼─────────────┼──────────┼────────────────┤
+│  FP16    │  0.5x      │  1.5-2x     │  ~0%     │  Inferencia GPU│
+│          │            │             │          │  (victoria gratis)│
+├──────────┼────────────┼─────────────┼──────────┼────────────────┤
+│  INT8    │  0.25x     │  2-4x       │  1-3%    │  Mayoría de    │
+│          │            │             │          │  despliegues edge│
+├──────────┼────────────┼─────────────┼──────────┼────────────────┤
+│  INT4    │  0.125x    │  3-6x       │  3-8%    │  Restricciones │
+│          │            │             │          │  extremas      │
+└──────────┴────────────┴─────────────┴──────────┴────────────────┘
+```
+
+<Callout type="tip" title="Empieza con INT8 Dinámico">
+La cuantización dinámica es una línea de código y te da el 80% del beneficio. Solo pasa a cuantización estática si necesitas ese 10-20% extra de rendimiento. He enviado a producción múltiples modelos edge con INT8 dinámico y la diferencia de precisión estaba dentro del ruido de medición.
+</Callout>
+
+### 2. Poda (Recorte Quirúrgico del Modelo)
+
+La poda elimina los pesos que menos contribuyen a la salida del modelo. Piensa en ello como Marie Kondo para redes neuronales — si un peso no genera alegría (o predicciones), se va.
+
+```python
+import torch
+import torch.nn.utils.prune as prune
+
+# Poda no estructurada — elimina pesos individuales
+# Bueno para: reducción general de tamaño
+model = load_your_model()
+
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.Linear):
+        # Elimina 30% de los pesos con menor magnitud
+        prune.l1_unstructured(module, name='weight', amount=0.3)
+
+# Poda estructurada — elimina neuronas/canales completos
+# Bueno para: aceleración real (no solo archivos más chicos)
+for name, module in model.named_modules():
+    if isinstance(module, torch.nn.Conv2d):
+        # Elimina 20% de los canales de salida
+        prune.ln_structured(
+            module, name='weight', amount=0.2, n=2, dim=0
+        )
+
+# Hacer la poda permanente (eliminar las máscaras)
+for name, module in model.named_modules():
+    if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)):
+        prune.remove(module, 'weight')
+
+# Fine-tune por unas cuantas epochs para recuperar precisión
+# Este paso importa — no te lo saltes
+fine_tune(model, train_loader, epochs=5, lr=1e-5)
+```
+
+Advertencia justa: la poda no estructurada hace el archivo del modelo más pequeño pero no necesariamente acelera la inferencia. Necesitas poda estructurada (eliminando canales completos o cabezas de atención) para mejoras reales de latencia. Aprendí esto por las malas cuando orgullosamente podé 40% de los pesos de un modelo y el tiempo de inferencia no cambió en absoluto. Las operaciones de matrices dispersas en la mayoría del hardware no son más rápidas que las densas a menos que tengas soporte especializado.
+
+### 3. Destilación de Conocimiento (Enseñando a Modelos Pequeños)
+
+Entrena un modelo "estudiante" más pequeño para imitar a un modelo "profesor" más grande. Esto te da un modelo compacto que pega por encima de su categoría de peso.
+
+```python
+import torch
+import torch.nn.functional as F
+
+def distillation_loss(
+    student_logits: torch.Tensor,
+    teacher_logits: torch.Tensor,
+    labels: torch.Tensor,
+    temperature: float = 3.0,
+    alpha: float = 0.7
+) -> torch.Tensor:
+    """
+    Loss combinado: soft targets del profesor + hard targets de las etiquetas.
+
+    temperature: Mayor = distribución de probabilidad más suave = más
+                 transferencia de conocimiento. 3-5 funciona bien en general.
+    alpha: Balance entre conocimiento del profesor y verdad fundamental.
+           0.7 significa 70% profesor, 30% etiquetas duras.
+    """
+    # Soft loss — aprender de la distribución de probabilidad del profesor
+    soft_loss = F.kl_div(
+        F.log_softmax(student_logits / temperature, dim=-1),
+        F.softmax(teacher_logits / temperature, dim=-1),
+        reduction='batchmean'
+    ) * (temperature ** 2)
+
+    # Hard loss — cross-entropy estándar con la verdad fundamental
+    hard_loss = F.cross_entropy(student_logits, labels)
+
+    return alpha * soft_loss + (1 - alpha) * hard_loss
+
+# Loop de entrenamiento
+teacher_model.eval()  # El profesor está congelado
+student_model.train()
+
+for batch in train_loader:
+    inputs, labels = batch
+
+    with torch.no_grad():
+        teacher_logits = teacher_model(inputs)
+
+    student_logits = student_model(inputs)
+
+    loss = distillation_loss(student_logits, teacher_logits, labels)
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+```
+
+La destilación es especialmente poderosa cuando se combina con cuantización: destila primero para obtener una arquitectura más pequeña, luego cuantiza el modelo estudiante. He logrado reducciones de tamaño de 10x con menos de 5% de pérdida de precisión de esta manera.
+
+## ONNX Runtime: Tu Formato Universal para Edge
+
+Si te llevas una sola cosa de este artículo, que sea esta: **convierte tu modelo a ONNX.** No me importa en qué framework lo entrenaste — PyTorch, TensorFlow, JAX, lo que sea. ONNX es la lingua franca de la inferencia edge, y ONNX Runtime es el motor que lo corre en todas partes.
+
+¿Por qué ONNX? Porque corre en todo:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 ONNX Runtime: Un Modelo, Muchos Destinos         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│                    ┌──────────────┐                              │
+│                    │  Tu Modelo   │                              │
+│                    │  (PyTorch,   │                              │
+│                    │   TF, etc.)  │                              │
+│                    └──────┬───────┘                              │
+│                           │                                      │
+│                    ┌──────▼───────┐                              │
+│                    │  Formato ONNX│                              │
+│                    │  (.onnx)     │                              │
+│                    └──────┬───────┘                              │
+│                           │                                      │
+│          ┌────────────────┼────────────────┐                    │
+│          │                │                │                    │
+│   ┌──────▼──────┐  ┌─────▼──────┐  ┌──────▼──────┐            │
+│   │  CPU         │  │  GPU        │  │  Navegador  │            │
+│   │  (x86, ARM)  │  │  (CUDA,     │  │  (WASM,     │            │
+│   │              │  │   TensorRT) │  │   WebGPU)   │            │
+│   └──────────────┘  └────────────┘  └─────────────┘            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Exportando a ONNX
+
+```python
+import torch
+import onnx
+
+# Exportar modelo de PyTorch a ONNX
+model = load_your_trained_model()
+model.eval()
+
+# Crear input dummy que coincida con la forma esperada del modelo
+dummy_input = torch.randn(1, 3, 224, 224)  # batch, channels, H, W
+
+torch.onnx.export(
+    model,
+    dummy_input,
+    "model.onnx",
+    export_params=True,
+    opset_version=17,             # Usar el último opset estable
+    do_constant_folding=True,     # Optimizar expresiones constantes
+    input_names=["input"],
+    output_names=["output"],
+    dynamic_axes={                 # Permitir tamaño de batch variable
+        "input": {0: "batch_size"},
+        "output": {0: "batch_size"}
+    }
+)
+
+# Verificar el modelo exportado
+onnx_model = onnx.load("model.onnx")
+onnx.checker.check_model(onnx_model)
+print(f"Modelo exportado: {onnx_model.graph.input[0].type}")
+```
+
+### Ejecutando Inferencia con ONNX Runtime
+
+```typescript
+// TypeScript — servidor edge en Node.js o app Electron
+import * as ort from 'onnxruntime-node';
+
+interface PredictionResult {
+  label: string;
+  confidence: number;
+  inferenceTimeMs: number;
+}
+
+async function runEdgeInference(
+  modelPath: string,
+  inputData: Float32Array
+): Promise<PredictionResult> {
+  // Crear sesión con flags de optimización
+  const session = await ort.InferenceSession.create(modelPath, {
+    executionProviders: ['CUDAExecutionProvider', 'CPUExecutionProvider'],
+    graphOptimizationLevel: 'all',
+    enableCpuMemArena: true,
+    enableMemPattern: true,
+  });
+
+  // Crear tensor de entrada
+  const inputTensor = new ort.Tensor('float32', inputData, [1, 3, 224, 224]);
+
+  // Ejecutar inferencia y medir tiempo
+  const start = performance.now();
+  const results = await session.run({ input: inputTensor });
+  const inferenceTime = performance.now() - start;
+
+  // Procesar salida
+  const output = results.output.data as Float32Array;
+  const maxIdx = output.indexOf(Math.max(...output));
+
+  return {
+    label: LABELS[maxIdx],
+    confidence: output[maxIdx],
+    inferenceTimeMs: Math.round(inferenceTime * 100) / 100,
+  };
+}
+
+// Caché de sesión — ¡no recargues el modelo en cada request!
+const sessionCache = new Map<string, ort.InferenceSession>();
+
+async function getOrCreateSession(
+  modelPath: string
+): Promise<ort.InferenceSession> {
+  if (!sessionCache.has(modelPath)) {
+    const session = await ort.InferenceSession.create(modelPath, {
+      executionProviders: ['CPUExecutionProvider'],
+      graphOptimizationLevel: 'all',
+      intraOpNumThreads: 4,       // Ajustar según los cores del dispositivo
+      interOpNumThreads: 2,
+    });
+    sessionCache.set(modelPath, session);
+  }
+  return sessionCache.get(modelPath)!;
+}
+```
+
+<Callout type="warning" title="No Recargues el Modelo Por Request">
+La carga de un modelo ONNX toma 100ms-2s dependiendo del tamaño del modelo. Cachea la sesión. Una vez vi a un equipo cargando el modelo de nuevo en cada llamada a la API en su servicio edge y preguntándose por qué su "inferencia de 12ms" era en realidad 1.2 segundos de punta a punta. La carga del modelo pasaba cada vez. Cachea. La. Sesión.
+</Callout>
+
+## TensorRT: Cuando Cada Milisegundo Cuenta
+
+Si estás desplegando en hardware NVIDIA (Jetson, T4, A10G), TensorRT es la opción nuclear para velocidad de inferencia. Toma tu modelo y lo compila con optimizaciones específicas del hardware — fusión de capas, auto-tuning de kernels, calibración de precisión, planificación de memoria. Los resultados son ridículos.
+
+```python
+import tensorrt as trt
+import numpy as np
+
+# Convertir ONNX a engine de TensorRT
+def build_tensorrt_engine(
+    onnx_path: str,
+    engine_path: str,
+    precision: str = "fp16",      # "fp32", "fp16", o "int8"
+    max_batch_size: int = 1,
+    workspace_gb: float = 1.0
+) -> None:
+    """Construir un engine de TensorRT optimizado desde un modelo ONNX."""
+    logger = trt.Logger(trt.Logger.WARNING)
+    builder = trt.Builder(logger)
+    network = builder.create_network(
+        1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
+    )
+    parser = trt.OnnxParser(network, logger)
+
+    # Parsear modelo ONNX
+    with open(onnx_path, 'rb') as f:
+        if not parser.parse(f.read()):
+            for i in range(parser.num_errors):
+                print(f"Error de parseo: {parser.get_error(i)}")
+            raise RuntimeError("Falló el parseo del modelo ONNX")
+
+    # Configurar builder
+    config = builder.create_builder_config()
+    config.set_memory_pool_limit(
+        trt.MemoryPoolType.WORKSPACE,
+        int(workspace_gb * (1 << 30))
+    )
+
+    # Establecer precisión
+    if precision == "fp16":
+        if builder.platform_has_fast_fp16:
+            config.set_flag(trt.BuilderFlag.FP16)
+            print("Usando precisión FP16")
+        else:
+            print("FP16 no soportado, cayendo a FP32")
+    elif precision == "int8":
+        if builder.platform_has_fast_int8:
+            config.set_flag(trt.BuilderFlag.INT8)
+            # INT8 requiere calibración — ver sección de cuantización
+            config.int8_calibrator = create_calibrator(calibration_data)
+            print("Usando precisión INT8")
+
+    # Establecer formas dinámicas
+    profile = builder.create_optimization_profile()
+    input_shape = network.get_input(0).shape
+    profile.set_shape(
+        network.get_input(0).name,
+        min=(1, *input_shape[1:]),
+        opt=(max_batch_size // 2, *input_shape[1:]),
+        max=(max_batch_size, *input_shape[1:])
+    )
+    config.add_optimization_profile(profile)
+
+    # Construir engine (esto toma minutos — hazlo una vez, guarda el resultado)
+    print("Construyendo engine de TensorRT (esto toma un rato)...")
+    serialized_engine = builder.build_serialized_network(network, config)
+
+    with open(engine_path, 'wb') as f:
+        f.write(serialized_engine)
+
+    print(f"Engine guardado en {engine_path}")
+```
+
+Un gotcha crítico con TensorRT: **los engines no son portables.** Un engine construido en un Jetson Orin no va a correr en un Jetson Nano. Un engine construido con CUDA 12.0 no va a correr con CUDA 11.8. Necesitas construir el engine en el dispositivo objetivo (o en hardware idéntico). Desperdicié un día entero la primera vez que me topé con esto, intentando debuggear por qué mi engine perfectamente válido producía resultados basura en un modelo diferente de Jetson.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│         ONNX Runtime vs TensorRT: Cuándo Usar Cuál              │
+├──────────────────────────┬──────────────────────────────────────┤
+│  ONNX Runtime            │  TensorRT                            │
+├──────────────────────────┼──────────────────────────────────────┤
+│  Multiplataforma         │  Solo NVIDIA                         │
+│  Buen rendimiento        │  Mejor rendimiento posible           │
+│  Modelos portables       │  Engines específicos del dispositivo │
+│  Minutos para desplegar  │  Horas para optimizar                │
+│  CPU, GPU, WASM, etc.    │  Solo GPUs CUDA                     │
+│  Genial para prototipar  │  Genial para producción en NVIDIA   │
+│  1.5-3x sobre PyTorch    │  3-8x sobre PyTorch crudo           │
+├──────────────────────────┴──────────────────────────────────────┤
+│  Mi regla: Empieza con ONNX Runtime. Pasa a TensorRT solo si   │
+│  necesitas el rendimiento extra Y estás amarrado a NVIDIA.      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Desplegando en Dispositivos Edge
+
+Vamos a lo práctico. Aquí van patrones reales de despliegue para los tres objetivos edge más comunes con los que he trabajado.
+
+### NVIDIA Jetson (El Caballo de Batalla del Edge GPU)
+
+La familia Jetson es la opción estándar para IA edge seria. He desplegado en Jetson Nano, Xavier NX y Orin a través de diferentes proyectos. Este es el patrón de setup en el que me he estabilizado:
+
+```python
+#!/usr/bin/env python3
+"""Servicio de inferencia edge para dispositivos NVIDIA Jetson."""
+
+import asyncio
+import time
+import logging
+from pathlib import Path
+from dataclasses import dataclass
+from contextlib import asynccontextmanager
+
+import numpy as np
+import onnxruntime as ort
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class ModelConfig:
+    model_path: str
+    input_name: str = "input"
+    input_shape: tuple = (1, 3, 224, 224)
+    device: str = "cuda"     # "cuda" para GPU Jetson, "cpu" para fallback
+    num_threads: int = 4
+
+class InferenceRequest(BaseModel):
+    data: list[float]
+
+class InferenceResponse(BaseModel):
+    predictions: list[float]
+    inference_ms: float
+    device: str
+    model_version: str
+
+class EdgeInferenceEngine:
+    """Gestiona el ciclo de vida del modelo e inferencia en dispositivos edge."""
+
+    def __init__(self, config: ModelConfig):
+        self.config = config
+        self.session = None
+        self.model_version = "unknown"
+        self._inference_count = 0
+        self._total_inference_ms = 0.0
+
+    def load(self) -> None:
+        """Cargar modelo con el execution provider apropiado."""
+        providers = []
+
+        if self.config.device == "cuda":
+            providers.append(('CUDAExecutionProvider', {
+                'device_id': 0,
+                'arena_extend_strategy': 'kSameAsRequested',
+                'gpu_mem_limit': 512 * 1024 * 1024,  # 512MB — dejar espacio
+                'cudnn_conv_algo_search': 'HEURISTIC',
+            }))
+
+        providers.append(('CPUExecutionProvider', {
+            'arena_extend_strategy': 'kSameAsRequested',
+        }))
+
+        session_options = ort.SessionOptions()
+        session_options.graph_optimization_level = (
+            ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+        )
+        session_options.intra_op_num_threads = self.config.num_threads
+        session_options.enable_mem_pattern = True
+
+        self.session = ort.InferenceSession(
+            self.config.model_path,
+            sess_options=session_options,
+            providers=providers
+        )
+
+        actual_provider = self.session.get_providers()[0]
+        logger.info(f"Modelo cargado en {actual_provider}")
+
+        # Corrida de calentamiento — la primera inferencia siempre es lenta
+        dummy = np.random.randn(*self.config.input_shape).astype(np.float32)
+        self.session.run(None, {self.config.input_name: dummy})
+        logger.info("Inferencia de calentamiento completa")
+
+    def predict(self, input_data: np.ndarray) -> tuple[np.ndarray, float]:
+        """Ejecutar inferencia y devolver (output, time_ms)."""
+        if self.session is None:
+            raise RuntimeError("Modelo no cargado")
+
+        start = time.perf_counter()
+        outputs = self.session.run(
+            None,
+            {self.config.input_name: input_data}
+        )
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+        self._inference_count += 1
+        self._total_inference_ms += elapsed_ms
+
+        return outputs[0], elapsed_ms
+
+    @property
+    def avg_inference_ms(self) -> float:
+        if self._inference_count == 0:
+            return 0.0
+        return self._total_inference_ms / self._inference_count
+
+# --- Servicio FastAPI ---
+engine = EdgeInferenceEngine(ModelConfig(
+    model_path="/models/anomaly_detector_int8.onnx",
+    device="cuda"
+))
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    engine.load()
+    yield
+    logger.info(f"Apagando. Inferencia prom: {engine.avg_inference_ms:.2f}ms")
+
+app = FastAPI(title="Servicio de Inferencia Edge", lifespan=lifespan)
+
+@app.post("/predict", response_model=InferenceResponse)
+async def predict(request: InferenceRequest):
+    try:
+        input_array = np.array(
+            request.data, dtype=np.float32
+        ).reshape(engine.config.input_shape)
+
+        predictions, inference_ms = engine.predict(input_array)
+
+        return InferenceResponse(
+            predictions=predictions.flatten().tolist(),
+            inference_ms=round(inference_ms, 2),
+            device=engine.session.get_providers()[0],
+            model_version=engine.model_version,
+        )
+    except Exception as e:
+        logger.error(f"Inferencia falló: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "inference_count": engine._inference_count,
+        "avg_inference_ms": round(engine.avg_inference_ms, 2),
+        "provider": engine.session.get_providers()[0] if engine.session else None,
+    }
+```
+
+### Raspberry Pi (La Opción Económica)
+
+El Pi es sorprendentemente capaz para modelos ligeros, especialmente con el Coral USB Accelerator para inferencia INT8. Pero necesitas ser despiadado con el tamaño del modelo.
+
+```python
+# Despliegue en Raspberry Pi — solo CPU o con Coral USB Accelerator
+# Restricciones clave:
+#   - 4-8GB RAM (el modelo debe caber con espacio para el SO)
+#   - CPU ARM Cortex (sin GPU)
+#   - Thermal throttling sobre ~80°C
+
+import onnxruntime as ort
+import numpy as np
+
+def create_pi_session(model_path: str) -> ort.InferenceSession:
+    """Crear una sesión optimizada para Raspberry Pi."""
+    options = ort.SessionOptions()
+
+    # Crítico: limitar threads a cores físicos
+    # Pi 5 tiene 4 cores — usar más causa thrashing
+    options.intra_op_num_threads = 4
+    options.inter_op_num_threads = 1
+
+    # Habilitar todas las optimizaciones de grafo
+    options.graph_optimization_level = (
+        ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    )
+
+    # Optimización de memoria — importante en Pi de 4GB
+    options.enable_cpu_mem_arena = True
+    options.enable_mem_pattern = True
+
+    session = ort.InferenceSession(
+        model_path,
+        sess_options=options,
+        providers=['CPUExecutionProvider']
+    )
+
+    return session
+
+# Pro tip: monitorear temperatura y reducir velocidad si hay throttling
+def get_cpu_temp() -> float:
+    """Leer temperatura del CPU del Pi."""
+    with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+        return float(f.read().strip()) / 1000.0
+
+def should_throttle() -> bool:
+    """Verificar si debemos reducir la frecuencia de inferencia."""
+    temp = get_cpu_temp()
+    if temp > 75.0:
+        logger.warning(f"Temp CPU {temp}°C — reduciendo inferencia")
+        return True
+    return False
+```
+
+<Callout type="warning" title="Trampa de Memoria del Pi">
+Un error común: cargar un modelo ONNX de 500MB en un Pi de 4GB. El modelo carga bien, pero luego el SO empieza a hacer swap, la inferencia toma 10x más, y el Pi se vuelve irresponsivo. Mantén tu modelo bajo 200MB para un Pi de 4GB, 400MB para un Pi de 8GB. Mide el uso real de memoria con `htop`, no solo el tamaño del archivo.
+</Callout>
+
+### Navegador vía WebAssembly (Cero Infraestructura)
+
+Esta es la que todavía se siente como magia para mí. Puedes ejecutar modelos de ML directamente en el navegador del usuario. Sin servidor, sin API, sin costos de infraestructura. El dispositivo del usuario hace todo el trabajo.
+
+```typescript
+// Inferencia en el navegador con ONNX Runtime Web
+// Funciona en todos los navegadores modernos via WebAssembly
+
+import * as ort from 'onnxruntime-web';
+
+// Configurar backend WASM
+ort.env.wasm.numThreads = navigator.hardwareConcurrency || 4;
+ort.env.wasm.simd = true;
+
+interface BrowserInferenceConfig {
+  modelUrl: string;            // URL o ruta al archivo .onnx
+  executionProvider: 'wasm' | 'webgl' | 'webgpu';
+  inputShape: number[];
+}
+
+class BrowserInferenceEngine {
+  private session: ort.InferenceSession | null = null;
+  private config: BrowserInferenceConfig;
+
+  constructor(config: BrowserInferenceConfig) {
+    this.config = config;
+  }
+
+  async initialize(): Promise<void> {
+    // Cargar modelo — esto descarga y compila el módulo WASM
+    // Muestra un indicador de carga porque esto toma 1-5 segundos
+    this.session = await ort.InferenceSession.create(
+      this.config.modelUrl,
+      {
+        executionProviders: [this.config.executionProvider],
+        graphOptimizationLevel: 'all',
+      }
+    );
+
+    // Corrida de calentamiento
+    const dummy = new Float32Array(
+      this.config.inputShape.reduce((a, b) => a * b, 1)
+    );
+    const tensor = new ort.Tensor('float32', dummy, this.config.inputShape);
+    await this.session.run({ input: tensor });
+
+    console.log('Modelo cargado y calentado');
+  }
+
+  async predict(inputData: Float32Array): Promise<{
+    result: Float32Array;
+    timeMs: number;
+  }> {
+    if (!this.session) throw new Error('Modelo no inicializado');
+
+    const tensor = new ort.Tensor(
+      'float32', inputData, this.config.inputShape
+    );
+
+    const start = performance.now();
+    const output = await this.session.run({ input: tensor });
+    const timeMs = performance.now() - start;
+
+    const resultKey = this.session.outputNames[0];
+    return {
+      result: output[resultKey].data as Float32Array,
+      timeMs: Math.round(timeMs * 100) / 100,
+    };
+  }
+
+  dispose(): void {
+    this.session?.release();
+    this.session = null;
+  }
+}
+
+// Uso en un componente React
+// const engine = new BrowserInferenceEngine({
+//   modelUrl: '/models/classifier_int8.onnx',
+//   executionProvider: 'wasm',
+//   inputShape: [1, 3, 224, 224],
+// });
+// await engine.initialize();
+// const { result, timeMs } = await engine.predict(preprocessedImage);
+```
+
+La inferencia en el navegador es perfecta para:
+- Clasificación/filtrado de imágenes antes de subir (ahorrar ancho de banda)
+- Clasificación de texto en tiempo real (sentimiento, toxicidad)
+- Puntuación de recomendaciones en el dispositivo
+- Aplicaciones sensibles a la privacidad (los datos nunca salen del navegador)
+
+La limitación es el tamaño del modelo. Mantenlo bajo 50MB para una buena experiencia de usuario. Nadie va a esperar que se descargue un modelo de 500MB antes de poder usar tu app.
+
+## Monitoreando Modelos Edge en Producción
+
+Aquí es donde la mayoría de los equipos se tropiezan. Despliegan el modelo, funciona, y siguen adelante. Seis meses después alguien se da cuenta de que las predicciones son basura y no tiene idea de cuándo empezó.
+
+El monitoreo edge es más difícil que el monitoreo cloud porque no puedes simplemente mirar un dashboard — los dispositivos están esparcidos por el mundo, frecuentemente detrás de firewalls, a veces offline. Este es el patrón de telemetría que uso:
+
+```python
+import time
+import json
+import logging
+from dataclasses import dataclass, field, asdict
+from collections import deque
+from typing import Optional
+
+@dataclass
+class InferenceMetric:
+    timestamp: float
+    inference_ms: float
+    input_hash: str              # Para detectar data drift
+    prediction: list[float]
+    confidence: float
+    model_version: str
+    device_id: str
+    cpu_temp: Optional[float] = None
+    memory_usage_mb: Optional[float] = None
+
+class EdgeTelemetryCollector:
+    """Recolecta y agrupa métricas de inferencia edge para subir."""
+
+    def __init__(
+        self,
+        device_id: str,
+        buffer_size: int = 1000,
+        upload_interval_s: int = 300,  # Subir cada 5 minutos
+    ):
+        self.device_id = device_id
+        self.buffer: deque[InferenceMetric] = deque(maxlen=buffer_size)
+        self.upload_interval = upload_interval_s
+        self._last_upload = time.time()
+
+        # Estadísticas rolling para alertas locales
+        self._recent_latencies: deque[float] = deque(maxlen=100)
+        self._recent_confidences: deque[float] = deque(maxlen=100)
+
+    def record(self, metric: InferenceMetric) -> None:
+        """Registrar una métrica individual de inferencia."""
+        self.buffer.append(metric)
+        self._recent_latencies.append(metric.inference_ms)
+        self._recent_confidences.append(metric.confidence)
+
+        # Detección de anomalías local — no esperar al cloud
+        self._check_local_alerts(metric)
+
+    def _check_local_alerts(self, metric: InferenceMetric) -> None:
+        """Detectar problemas localmente sin necesitar conectividad al cloud."""
+        # Detección de picos de latencia
+        if len(self._recent_latencies) >= 10:
+            avg = sum(self._recent_latencies) / len(self._recent_latencies)
+            if metric.inference_ms > avg * 3:
+                logging.warning(
+                    f"Pico de latencia: {metric.inference_ms:.1f}ms "
+                    f"(prom: {avg:.1f}ms) — posible thermal throttling"
+                )
+
+        # Detección de drift de confianza
+        if len(self._recent_confidences) >= 50:
+            avg_conf = (
+                sum(self._recent_confidences)
+                / len(self._recent_confidences)
+            )
+            if avg_conf < 0.5:
+                logging.warning(
+                    f"Confianza promedio baja: {avg_conf:.2f} — "
+                    "posible data drift o degradación del modelo"
+                )
+
+        # Alerta de temperatura
+        if metric.cpu_temp and metric.cpu_temp > 80:
+            logging.warning(
+                f"Temp CPU alta: {metric.cpu_temp}°C — "
+                "degradación de rendimiento probable"
+            )
+
+    def should_upload(self) -> bool:
+        """Verificar si es hora de subir métricas almacenadas."""
+        return (
+            time.time() - self._last_upload > self.upload_interval
+            and len(self.buffer) > 0
+        )
+
+    def get_upload_batch(self) -> list[dict]:
+        """Obtener métricas para subir y limpiar buffer."""
+        batch = [asdict(m) for m in self.buffer]
+        self.buffer.clear()
+        self._last_upload = time.time()
+        return batch
+```
+
+El insight clave: **haz detección de anomalías localmente, sube métricas para tendencias.** No dependas de la conectividad al cloud para detectar problemas. Tu dispositivo edge debería poder detectar y alertar sobre sus propios problemas — picos de latencia, caídas de confianza, thermal throttling — sin llamar a casa.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Arquitectura de Monitoreo Edge                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Dispositivo Edge                Cloud                          │
+│  ────────────────                ─────                          │
+│  ┌──────────────┐               ┌──────────────┐               │
+│  │  Motor de     │               │  DB Métricas  │               │
+│  │  Inferencia   │──telemetría─▶│  (TimescaleDB │               │
+│  └──────┬───────┘   (en batch)  │   /InfluxDB)  │               │
+│         │                        └──────┬───────┘               │
+│  ┌──────▼───────┐               ┌──────▼───────┐               │
+│  │  Gestor de    │               │  Dashboard    │               │
+│  │  Alertas Local│               │  (Grafana)    │               │
+│  └──────┬───────┘               └──────┬───────┘               │
+│         │                               │                        │
+│  ┌──────▼───────┐               ┌──────▼───────┐               │
+│  │  Acción Local │               │  Detección    │               │
+│  │  (throttle,   │               │  de Drift     │               │
+│  │   fallback)   │               │  + Reentrenar │               │
+│  └──────────────┘               └──────────────┘               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="tip" title="El Checklist de Monitoreo Edge">
+Como mínimo, rastrea estas métricas para cada modelo edge: latencia de inferencia (p50, p95, p99), distribución de confianza de predicciones, estadísticas de datos de entrada (para detección de drift), temperatura del dispositivo y uso de memoria, versión del modelo y tiempo activo. Si alguna de estas empieza a tender en la dirección equivocada, quieres saberlo antes que tus usuarios.
+</Callout>
+
+## Cuándo NO Usar Edge (Simplemente Llama a la API)
+
+He pasado todo este artículo hablando sobre inferencia edge, así que déjame balancear las cosas: la mayoría de las veces, deberías simplemente llamar a la API. En serio.
+
+La inferencia edge es la herramienta correcta para situaciones específicas. No es el estándar. Aquí va cuándo saltártelo:
+
+**Sáltate edge si tu modelo cambia frecuentemente.** Si estás reentrenando semanalmente, empujar actualizaciones a miles de dispositivos edge semanalmente es una pesadilla. La inferencia en la nube te permite intercambiar modelos con un cambio de configuración.
+
+**Sáltate edge si necesitas modelos grandes.** Ejecutar un LLM de 7B parámetros en un Jetson es técnicamente posible pero prácticamente miserable. Si tu caso de uso necesita capacidades nivel GPT-4, llama a la API. Para eso está.
+
+**Sáltate edge si tienes conectividad confiable y de baja latencia.** Si tus dispositivos siempre están online con <50ms a tu región de cloud, la complejidad del despliegue edge te compra muy poco.
+
+**Sáltate edge si eres un equipo pequeño.** El despliegue edge duplica tu superficie operativa. Si son tres ingenieros enviando código rápido, la inferencia en la nube con una buena capa de caché probablemente es suficiente.
+
+```python
+# A veces la mejor estrategia edge es... no hacer edge en absoluto.
+# Aquí va un patrón inteligente de fallback:
+
+import aiohttp
+import asyncio
+
+async def hybrid_inference(
+    input_data: np.ndarray,
+    edge_engine: EdgeInferenceEngine,
+    cloud_url: str,
+    cloud_timeout_ms: float = 200,
+) -> dict:
+    """
+    Intenta edge primero. Cae a cloud si edge no está saludable.
+    Esto te da lo mejor de ambos mundos.
+    """
+    # Verificar si el modelo edge está saludable
+    if (
+        edge_engine.session is not None
+        and edge_engine.avg_inference_ms < 100  # No tiene thermal throttling
+    ):
+        try:
+            predictions, inference_ms = edge_engine.predict(input_data)
+            return {
+                "source": "edge",
+                "predictions": predictions.tolist(),
+                "latency_ms": inference_ms,
+            }
+        except Exception as e:
+            logger.warning(f"Inferencia edge falló: {e}, cayendo a cloud")
+
+    # Fallback a cloud
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                cloud_url,
+                json={"data": input_data.tolist()},
+                timeout=aiohttp.ClientTimeout(
+                    total=cloud_timeout_ms / 1000
+                ),
+            ) as resp:
+                result = await resp.json()
+                return {
+                    "source": "cloud",
+                    "predictions": result["predictions"],
+                    "latency_ms": result.get("latency_ms", -1),
+                }
+    except asyncio.TimeoutError:
+        logger.error("Edge y cloud fallaron — retornando resultado cacheado")
+        return {
+            "source": "cache",
+            "predictions": get_cached_prediction(input_data),
+            "latency_ms": 0,
+        }
+```
+
+## El Playbook Práctico
+
+Si llegaste hasta aquí, esta es la secuencia que recomendaría para cualquier proyecto nuevo de IA edge:
+
+1. **Empieza en la nube.** Construye tu modelo, valida que funciona, despliégalo detrás de una API. Mide la latencia desde las ubicaciones reales de despliegue.
+
+2. **Mide la brecha.** ¿La latencia del cloud es realmente un problema? ¿Tienes restricciones de conectividad? ¿Hay un requisito de privacidad? Si la respuesta a las tres es "no," para aquí. Ya terminaste.
+
+3. **Convierte a ONNX.** Esto es buena idea de todos modos — estandariza tu modelo y usualmente te da 30-50% de aceleración en inferencia incluso en servidores cloud.
+
+4. **Cuantiza a INT8.** Cuantización dinámica primero. Mide el impacto en precisión. Si es aceptable (usualmente lo es), ya tienes tu modelo edge.
+
+5. **Perfila en el hardware objetivo.** Antes de comprometerte con un dispositivo, renta o compra uno y haz benchmark de verdad. No confíes en las hojas de especificaciones.
+
+6. **Construye el monitoreo primero.** Antes de desplegar en producción, ten tu pipeline de telemetría funcionando. Te lo agradecerás después.
+
+7. **Despliega con fallback.** Siempre ten un camino de fallback al cloud. Los dispositivos edge fallan. Se va la luz. El hardware muere. Tu servicio debería degradarse elegantemente, no crashear.
+
+¿El proyecto de monitoreo de salud con el que empecé este artículo? Lleva más de un año corriendo en Jetsons. Hemos empujado 12 actualizaciones de modelo vía OTA, detectado dos incidentes de thermal throttling antes de que afectaran a pacientes, y las enfermeras dejaron de quejarse del lag. El sistema simplemente funciona, silenciosamente, en el edge, donde importa.
+
+Esos 12ms de inferencia todavía me hacen sonreír.
+
+---
+
+*¿Tienes preguntas sobre despliegue edge? ¿Encontraste un error? ¿Crees que me equivoqué en algo? Escríbeme. Ya me he equivocado antes (ver: la vez que intenté ejecutar un modelo de difusión en una Raspberry Pi Zero) y siempre estoy feliz de que me corrijan.*

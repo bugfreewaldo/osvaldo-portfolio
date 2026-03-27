@@ -1,0 +1,894 @@
+---
+title: "Accesibilidad Web para Desarrolladores: Mas Alla del Checkbox de Cumplimiento"
+description: "Una guia practica para construir aplicaciones web verdaderamente accesibles. Desde el momento en que un usuario ciego rompio mi app de salud hasta construir una cultura a11y-first en tu equipo."
+date: 2026-03-16
+updated: 2026-03-16
+published: true
+category: "Ingeniería Frontend"
+tags: ["Accesibilidad", "a11y", "React", "WCAG", "Frontend"]
+author: "Osvaldo Restrepo"
+translationOf: "web-accessibility-developers-guide"
+tldr: "La accesibilidad no es un checklist que completas antes del lanzamiento. El HTML semantico te lleva al 80%, ARIA es poderoso pero peligroso cuando se usa mal, y la unica forma de validar tu trabajo es soltar el mouse y usar un lector de pantalla. Construye la cultura primero, las herramientas siguen."
+faqs:
+  - question: "Como empiezo con accesibilidad web si mi codebase no tiene nada?"
+    answer: "Empieza con HTML semantico. Reemplaza divs-como-botones con botones reales, agrega alt text a imagenes, asegurate de que la jerarquia de encabezados tenga sentido. Luego agrega navegacion por teclado. Estos dos pasos solos arreglan la mayoria de los problemas de accesibilidad sin tocar ARIA."
+  - question: "Es WCAG 2.1 AA suficiente para cumplimiento legal?"
+    answer: "Para la mayoria de los proyectos, si. WCAG 2.1 AA es el estandar referenciado por el ADA, Section 508 y la Ley Europea de Accesibilidad. AAA es aspiracional y a menudo impractico para aplicaciones complejas. Apunta a AA como tu linea base y superalo donde puedas."
+  - question: "Necesito soportar todos los lectores de pantalla?"
+    answer: "Enfocate en NVDA (Windows, gratis), VoiceOver (macOS/iOS, integrado) y JAWS (Windows, empresarial). Estos tres cubren la gran mayoria de usuarios de lectores de pantalla. Prueba con al menos dos. VoiceOver mas NVDA es una buena combinacion."
+  - question: "Como convenzo a mi equipo de priorizar accesibilidad?"
+    answer: "Enmarcalo como calidad de ingenieria, no caridad. El codigo accesible es semantico, testeable y robusto. Maneja edge cases mejor. Muestrale al equipo que una UI navegable por teclado tambien funciona mejor para power users, y que una estructura de encabezados correcta mejora el SEO. El angulo de riesgo legal funciona con liderazgo."
+relatedPosts: ["react-server-components-architecture", "healthcare-software-ux"]
+---
+
+Nunca voy a olvidar la demo. Habiamos pasado cuatro meses construyendo un formulario de ingreso de pacientes para una aplicacion de salud. UI limpia, animaciones suaves, gradientes hermosos. El cliente trajo a un consultor que resulto ser ciego, usando NVDA con Firefox.
+
+Nada funciono.
+
+El boton "Siguiente Paso" era un `<div>` estilizado con un handler de `onClick`. El indicador de progreso era puro CSS sin alternativa de texto. Los errores de validacion del formulario aparecian visualmente pero nunca se anunciaban. El selector de fecha era un componente custom que atrapaba el foco en un loop infinito.
+
+Nos sentamos ahi por doce minutos excruciantemente largos viendo a alguien intentar llenar un formulario que deberia haber tomado dos minutos. Queria meterme debajo de la mesa. Ese fue el dia en que la accesibilidad dejo de ser un item en mi sprint board y empezo a ser algo que realmente me importaba.
+
+## El Estado de la Accesibilidad Web Es Vergonzoso
+
+Voy a ser directo: la web es hostil para personas con discapacidades. El estudio WebAIM Million consistentemente encuentra que mas del 96% de las paginas de inicio tienen fallas detectables de WCAG. Y esas son solo las detecciones *automatizadas*, que atrapan quiza el 30-40% de los problemas reales.
+
+```
+┌─────────────────────────────────────────────────────┐
+│      Realidad de la Accesibilidad Web                │
+│                                                      │
+│  96.3% ████████████████████████████████████████ Fail │
+│   3.7% █▌                                     Pass  │
+│                                                      │
+│  Fallas principales:                                 │
+│  ├── 83.6%  Texto con bajo contraste                 │
+│  ├── 58.2%  Alt text faltante                        │
+│  ├── 50.1%  Labels de formulario faltantes           │
+│  ├── 45.8%  Enlaces vacios                           │
+│  ├── 29.6%  Idioma del documento faltante            │
+│  └── 18.6%  Botones vacios                           │
+│                                                      │
+│  Fuente: WebAIM Million (auditoria anual)            │
+└─────────────────────────────────────────────────────┘
+```
+
+Mira esa lista. Alt text faltante. Botones vacios. Sin labels de formulario. Estos no son edge cases exoticos que requieren conocimiento profundo de ARIA. Son fundamentos de HTML que de alguna manera seguimos haciendo mal.
+
+## WCAG: El Curso Intensivo Que Realmente Necesitas
+
+WCAG (Pautas de Accesibilidad al Contenido Web) es el estandar. Hay tres niveles de conformidad: A, AA y AAA. Esto es lo que necesitas saber en la practica:
+
+**Nivel A**: El minimo indispensable. Si fallas estos, tu sitio es esencialmente inutilizable para muchas personas con discapacidades. Cosas como: alternativas de texto para imagenes, operabilidad por teclado, sin contenido que provoque convulsiones.
+
+**Nivel AA**: El objetivo para virtualmente todo proyecto. Es lo que las leyes referencian. Agrega requisitos como: ratios de contraste de color (4.5:1 para texto normal, 3:1 para texto grande), redimensionar al 200% sin perder funcionalidad, indicadores de foco visibles.
+
+**Nivel AAA**: Aspiracional. Contraste mejorado (7:1), lenguaje de senas para video, sin limites de tiempo. Lograr cumplimiento AAA completo en una app compleja es poco realista, pero selecciona lo que puedas.
+
+<Callout type="info" title="El Panorama Legal">
+Las demandas ADA dirigidas a sitios web aumentaron dramaticamente ano tras ano. El Departamento de Justicia de EE.UU. ha afirmado que el ADA aplica a sitios web. La Ley Europea de Accesibilidad (EAA) entro en vigor en junio de 2025. Esto ya no es riesgo hipotetico. WCAG 2.1 AA es el estandar legal de facto a nivel global.
+</Callout>
+
+WCAG esta organizado alrededor de cuatro principios, que puedes recordar con el acronimo **POUR**:
+
+```
+┌──────────────────────────────────────────────────────┐
+│                   Principios POUR                     │
+│                                                       │
+│  P - Perceptible                                      │
+│      Pueden los usuarios percibir el contenido?       │
+│      (alternativas de texto, subtitulos, contraste)   │
+│                                                       │
+│  O - Operable                                         │
+│      Pueden los usuarios operar la interfaz?          │
+│      (teclado, tiempo, navegacion)                    │
+│                                                       │
+│  U - Understandable (Comprensible)                    │
+│      Pueden los usuarios entender el contenido?       │
+│      (legible, predecible, ayuda con errores)         │
+│                                                       │
+│  R - Robusto                                          │
+│      Puede la tecnologia asistiva interpretarlo?      │
+│      (HTML valido, ARIA, compatibilidad)              │
+│                                                       │
+└──────────────────────────────────────────────────────┘
+```
+
+## El HTML Semantico Es el 80% de la Batalla
+
+Hablo en serio con ese numero. La mayoria de las fallas de accesibilidad que he visto en code reviews vienen de desarrolladores que usan `<div>` y `<span>` cuando un elemento HTML nativo ya hace lo que necesitan, con soporte de teclado y semantica para lectores de pantalla incluidos gratis.
+
+### El Problema de la Sopa de Divs
+
+Aqui hay codigo que realmente he visto en produccion. No me lo estoy inventando:
+
+```html
+<!-- Por favor no hagas esto -->
+<div class="btn" onclick="handleSubmit()">
+  <div class="btn-icon">
+    <div class="icon-arrow"></div>
+  </div>
+  <div class="btn-text">Enviar Formulario</div>
+</div>
+```
+
+Que tiene de malo? Todo. No es enfocable. No se puede activar con Enter o Space. Los lectores de pantalla lo ven como texto generico, no como un elemento interactivo. No tiene rol, ni estado, ni soporte de teclado.
+
+Asi es como deberia ser:
+
+```html
+<!-- Solo usa un button -->
+<button type="submit">
+  <ArrowIcon aria-hidden="true" />
+  Enviar Formulario
+</button>
+```
+
+Eso es todo. El elemento `<button>` te da: gestion de foco, activacion con Enter/Space, el rol `button` para lectores de pantalla, y participa en el envio de formularios. Todo gratis. Cero ARIA necesario.
+
+<Callout type="warning" title="La Primera Regla de ARIA">
+La primera regla de ARIA es: no uses ARIA. Si puedes usar un elemento HTML nativo con el comportamiento y la semantica que necesitas, haz eso. Un `<button>` siempre es mejor que `<div role="button" tabindex="0" onKeyDown={handleKeyPress}>`. Siempre.
+</Callout>
+
+### Elementos Que la Gente Sigue Haciendo Mal
+
+**Navegacion**: Usa `<nav>` con un `aria-label` cuando tengas multiples regiones de navegacion:
+
+```tsx
+<nav aria-label="Navegacion principal">
+  <ul>
+    <li><a href="/sobre">Sobre Mi</a></li>
+    <li><a href="/blog">Blog</a></li>
+    <li><a href="/contacto">Contacto</a></li>
+  </ul>
+</nav>
+
+<nav aria-label="Categorias del blog">
+  <ul>
+    <li><a href="/blog/react">React</a></li>
+    <li><a href="/blog/a11y">Accesibilidad</a></li>
+  </ul>
+</nav>
+```
+
+**Encabezados**: La jerarquia de encabezados debe ser logica. No te saltes niveles. Los usuarios de lectores de pantalla navegan por encabezados de la misma forma en que los usuarios videntes escanean una pagina visualmente:
+
+```
+✅ Correcto                   ❌ Incorrecto
+h1 Titulo de Pagina          h1 Titulo de Pagina
+  h2 Seccion A                 h3 Seccion A    (salto h2)
+    h3 Subseccion A.1            h4 Subseccion
+  h2 Seccion B                 h2 Seccion B
+    h3 Subseccion B.1            h5 ???         (caos)
+```
+
+**Formularios**: Cada input necesita un label visible y asociado. El texto placeholder no es un label:
+
+```tsx
+// Mal: el placeholder desaparece cuando escribes
+<input type="email" placeholder="Ingresa tu email" />
+
+// Bien: el label siempre es visible y esta asociado programaticamente
+<label htmlFor="email">Correo electronico</label>
+<input type="email" id="email" placeholder="jane@ejemplo.com" />
+
+// Tambien bien: label envolvente
+<label>
+  Correo electronico
+  <input type="email" placeholder="jane@ejemplo.com" />
+</label>
+```
+
+**Tablas**: Usa elementos `<table>` reales para datos tabulares, con celdas `<th>` y atributos `scope` correctos. NO uses tablas para layout (no estamos en 2003), y NO uses una grilla de `<div>` para datos tabulares reales:
+
+```tsx
+<table>
+  <caption>Ingresos Q1 2026 por Region</caption>
+  <thead>
+    <tr>
+      <th scope="col">Region</th>
+      <th scope="col">Ingresos</th>
+      <th scope="col">Crecimiento</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th scope="row">Norteamerica</th>
+      <td>$2.4M</td>
+      <td>+12%</td>
+    </tr>
+    <tr>
+      <th scope="row">Europa</th>
+      <td>$1.8M</td>
+      <td>+8%</td>
+    </tr>
+  </tbody>
+</table>
+```
+
+### Regiones Landmark
+
+Los landmarks permiten a los usuarios de lectores de pantalla saltar entre secciones principales de una pagina. Usalos consistentemente:
+
+```tsx
+<header>        {/* landmark banner */}
+  <nav>         {/* landmark navigation */}
+    ...
+  </nav>
+</header>
+<main>          {/* landmark main - solo uno por pagina */}
+  <article>     {/* article - no es landmark, pero es semantico */}
+    <section>   {/* landmark region cuando tiene label */}
+      ...
+    </section>
+  </article>
+  <aside>       {/* landmark complementary */}
+    ...
+  </aside>
+</main>
+<footer>        {/* landmark contentinfo */}
+  ...
+</footer>
+```
+
+## Patrones de Navegacion por Teclado en React
+
+Si tu componente no se puede operar con un teclado, no funciona. Punto. Aproximadamente el 8% de los usuarios dependen de la navegacion por teclado, y eso incluye personas usando dispositivos switch, software de control por voz, y cualquier persona con una discapacidad motora.
+
+### Fundamentos de Gestion de Foco
+
+El modelo declarativo de React hace que la gestion de foco sea complicada porque el DOM se actualiza asincronamente. Aqui hay un hook que uso constantemente:
+
+```tsx
+import { useRef, useEffect } from 'react';
+
+function useFocusOnMount<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+
+  useEffect(() => {
+    // Pequeno delay para asegurar que el DOM esta listo despues del render
+    const timer = setTimeout(() => {
+      ref.current?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return ref;
+}
+
+// Uso: enfocar el encabezado cuando se carga una nueva pagina
+function ResultadosBusqueda({ results }: { results: Result[] }) {
+  const headingRef = useFocusOnMount<HTMLHeadingElement>();
+
+  return (
+    <section aria-label="Resultados de busqueda">
+      <h2 ref={headingRef} tabIndex={-1}>
+        {results.length} resultados encontrados
+      </h2>
+      <ul>
+        {results.map(r => (
+          <li key={r.id}>
+            <a href={r.url}>{r.title}</a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+```
+
+Nota el `tabIndex={-1}` en el encabezado. Esto lo hace enfocable programaticamente (via JavaScript) sin agregarlo al orden de tabulacion. Los usuarios no tabularan hacia el, pero podemos enviar el foco ahi despues de una transicion de pagina.
+
+### El Patron Roving TabIndex
+
+Para widgets compuestos como barras de herramientas, listas de pestanas o barras de menu, quieres un solo tab stop para todo el grupo, con teclas de flecha para navegar dentro:
+
+```tsx
+import { useState, useRef, KeyboardEvent } from 'react';
+
+interface TabListProps {
+  tabs: { id: string; label: string }[];
+  activeTab: string;
+  onTabChange: (id: string) => void;
+}
+
+function TabList({ tabs, activeTab, onTabChange }: TabListProps) {
+  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  const handleKeyDown = (e: KeyboardEvent, currentIndex: number) => {
+    let nextIndex: number;
+
+    switch (e.key) {
+      case 'ArrowRight':
+        nextIndex = (currentIndex + 1) % tabs.length;
+        break;
+      case 'ArrowLeft':
+        nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        break;
+      case 'Home':
+        nextIndex = 0;
+        break;
+      case 'End':
+        nextIndex = tabs.length - 1;
+        break;
+      default:
+        return; // No prevenir default para otras teclas
+    }
+
+    e.preventDefault();
+    const nextTab = tabs[nextIndex];
+    onTabChange(nextTab.id);
+    tabRefs.current.get(nextTab.id)?.focus();
+  };
+
+  return (
+    <div role="tablist" aria-label="Secciones de contenido">
+      {tabs.map((tab, index) => (
+        <button
+          key={tab.id}
+          ref={(el) => {
+            if (el) tabRefs.current.set(tab.id, el);
+          }}
+          role="tab"
+          id={`tab-${tab.id}`}
+          aria-selected={tab.id === activeTab}
+          aria-controls={`panel-${tab.id}`}
+          tabIndex={tab.id === activeTab ? 0 : -1}
+          onClick={() => onTabChange(tab.id)}
+          onKeyDown={(e) => handleKeyDown(e, index)}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+```
+┌──────────────────────────────────────────────────────┐
+│            Patron Roving TabIndex                     │
+│                                                       │
+│  Tab entra al grupo:                                  │
+│  [Tab1*]  [Tab2]  [Tab3]  [Tab4]                     │
+│    ↑ tabIndex=0   tabIndex=-1 (todos los demas)       │
+│                                                       │
+│  Flechas mueven dentro del grupo:                     │
+│  [Tab1]  [Tab2*]  [Tab3]  [Tab4]                     │
+│          ↑ tabIndex=0 ahora, enfocado                 │
+│                                                       │
+│  Tab sale del grupo completamente                     │
+│  → el foco se mueve al siguiente elemento enfocable   │
+│                                                       │
+│  * = actualmente activo/enfocado                      │
+└──────────────────────────────────────────────────────┘
+```
+
+### Trampa de Foco para Modales
+
+Cuando un modal se abre, el foco debe estar atrapado dentro. Tab debe ciclar entre los elementos enfocables del modal, sin escapar a la pagina detras:
+
+```tsx
+import { useEffect, useRef, useCallback } from 'react';
+
+function useModalFocusTrap(isOpen: boolean) {
+  const modalRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+
+  const getFocusableElements = useCallback(() => {
+    if (!modalRef.current) return [];
+    return Array.from(
+      modalRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+      )
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Guardar foco actual para restaurar despues
+    previousFocus.current = document.activeElement as HTMLElement;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Cerrar modal con Escape - implementa tu logica de cierre
+        return;
+      }
+
+      if (e.key !== 'Tab') return;
+
+      const focusable = getFocusableElements();
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    // Enfocar primer elemento del modal
+    const focusable = getFocusableElements();
+    if (focusable.length > 0) {
+      focusable[0].focus();
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      // Restaurar foco cuando el modal se cierra
+      previousFocus.current?.focus();
+    };
+  }, [isOpen, getFocusableElements]);
+
+  return modalRef;
+}
+```
+
+<Callout type="tip" title="Saltar Navegacion">
+Cada pagina deberia tener un enlace "Saltar al contenido principal" como el primer elemento enfocable. Los usuarios de teclado no deberian tener que tabular a traves de 40 enlaces de navegacion en cada carga de pagina. Es un patron simple que hace una diferencia enorme.
+</Callout>
+
+```tsx
+// Coloca esto como primer hijo de <body> o tu layout
+function SkipLink() {
+  return (
+    <a
+      href="#main-content"
+      className="sr-only focus:not-sr-only focus:absolute focus:top-4
+                 focus:left-4 focus:z-50 focus:px-4 focus:py-2
+                 focus:bg-white focus:text-black focus:outline-2"
+    >
+      Saltar al contenido principal
+    </a>
+  );
+}
+
+// Luego en tu elemento main:
+<main id="main-content" tabIndex={-1}>
+  {/* contenido de la pagina */}
+</main>
+```
+
+## ARIA: Cuando Usarlo y Cuando Empeora las Cosas
+
+ARIA (Accessible Rich Internet Applications) es poderoso. Te permite comunicar semantica, estados y relaciones a tecnologia asistiva que HTML solo no puede expresar. Pero aqui esta lo que la mayoria de los desarrolladores no se dan cuenta: **ARIA mal implementado es peor que no tener ARIA**.
+
+Un `<div>` sin rol es ignorado por los lectores de pantalla. Un `<div role="button">` que no responde a eventos de teclado le dice a un usuario ciego "aqui hay un boton" que nunca podra presionar. Has creado una mentira en el arbol de accesibilidad.
+
+### Las Cinco Reglas de ARIA
+
+1. **No uses ARIA si el HTML nativo funciona.** `<button>` sobre `<div role="button">`, siempre.
+2. **No cambies la semantica nativa.** No pongas `role="heading"` en un `<button>`.
+3. **Todos los controles ARIA interactivos deben ser operables por teclado.**
+4. **No uses `role="presentation"` o `aria-hidden="true"` en elementos enfocables visibles.**
+5. **Todos los elementos interactivos deben tener un nombre accesible.**
+
+### ARIA Que Realmente Ayuda
+
+Hay patrones donde ARIA es necesario y correcto. Estos son los que uso mas frecuentemente:
+
+**Regiones en vivo** para contenido dinamico:
+
+```tsx
+// Anunciar resultados de busqueda mientras cargan
+function EstadoBusqueda({ count, loading }: { count: number; loading: boolean }) {
+  return (
+    <div aria-live="polite" aria-atomic="true" className="sr-only">
+      {loading
+        ? 'Buscando...'
+        : `${count} resultado${count !== 1 ? 's' : ''} encontrado${count !== 1 ? 's' : ''}`}
+    </div>
+  );
+}
+```
+
+**Describir relaciones** entre elementos:
+
+```tsx
+function CampoPassword() {
+  const [strength, setStrength] = useState('');
+
+  return (
+    <div>
+      <label htmlFor="password">Contrasena</label>
+      <input
+        type="password"
+        id="password"
+        aria-describedby="password-requirements password-strength"
+        onChange={(e) => setStrength(evaluateStrength(e.target.value))}
+      />
+      <p id="password-requirements">
+        Debe tener al menos 12 caracteres con un numero y un simbolo.
+      </p>
+      <p id="password-strength" aria-live="polite">
+        Fortaleza de contrasena: {strength}
+      </p>
+    </div>
+  );
+}
+```
+
+**Estado expandido/colapsado** para widgets de revelacion:
+
+```tsx
+function Acordeon({ title, children }: { title: string; children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const panelId = useId();
+
+  return (
+    <div>
+      <h3>
+        <button
+          aria-expanded={isOpen}
+          aria-controls={panelId}
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          {title}
+          <ChevronIcon aria-hidden="true" direction={isOpen ? 'up' : 'down'} />
+        </button>
+      </h3>
+      <div id={panelId} role="region" aria-labelledby={title} hidden={!isOpen}>
+        {children}
+      </div>
+    </div>
+  );
+}
+```
+
+### Anti-Patrones de ARIA Que He Visto en Produccion
+
+**Roles redundantes en elementos nativos**:
+```tsx
+// Mal: <button> ya tiene role="button"
+<button role="button">Haz clic</button>
+
+// Mal: <a href> ya tiene role="link"
+<a href="/sobre" role="link">Sobre Mi</a>
+```
+
+**aria-label que contradice el texto visible**:
+```tsx
+// Mal: el lector de pantalla dice "Cerrar dialogo" pero los usuarios
+// videntes ven "X". Confunde a usuarios de control por voz que dicen "Clic X"
+<button aria-label="Cerrar dialogo">X</button>
+
+// Mejor: usa aria-label pero mantenlo cerca del texto visible
+<button aria-label="Cerrar">
+  <span aria-hidden="true">✕</span>
+</button>
+```
+
+**Ocultar cosas que no deberias**:
+```tsx
+// Mal: boton solo con icono sin nombre accesible
+<button aria-hidden="true">
+  <SearchIcon />
+</button>
+// El lector de pantalla no puede verlo. El usuario de teclado puede
+// enfocarlo pero es invisible para tecnologia asistiva. Lo peor de ambos mundos.
+
+// Bien:
+<button aria-label="Buscar">
+  <SearchIcon aria-hidden="true" />
+</button>
+```
+
+## Contraste de Color, Gestion de Foco y Regiones en Vivo
+
+### Contraste de Color
+
+WCAG 2.1 AA requiere un ratio de contraste de al menos **4.5:1** para texto normal y **3:1** para texto grande (18pt o 14pt bold). No son numeros arbitrarios. Estan basados en investigacion sobre legibilidad para personas con baja vision.
+
+Mantengo una extension de navegador (WCAG Color Contrast Checker) corriendo todo el tiempo. Ha atrapado problemas que habria pasado por alto. Texto gris claro sobre fondo blanco se ve "elegante" en un mockup de Figma, pero es ilegible para millones de personas.
+
+```
+┌──────────────────────────────────────────────────────┐
+│           Hoja de Trucos de Contraste de Color        │
+│                                                       │
+│  Texto normal (<18pt):  4.5:1 ratio minimo            │
+│  Texto grande (≥18pt):  3:1 ratio minimo              │
+│  Componentes UI:        3:1 ratio minimo              │
+│  (iconos, bordes, indicadores de foco)                │
+│                                                       │
+│  Ejemplos:                                            │
+│  ✅ #333333 en #FFFFFF = 12.6:1  (excelente)          │
+│  ✅ #595959 en #FFFFFF =  7.0:1  (bueno)              │
+│  ⚠️ #767676 en #FFFFFF =  4.5:1  (minimo)             │
+│  ❌ #999999 en #FFFFFF =  2.8:1  (FALLA)              │
+│  ❌ #AAAAAA en #FFFFFF =  2.3:1  (FALLA)              │
+│                                                       │
+│  Herramienta: usa el color picker de Chrome DevTools, │
+│  muestra el ratio de contraste automaticamente        │
+└──────────────────────────────────────────────────────┘
+```
+
+<Callout type="warning" title="No Dependas Solo del Color">
+Nunca uses color como la unica forma de transmitir informacion. Los estados de error necesitan iconos o texto, no solo un borde rojo. Los estados de exito necesitan un checkmark, no solo verde. Los datos de graficos necesitan patrones o labels, no solo diferenciacion por color. Aproximadamente el 8% de los hombres y el 0.5% de las mujeres tienen alguna forma de deficiencia de vision de color.
+</Callout>
+
+### Indicadores de Foco
+
+El outline de foco predeterminado del navegador existe por una razon. Si tu disenador dice "quita ese outline azul feo", empuja hacia atras. Los usuarios que navegan con teclado necesitan saber donde estan.
+
+Dicho esto, *puedes* hacer que los indicadores de foco sean mejores que el predeterminado:
+
+```css
+/* Quita el default, agrega uno mejor */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 3px solid #4A90D9;
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* :focus-visible solo se muestra para navegacion por teclado,
+   no para clicks de mouse. Lo mejor de ambos mundos. */
+```
+
+El foco debe ser visible, de alto contraste y consistente en toda tu aplicacion. Yo uso un outline solido de 3px con un offset de 2px, que funciona bien en fondos claros y oscuros.
+
+### Regiones en Vivo para Contenido Dinamico
+
+Las aplicaciones de pagina unica son especialmente complicadas para lectores de pantalla. Cuando el contenido cambia sin cargar una pagina, los lectores de pantalla no saben que paso algo. Las regiones en vivo resuelven esto:
+
+```tsx
+// Sistema de notificaciones toast con accesibilidad
+function ContenedorToast({ toasts }: { toasts: Toast[] }) {
+  return (
+    <div
+      aria-live="assertive"
+      aria-atomic="false"
+      className="fixed bottom-4 right-4 z-50"
+    >
+      {toasts.map((toast) => (
+        <div
+          key={toast.id}
+          role="alert"
+          className={`toast toast-${toast.type}`}
+        >
+          <span className="sr-only">
+            {toast.type === 'error' ? 'Error: ' : 'Notificacion: '}
+          </span>
+          {toast.message}
+          <button
+            aria-label={`Descartar: ${toast.message}`}
+            onClick={() => dismissToast(toast.id)}
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+```
+
+**`aria-live="polite"`**: Espera a que el usuario termine lo que esta haciendo antes de anunciar. Usa para actualizaciones no urgentes como conteo de resultados, mensajes de estado, indicadores de carga.
+
+**`aria-live="assertive"`**: Interrumpe lo que sea que el lector de pantalla este diciendo. Usa con moderacion para errores, alertas e informacion sensible al tiempo.
+
+**Cambios de ruta en SPAs**: Anuncia la navegacion de paginas. Esto es algo que muchas apps React hacen mal:
+
+```tsx
+import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
+
+function AnunciadorDeRuta() {
+  const pathname = usePathname();
+  const [announcement, setAnnouncement] = useState('');
+
+  useEffect(() => {
+    // Leer el titulo de la pagina o construir uno desde la ruta
+    const pageTitle = document.title || pathname;
+    setAnnouncement(`Navegaste a ${pageTitle}`);
+  }, [pathname]);
+
+  return (
+    <div
+      role="status"
+      aria-live="assertive"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      {announcement}
+    </div>
+  );
+}
+```
+
+## Probando Accesibilidad: El Enfoque Multi-Capa
+
+Aqui esta mi piramide de pruebas para accesibilidad. Necesitas todas estas capas. Ninguna sola es suficiente:
+
+```
+┌──────────────────────────────────────────────────────┐
+│         Piramide de Pruebas de Accesibilidad          │
+│                                                       │
+│                    ╱╲                                  │
+│                   ╱  ╲     Pruebas manuales            │
+│                  ╱ AT ╲    con lectores reales          │
+│                 ╱──────╲                               │
+│                ╱        ╲   Navegacion solo             │
+│               ╱ Teclado  ╲  por teclado                │
+│              ╱────────────╲                            │
+│             ╱              ╲  Tests de integracion     │
+│            ╱  jest + axe    ╲ con axe-core             │
+│           ╱──────────────────╲                         │
+│          ╱                    ╲  Pipeline CI con        │
+│         ╱  axe-core en CI      ╲ checks automaticos    │
+│        ╱────────────────────────╲                      │
+│       ╱                          ╲ eslint-plugin-      │
+│      ╱  Analisis Estatico (ESLint) ╲ jsx-a11y          │
+│     ╱──────────────────────────────╲                   │
+│                                                       │
+│  Atrapa mas problemas ↑  ↓ Atrapa menos pero rapido  │
+└──────────────────────────────────────────────────────┘
+```
+
+### Capa 1: Analisis Estatico con ESLint
+
+Instala `eslint-plugin-jsx-a11y`. Atrapa problemas obvios al escribir:
+
+```bash
+pnpm add -D eslint-plugin-jsx-a11y
+```
+
+```ts
+// eslint.config.js (flat config)
+import jsxA11y from 'eslint-plugin-jsx-a11y';
+
+export default [
+  jsxA11y.flatConfigs.recommended,
+  // ... tus otras configs
+];
+```
+
+Esto atrapa cosas como: imagenes sin alt text, anchor tags sin contenido, elementos de formulario sin labels, `onClick` en elementos no interactivos sin handlers de teclado.
+
+### Capa 2: Pruebas Automatizadas con axe-core
+
+axe-core es el motor estandar de la industria. Usalo en tus tests de integracion:
+
+```tsx
+// __tests__/components/LoginForm.test.tsx
+import { render } from '@testing-library/react';
+import { axe, toHaveNoViolations } from 'jest-axe';
+import { LoginForm } from '@/components/LoginForm';
+
+expect.extend(toHaveNoViolations);
+
+describe('LoginForm', () => {
+  it('no deberia tener violaciones de accesibilidad', async () => {
+    const { container } = render(<LoginForm />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('no deberia tener violaciones en estado de error', async () => {
+    const { container } = render(
+      <LoginForm errors={{ email: 'Email invalido', password: 'Requerido' }} />
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
+```
+
+### Capa 3: Lighthouse en CI
+
+Agrega una auditoria de accesibilidad de Lighthouse a tu pipeline de CI. Yo configuro el umbral en 90 y trato cualquier cosa por debajo como un build fallido:
+
+```yaml
+# .github/workflows/accessibility.yml
+- name: Run Lighthouse
+  uses: treosh/lighthouse-ci-action@v11
+  with:
+    urls: |
+      http://localhost:3000/
+      http://localhost:3000/dashboard
+      http://localhost:3000/settings
+    budgetPath: ./lighthouse-budget.json
+```
+
+### Capa 4: Pruebas Manuales de Teclado
+
+Las herramientas automatizadas atrapan aproximadamente el 30-40% de los problemas de accesibilidad. El resto requiere pruebas humanas. Hago una pasada solo-teclado en cada feature antes de que se lance:
+
+1. **Desconecta tu mouse** (o mejor: ponlo en un cajon)
+2. **Tabula a traves de cada elemento interactivo** en la pagina
+3. **Verifica**: Puedes ver donde esta el foco en todo momento?
+4. **Verifica**: Puedes operar cada control solo con teclado?
+5. **Verifica**: Puedes escapar de cualquier modal, dropdown u overlay?
+6. **Verifica**: El orden de foco coincide con el orden visual?
+7. **Verifica**: Hay alguna trampa de teclado?
+
+### Capa 5: Pruebas con Lector de Pantalla
+
+Esta es la capa que atrapa los problemas mas importantes y la que la mayoria de los equipos se saltan por completo. Aqui esta mi protocolo de pruebas:
+
+**VoiceOver en macOS** (gratis, integrado):
+- Command + F5 para activar/desactivar
+- Usa las teclas VO (Control + Option) mas flechas para navegar
+- Intenta navegar por encabezados (VO + Command + H)
+- Intenta navegar por landmarks (VO + Command + M para siguiente landmark)
+
+**NVDA en Windows** (gratis, open source):
+- Navega con teclas de flecha en modo browse
+- Presiona Tab para saltar a elementos interactivos
+- Presiona H para saltar a encabezados
+- Presiona D para saltar a landmarks
+- Escucha: Se transmite toda la informacion? Es logico el orden de lectura?
+
+<Callout type="tip" title="Habito de Pruebas con Lector de Pantalla">
+Paso 15 minutos cada viernes probando la feature que lance esa semana con un lector de pantalla. No es mucho tiempo, pero la consistencia importa. Empezaras a escuchar problemas antes de siquiera probarlos, porque desarrollas una intuicion para lo que les costara a los lectores de pantalla.
+</Callout>
+
+## Construyendo una Cultura de Accesibilidad en Tu Equipo
+
+Las herramientas y el conocimiento son necesarios pero no suficientes. He visto equipos con todos los plugins correctos de ESLint y checks de CI lanzar productos inaccesibles porque la accesibilidad se trataba como el trabajo de alguien mas.
+
+### Hazlo Parte de la Definicion de Terminado
+
+La definicion de terminado de nuestro equipo para cualquier feature de UI incluye:
+
+1. Navegable por teclado
+2. Probado con lector de pantalla (al menos VoiceOver o NVDA)
+3. Contraste de color verificado
+4. axe-core pasa con cero violaciones
+5. Gestion de foco revisada para cualquier contenido dinamico
+
+Si cualquiera de estos falla, el PR no se mergea. Asi de simple. Fue controversial al principio, pero despues de un mes el equipo dejo de pensar en ello como una carga y empezo a pensar en ello como calidad de ingenieria.
+
+### Checklist de Code Review
+
+Mantengo un checklist mental durante code reviews. No es exhaustivo, pero atrapa los problemas mas comunes:
+
+```
+┌──────────────────────────────────────────────────────┐
+│     Check Rapido de A11y en Code Review               │
+│                                                       │
+│  □ Las imagenes tienen alt text significativo          │
+│    (o alt="" si son decorativas)                      │
+│  □ Los elementos interactivos son HTML nativo donde   │
+│    sea posible                                        │
+│  □ Los componentes custom tienen handlers de teclado  │
+│  □ Los niveles de encabezado son secuenciales         │
+│    (sin saltos)                                       │
+│  □ Los inputs de formulario tienen labels visibles    │
+│  □ Los mensajes de error estan asociados con inputs   │
+│    (aria-describedby)                                 │
+│  □ El contenido dinamico usa regiones aria-live       │
+│  □ El foco se gestiona para cambios de ruta / modales │
+│  □ El color no es el unico indicador de estado        │
+│  □ Los targets tactiles son al menos 44x44px          │
+│                                                       │
+└──────────────────────────────────────────────────────┘
+```
+
+### Cambiando la Mentalidad
+
+Lo mas efectivo que he hecho es reencuadrar la accesibilidad de "carga de cumplimiento" a "calidad de ingenieria." Un componente accesible casi siempre es un componente mejor disenado. Tiene semantica correcta, maneja edge cases, funciona a traves de metodos de input y es mas testeable.
+
+Cuando un desarrollador de mi equipo se queja de que agregar soporte de teclado es trabajo extra, pregunto: "Tambien consideras el manejo de errores trabajo extra? Y el diseno responsivo?" La accesibilidad es la misma categoria de preocupacion. No son puntos extra. Es parte de construir software que funciona.
+
+Tambien animo al equipo a usar sus propios productos con teclado por una tarde. Nada construye empatia mas rapido que luchar con tu propia UI. Una de mis companeras de equipo se dio cuenta de que nuestra tabla de datos era completamente inutilizable con teclado, y se convirtio en la defensora mas fuerte de accesibilidad del equipo despues de esa experiencia.
+
+## Conclusiones
+
+Ese usuario ciego que probo nuestra app de salud? Reconstruimos todo el formulario de ingreso. Tomo dos semanas. La nueva version era HTML semantico, ARIA correcto donde se necesitaba, soporte completo de teclado y probado con lector de pantalla. Cuando regreso y completo el formulario en noventa segundos, fue uno de los momentos mas gratificantes de mi carrera.
+
+La accesibilidad no es caridad. No es un checkbox de cumplimiento. Es la expectativa base del desarrollo web profesional. Llevamos mas de treinta anos construyendo la web, y seguimos lanzando botones `<div>` sin soporte de teclado. Podemos hacerlo mejor.
+
+Empieza con HTML semantico. Agrega navegacion por teclado. Prueba con un lector de pantalla. Hazlo parte de la cultura de tu equipo. El resto sigue.
+
+Tus usuarios cuentan con ello, incluso los que nunca has conocido.

@@ -1,0 +1,885 @@
+---
+title: "Database Migration Strategies That Won't Keep You Up at Night"
+description: "Hard-won lessons from years of migrating production databases without losing data, sleep, or my sanity. Zero-downtime patterns, PostgreSQL tricks, tooling comparisons, rollback strategies, and the checklist I run through before every single deploy. Because 'it worked in staging' is not a migration strategy."
+date: 2026-03-20
+published: true
+category: "Backend Engineering"
+tags: ["Database", "Migrations", "PostgreSQL", "DevOps", "Zero Downtime"]
+author: "Osvaldo Restrepo"
+tldr: "Never run a migration you can't reverse, and never trust one you haven't tested against production-sized data. Use expand-contract for zero-downtime deploys, CREATE INDEX CONCURRENTLY for anything over a few thousand rows, advisory locks to prevent concurrent migration runs, and shadow databases to catch surprises before they become incidents. Schema-only migrations are easy; data migrations are where careers go to be tested. Separate them. Test them. Time them. And for the love of everything, have a rollback plan that isn't 'restore from backup.'"
+faqs:
+  - question: "What is the expand-contract migration pattern?"
+    answer: "Expand-contract (also called parallel change) is a two-phase approach: first you 'expand' by adding new columns or tables alongside the old ones, deploying code that writes to both. Then you 'contract' by removing the old structure after all reads have moved to the new one. This avoids any moment where old and new code are incompatible with the schema."
+  - question: "How do I add an index to a large PostgreSQL table without downtime?"
+    answer: "Use CREATE INDEX CONCURRENTLY, which builds the index without holding an exclusive lock on the table. It takes longer and uses more resources, but reads and writes continue uninterrupted. Always check for invalid indexes afterward with pg_stat_user_indexes and be prepared to DROP and retry if it fails."
+  - question: "Should I use an ORM migration tool or raw SQL?"
+    answer: "It depends on your team and complexity. ORM tools like Prisma and Knex are great for simple schema changes and developer ergonomics. Raw SQL gives you full control for complex data migrations, PostgreSQL-specific features, and performance-critical operations. Many mature teams use ORM migrations for schema changes and raw SQL for data migrations."
+  - question: "How do I test database migrations before running them in production?"
+    answer: "Use shadow databases cloned from production (with sanitized data), run migrations against them, and compare schema diffs. Time your migrations against realistic data volumes. Use pg_dump --schema-only to verify the final state matches expectations. And always run your application's test suite against the migrated schema."
+relatedPosts: ["postgres-beyond-basics", "data-modeling-real-world"]
+---
+
+Let me tell you about the worst 45 minutes of my engineering career.
+
+It was a Tuesday afternoon. Deployment day. We had a migration that added a `NOT NULL` column with a default value to our `orders` table. Simple, right? Fourteen million rows. PostgreSQL, pre-11 (before the fast default optimization). The migration grabbed an `ACCESS EXCLUSIVE` lock on the table and started rewriting every. Single. Row.
+
+For 45 minutes, every API endpoint that touched the `orders` table returned 500 errors. The queue backed up. Webhooks timed out. Customer support lit up like a Christmas tree. Our Slack channel was a wall of red alerts. My manager's manager's manager learned my first name that day, and not for a good reason.
+
+The fix was embarrassingly simple — something I should have known, something I'm going to teach you right now so you never have to experience your CEO asking "what's a database lock?" in the middle of an incident call.
+
+This post is everything I've learned about database migrations since that day. The patterns, the tools, the PostgreSQL-specific tricks, and the checklist I now run through religiously before every single migration hits production.
+
+## The Migration Spectrum: Not All Migrations Are Created Equal
+
+Before we dive into patterns, let's get our vocabulary straight. I've seen teams treat every migration the same way, and it's like using a sledgehammer for both hanging pictures and demolishing walls. Technically possible. Practically disastrous.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   The Migration Spectrum                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Schema-Only          Data             Combined                  │
+│  ────────────         ────────────     ────────────              │
+│  ADD COLUMN           Backfill nulls   Add column + backfill     │
+│  CREATE TABLE         Transform data   Rename + migrate values   │
+│  ADD INDEX            Seed reference   Split table + move data   │
+│  ADD CONSTRAINT       Archive old rows Merge tables + dedupe     │
+│                                                                  │
+│  Risk: LOW ◄─────────────────────────────────► Risk: HIGH       │
+│  Speed: FAST ◄───────────────────────────────► Speed: SLOW      │
+│  Reversibility: EASY ◄──────────────────────► Reversibility: 😬 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Schema-Only Migrations
+
+These are your bread and butter. Adding a nullable column, creating a new table, adding an index. They're generally fast, low-risk, and easy to reverse. In PostgreSQL, adding a nullable column without a default is basically instant — it just updates the catalog, no table rewrite needed.
+
+```sql
+-- Fast: just a catalog update, no table rewrite
+ALTER TABLE orders ADD COLUMN tracking_number VARCHAR(100);
+
+-- Also fast in PostgreSQL 11+: default values no longer trigger rewrites
+ALTER TABLE orders ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
+
+-- Pre-PostgreSQL 11, that same command rewrites the ENTIRE table.
+-- Ask me how I know. (See: the 45-minute horror story above.)
+```
+
+### Data Migrations
+
+This is where things get interesting. You need to transform existing data — backfill a column, merge duplicate records, convert a comma-separated string into a proper junction table (we've all inherited that schema, don't pretend you haven't). Data migrations are slower, riskier, and harder to reverse because you're changing actual values, not just structure.
+
+```typescript
+// A data migration to backfill a new 'slug' column from 'title'
+// NEVER do this in a single UPDATE on a large table
+// Batch it. Always batch it.
+
+async function backfillSlugs(db: Knex): Promise<void> {
+  const BATCH_SIZE = 1000;
+  let lastId = 0;
+  let updated = 0;
+
+  while (true) {
+    const rows = await db('articles')
+      .whereNull('slug')
+      .where('id', '>', lastId)
+      .orderBy('id', 'asc')
+      .limit(BATCH_SIZE)
+      .select('id', 'title');
+
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      await db('articles')
+        .where('id', row.id)
+        .update({ slug: slugify(row.title) });
+    }
+
+    lastId = rows[rows.length - 1].id;
+    updated += rows.length;
+    console.log(`Backfilled ${updated} slugs (last id: ${lastId})`);
+
+    // Give the database a breather
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+```
+
+### Combined Migrations
+
+The dragon. Schema change plus data migration in the same deploy. Adding a column and immediately backfilling it. Splitting a table and moving data. These are the ones that wake you up at night, and they're the ones that most desperately need the patterns we're about to cover.
+
+<Callout type="warning" title="The Cardinal Rule">
+Never combine a schema change and a data migration in the same migration file. Split them. Run the schema change first, deploy code that handles both states, then run the data migration separately. Your future self will thank you when something goes wrong and you need to debug which half failed.
+</Callout>
+
+## Zero-Downtime Migration Patterns
+
+If your deployment process involves a maintenance window, I'm not judging. Some systems genuinely need them. But for most web applications, there's no reason your users should ever see downtime because of a database migration. Here are the patterns that make that possible.
+
+### Pattern 1: Expand and Contract
+
+This is the workhorse pattern. The one I use for probably 80% of non-trivial migrations. The idea is simple: never make a breaking change in one step. Instead, expand the schema to support both old and new, then contract it once everything has moved over.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Expand-Contract Pattern                          │
+│                                                                  │
+│  Step 1: EXPAND                                                  │
+│  ┌──────────────┐     ┌──────────────┐                          │
+│  │ users        │     │ users        │                          │
+│  │ ─────────    │ ──► │ ─────────    │                          │
+│  │ name VARCHAR │     │ name VARCHAR │  ← old column (kept)     │
+│  │              │     │ first_name   │  ← new column (added)    │
+│  │              │     │ last_name    │  ← new column (added)    │
+│  └──────────────┘     └──────────────┘                          │
+│                                                                  │
+│  Step 2: MIGRATE                                                 │
+│  - Deploy code that writes to BOTH name and first/last_name     │
+│  - Backfill first_name/last_name from name                      │
+│  - Deploy code that reads from first_name/last_name             │
+│                                                                  │
+│  Step 3: CONTRACT                                                │
+│  ┌──────────────┐     ┌──────────────┐                          │
+│  │ users        │     │ users        │                          │
+│  │ ─────────    │ ──► │ ─────────    │                          │
+│  │ name VARCHAR │     │ first_name   │                          │
+│  │ first_name   │     │ last_name    │                          │
+│  │ last_name    │     │              │  ← old column dropped    │
+│  └──────────────┘     └──────────────┘                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+The critical insight is that at every step, both the old code and the new code can run against the current schema. There's no moment where a deploy is required to be atomic with the migration. Here's what this looks like in practice:
+
+```typescript
+// Migration 1: EXPAND - add new columns
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.string('first_name', 100).nullable();
+    table.string('last_name', 100).nullable();
+  });
+}
+
+// Deploy 1: Write to both old and new columns
+// (old code still reads from 'name', which still exists)
+async function updateUser(id: string, firstName: string, lastName: string) {
+  await db('users').where({ id }).update({
+    name: `${firstName} ${lastName}`,        // keep old column in sync
+    first_name: firstName,                    // write to new columns
+    last_name: lastName,
+  });
+}
+
+// Migration 2: BACKFILL - populate new columns from old data
+export async function up(knex: Knex): Promise<void> {
+  // Batched update - don't do this in one shot on large tables
+  await knex.raw(`
+    UPDATE users
+    SET first_name = split_part(name, ' ', 1),
+        last_name  = substring(name from position(' ' in name) + 1)
+    WHERE first_name IS NULL
+  `);
+}
+
+// Deploy 2: Read from new columns, stop writing to old
+// Migration 3: CONTRACT - remove old column
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.dropColumn('name');
+  });
+}
+```
+
+Yes, this is three migrations and two deploys for what feels like a "simple rename." That's the cost of zero downtime. And trust me, it's cheaper than 45 minutes of 500 errors.
+
+### Pattern 2: Ghost Tables
+
+For large-scale schema changes where even `ALTER TABLE` is too risky, the ghost table pattern creates a shadow copy of the table with the new schema, syncs data in the background, and then does an atomic rename.
+
+This is essentially what tools like `gh-ost` (GitHub's Online Schema Migrations for MySQL) and `pg_repack` do under the hood.
+
+```sql
+-- Step 1: Create the new table with desired schema
+CREATE TABLE orders_new (
+  id            BIGSERIAL PRIMARY KEY,
+  customer_id   BIGINT NOT NULL,
+  total_cents   BIGINT NOT NULL,         -- Changed from NUMERIC to BIGINT
+  currency      VARCHAR(3) NOT NULL DEFAULT 'USD',  -- New column
+  status        VARCHAR(20) NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Step 2: Copy existing data with transformation
+INSERT INTO orders_new (id, customer_id, total_cents, currency, status, created_at, updated_at)
+SELECT
+  id,
+  customer_id,
+  (total * 100)::BIGINT,    -- Convert dollars to cents
+  'USD',                      -- Default for existing orders
+  status,
+  created_at,
+  updated_at
+FROM orders;
+
+-- Step 3: Set up a trigger to capture changes during copy
+CREATE OR REPLACE FUNCTION sync_orders_to_new() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO orders_new (id, customer_id, total_cents, currency, status, created_at, updated_at)
+  VALUES (
+    NEW.id,
+    NEW.customer_id,
+    (NEW.total * 100)::BIGINT,
+    'USD',
+    NEW.status,
+    NEW.created_at,
+    NEW.updated_at
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    customer_id = EXCLUDED.customer_id,
+    total_cents = EXCLUDED.total_cents,
+    status      = EXCLUDED.status,
+    updated_at  = EXCLUDED.updated_at;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Step 4: Atomic swap (brief lock, but milliseconds not minutes)
+BEGIN;
+  ALTER TABLE orders RENAME TO orders_old;
+  ALTER TABLE orders_new RENAME TO orders;
+COMMIT;
+
+-- Step 5: Drop old table after verification period
+-- DROP TABLE orders_old;  -- Do this days later, after you're sure
+```
+
+<Callout type="info" title="When to Use Ghost Tables">
+Ghost tables shine when you need to change column types, restructure the table significantly, or when the table is so large that even `ALTER TABLE ... ADD COLUMN` with a default takes too long. For simple additions, expand-contract is simpler and safer.
+</Callout>
+
+### Pattern 3: Online Schema Changes with pg_repack
+
+PostgreSQL's `ALTER TABLE` operations that require a table rewrite (changing column types, adding `NOT NULL` constraints to existing columns without a default) grab an `ACCESS EXCLUSIVE` lock. On a table with millions of rows, that lock could be held for minutes. `pg_repack` lets you do these operations without that brutal lock.
+
+```bash
+# Install pg_repack (available in most package managers)
+# On Ubuntu/Debian:
+sudo apt-get install postgresql-16-repack
+
+# Repack a table (rebuilds it without long locks)
+pg_repack --no-order --table orders -d myapp_production
+
+# Repack a specific index
+pg_repack --index idx_orders_customer_id -d myapp_production
+```
+
+The way `pg_repack` works is clever: it creates a new table with the desired structure, copies data while tracking changes via triggers, and then swaps the tables with a very brief lock. It's essentially the ghost table pattern automated.
+
+## PostgreSQL-Specific Tips (The Good Stuff)
+
+PostgreSQL is my database of choice for a reason, but it has quirks around migrations that will bite you if you don't know about them. Here's my survival guide.
+
+### Concurrent Index Creation
+
+This is the single most important PostgreSQL migration tip I can give you. Regular `CREATE INDEX` takes a `SHARE` lock on the table, blocking all writes for the duration of the build. On a large table, that could be minutes.
+
+```sql
+-- BAD: Blocks all INSERT/UPDATE/DELETE for the entire build time
+CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+
+-- GOOD: Builds the index without blocking writes
+CREATE INDEX CONCURRENTLY idx_orders_customer_id ON orders(customer_id);
+```
+
+There are caveats though. `CREATE INDEX CONCURRENTLY`:
+- Takes longer (roughly 2-3x)
+- Cannot run inside a transaction block
+- Can fail and leave an invalid index behind
+- Uses more memory during the build
+
+```sql
+-- Always check for invalid indexes after CONCURRENTLY operations
+SELECT indexrelid::regclass AS index_name,
+       indrelid::regclass AS table_name,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+FROM pg_index
+WHERE NOT indisvalid;
+
+-- If you find an invalid index, drop it and try again
+DROP INDEX CONCURRENTLY idx_orders_customer_id;
+-- Then re-create it
+CREATE INDEX CONCURRENTLY idx_orders_customer_id ON orders(customer_id);
+```
+
+<Callout type="warning" title="Migration Tool Gotcha">
+Most migration tools wrap everything in a transaction by default. `CREATE INDEX CONCURRENTLY` cannot run inside a transaction. You'll need to either disable the transaction wrapper for that specific migration or run it outside your migration tool. In Knex, use `knex.schema.raw()` outside of a transaction. In Prisma, use `prisma.$executeRawUnsafe()`. Every tool handles this differently, and getting it wrong silently falls back to a blocking index build. Ask me how many times I've seen that happen.
+</Callout>
+
+### Advisory Locks for Migration Safety
+
+What happens when two instances of your application boot up simultaneously and both try to run migrations? Race condition. Duplicate migrations. Corrupted state. I've seen it happen in Kubernetes deployments where two pods start at the same time.
+
+PostgreSQL advisory locks solve this beautifully:
+
+```typescript
+// Acquire an advisory lock before running migrations
+async function runMigrationsWithLock(db: Knex): Promise<void> {
+  const MIGRATION_LOCK_ID = 8675309; // Pick a unique number, Jenny
+
+  try {
+    // pg_try_advisory_lock returns true if lock acquired, false if not
+    const result = await db.raw(
+      'SELECT pg_try_advisory_lock(?) AS locked',
+      [MIGRATION_LOCK_ID]
+    );
+
+    if (!result.rows[0].locked) {
+      console.log('Another process is running migrations. Skipping.');
+      return;
+    }
+
+    console.log('Advisory lock acquired. Running migrations...');
+    await db.migrate.latest();
+    console.log('Migrations complete.');
+
+  } finally {
+    // Always release the lock
+    await db.raw('SELECT pg_advisory_unlock(?)', [MIGRATION_LOCK_ID]);
+  }
+}
+```
+
+### The Lock Timeout Safety Net
+
+Even with the best planning, sometimes a migration grabs an unexpected lock. Set a lock timeout so it fails fast instead of blocking the entire application:
+
+```sql
+-- Set a 5-second lock timeout for this session
+SET lock_timeout = '5s';
+
+-- Now if this ALTER TABLE can't acquire its lock within 5 seconds,
+-- it fails instead of waiting indefinitely
+ALTER TABLE orders ADD COLUMN notes TEXT;
+
+-- Reset when done
+RESET lock_timeout;
+```
+
+In your migration tool:
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  // Fail fast if we can't get a lock within 5 seconds
+  await knex.raw("SET lock_timeout = '5s'");
+
+  await knex.schema.alterTable('orders', (table) => {
+    table.text('notes').nullable();
+  });
+
+  await knex.raw('RESET lock_timeout');
+}
+```
+
+### Statement Timeout for Long-Running Migrations
+
+Similarly, set a statement timeout to prevent a migration from running forever:
+
+```sql
+-- If any single statement takes longer than 30 seconds, abort it
+SET statement_timeout = '30s';
+
+-- This protects against accidentally running an unindexed UPDATE
+-- on a 100M row table
+UPDATE orders SET status = 'archived' WHERE created_at < '2020-01-01';
+-- If this takes > 30s, it rolls back automatically
+
+RESET statement_timeout;
+```
+
+<Callout type="tip" title="The PostgreSQL 11+ Fast Default">
+As of PostgreSQL 11, `ALTER TABLE ... ADD COLUMN ... DEFAULT ...` no longer rewrites the table. The default value is stored in the catalog and applied on read. This turned what used to be one of the most dangerous operations (my 45-minute nightmare) into a near-instant metadata change. If you're on PostgreSQL 11 or later, breathe easy. If you're on an older version, upgrade. Seriously. This alone is worth the upgrade.
+</Callout>
+
+## Migration Tooling: An Honest Comparison
+
+I've used all of these in production. Let me save you the evaluation time.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                  Migration Tool Comparison                        │
+├────────────┬──────────┬──────────┬──────────────┬───────────────┤
+│            │ Prisma   │ Knex     │ Flyway       │ Raw SQL       │
+├────────────┼──────────┼──────────┼──────────────┼───────────────┤
+│ DX         │ ★★★★★   │ ★★★★    │ ★★★         │ ★★           │
+│ Power      │ ★★★     │ ★★★★    │ ★★★★       │ ★★★★★        │
+│ PG-native  │ ★★      │ ★★★     │ ★★★★       │ ★★★★★        │
+│ Reversible │ ★★★★   │ ★★★★★  │ ★★★        │ ★★ (manual)   │
+│ Data Mgr   │ ★★      │ ★★★★    │ ★★★        │ ★★★★★        │
+│ Team-safe  │ ★★★★   │ ★★★     │ ★★★★★     │ ★★ (manual)   │
+│ CI/CD      │ ★★★★   │ ★★★     │ ★★★★★     │ ★★★          │
+├────────────┼──────────┼──────────┼──────────────┼───────────────┤
+│ Best for   │ Rapid    │ Node.js  │ Enterprise   │ Complex       │
+│            │ proto-   │ projects │ Java teams   │ one-off       │
+│            │ typing   │ needing  │ strict       │ operations    │
+│            │          │ flex     │ governance   │               │
+└────────────┴──────────┴──────────┴──────────────┴───────────────┘
+```
+
+### Prisma Migrate
+
+Prisma generates migrations from schema diffs. You change your `schema.prisma` file, run `prisma migrate dev`, and it creates a SQL migration for you. The developer experience is unmatched.
+
+The catch: it wraps everything in transactions (so no `CREATE INDEX CONCURRENTLY`), it struggles with complex data migrations, and it sometimes generates migrations that aren't optimal for large tables. I've had to manually edit Prisma-generated migrations more times than I'd like to admit.
+
+```typescript
+// Prisma schema change
+model Order {
+  id          Int      @id @default(autoincrement())
+  customerId  Int      @map("customer_id")
+  totalCents  BigInt   @map("total_cents")   // Changed from Decimal
+  currency    String   @default("USD") @db.VarChar(3)  // New field
+  status      String   @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("orders")
+}
+
+// Run: npx prisma migrate dev --name add_currency_to_orders
+// Check the generated SQL. ALWAYS check the generated SQL.
+// Edit it if needed. Prisma won't be offended. Probably.
+```
+
+### Knex Migrations
+
+My go-to for Node.js/TypeScript projects. Knex gives you a nice JavaScript API while still letting you drop down to raw SQL when needed. The `up`/`down` pattern makes rollbacks explicit.
+
+```typescript
+// Knex migration: careful, production-ready approach
+export async function up(knex: Knex): Promise<void> {
+  // Step 1: Add column (fast, no rewrite in PG 11+)
+  await knex.schema.alterTable('orders', (table) => {
+    table.string('currency', 3).defaultTo('USD').notNullable();
+  });
+
+  // Step 2: Create index concurrently (outside of transaction!)
+  // Note: Knex wraps migrations in transactions by default.
+  // You need to disable that for this migration.
+  await knex.raw(`
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_currency
+    ON orders(currency);
+  `);
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.raw('DROP INDEX IF EXISTS idx_orders_currency');
+  await knex.schema.alterTable('orders', (table) => {
+    table.dropColumn('currency');
+  });
+}
+
+// knexfile.ts - disable transactions for specific migrations
+// export default {
+//   migrations: {
+//     disableTransactions: true,  // Required for CONCURRENTLY
+//   }
+// };
+```
+
+### Raw SQL (Flyway / Manual)
+
+For complex migrations, nothing beats raw SQL. You get the full power of PostgreSQL, full control over locking, and no abstraction layer guessing what you meant. The downside is that you're responsible for everything — rollback scripts, idempotency, testing.
+
+```sql
+-- V20260320_001__add_order_currency.sql (Flyway naming convention)
+
+-- Precondition check: make the migration idempotent
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'currency'
+  ) THEN
+    ALTER TABLE orders ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'USD';
+  END IF;
+END $$;
+
+-- Create index concurrently (cannot be in a transaction block)
+-- Flyway: set executeInTransaction=false in migration config
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_currency
+ON orders(currency);
+
+-- Verify
+DO $$
+BEGIN
+  ASSERT (
+    SELECT COUNT(*) FROM pg_indexes
+    WHERE indexname = 'idx_orders_currency'
+  ) = 1, 'Index idx_orders_currency was not created';
+END $$;
+```
+
+<Callout type="tip" title="My Recommendation">
+Use your ORM's migration tool for schema changes (convenience wins), but write data migrations as raw SQL scripts that you run separately. The worst data migration bugs I've seen came from ORMs trying to be clever with batch updates. For data, write the SQL yourself. You'll understand exactly what's happening, and when it goes sideways at 3 AM, you'll be able to debug it without reverse-engineering an abstraction layer.
+</Callout>
+
+## Testing Migrations Before Production
+
+"It worked in staging" is not a migration strategy. Staging databases are typically 1/100th the size of production, have different data distributions, and miss the edge cases that only appear at scale. Here's how to actually test migrations.
+
+### Shadow Databases
+
+A shadow database is a copy of your production schema (not data — that would be a compliance nightmare) that you run migrations against in CI.
+
+```typescript
+// shadow-migration-test.ts
+import { execSync } from 'child_process';
+
+async function testMigrationAgainstShadow(): Promise<void> {
+  const shadowDbUrl = process.env.SHADOW_DATABASE_URL;
+
+  // Step 1: Clone production schema to shadow
+  console.log('Cloning production schema...');
+  execSync(
+    `pg_dump --schema-only ${process.env.PROD_DATABASE_URL} | psql ${shadowDbUrl}`
+  );
+
+  // Step 2: Generate realistic test data
+  console.log('Generating test data...');
+  await seedRealisticData(shadowDbUrl, {
+    orders: 1_000_000,    // Match production scale
+    customers: 100_000,
+    products: 10_000,
+  });
+
+  // Step 3: Run pending migrations and time them
+  console.log('Running migrations...');
+  const start = Date.now();
+  execSync(`DATABASE_URL=${shadowDbUrl} npx knex migrate:latest`);
+  const duration = Date.now() - start;
+
+  console.log(`Migrations completed in ${duration}ms`);
+
+  // Step 4: Verify schema matches expectations
+  const schemaDiff = execSync(
+    `pg_dump --schema-only ${shadowDbUrl} > /tmp/shadow.sql && ` +
+    `diff /tmp/expected-schema.sql /tmp/shadow.sql`
+  ).toString();
+
+  if (schemaDiff) {
+    throw new Error(`Schema mismatch after migration:\n${schemaDiff}`);
+  }
+
+  // Step 5: Run application test suite against migrated schema
+  execSync(`DATABASE_URL=${shadowDbUrl} npm test`);
+}
+```
+
+### Timing Migrations Against Realistic Data
+
+This is the single most overlooked step. A migration that takes 50ms on your 500-row dev database might take 45 minutes on your 14-million-row production table. (Again: ask me how I know.)
+
+```sql
+-- Quick way to estimate migration time: EXPLAIN ANALYZE on a sample
+-- Create a temp table with a subset of production-scale data
+CREATE TEMP TABLE orders_sample AS
+SELECT * FROM orders LIMIT 100000;
+
+-- Time the actual operation
+\timing on
+ALTER TABLE orders_sample ADD COLUMN currency VARCHAR(3) DEFAULT 'USD';
+-- Now extrapolate: if 100k rows took Xms, 14M rows will take ~140X ms
+
+-- For UPDATE-based data migrations, check the query plan first
+EXPLAIN ANALYZE
+UPDATE orders_sample
+SET total_cents = (total * 100)::BIGINT
+WHERE total_cents IS NULL;
+```
+
+### Dry Run Mode
+
+Some migration tools support dry runs. If yours doesn't, build one:
+
+```typescript
+// dry-run-migration.ts
+async function dryRunMigration(knex: Knex): Promise<void> {
+  const pendingMigrations = await knex.migrate.list();
+  const [, pending] = pendingMigrations;
+
+  if (pending.length === 0) {
+    console.log('No pending migrations.');
+    return;
+  }
+
+  console.log(`Pending migrations (${pending.length}):`);
+  for (const migration of pending) {
+    console.log(`  - ${migration.name}`);
+  }
+
+  // Run inside a transaction and roll back
+  const trx = await knex.transaction();
+  try {
+    console.log('\nExecuting in dry-run mode (will rollback)...');
+    await trx.migrate.latest();
+    console.log('Migration succeeded in dry-run mode.');
+
+    // Show what changed
+    const tables = await trx.raw(`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `);
+    console.log('\nTables after migration:', tables.rows.map((r: any) => r.tablename));
+
+  } finally {
+    await trx.rollback();
+    console.log('\nDry run complete. All changes rolled back.');
+  }
+}
+```
+
+<Callout type="info" title="CI Pipeline Integration">
+Add migration testing to your CI pipeline. Every PR that includes a migration file should automatically: (1) run the migration against a shadow database, (2) run the full test suite against the migrated schema, and (3) output timing information. If a migration takes longer than your threshold (I use 10 seconds), flag it for review. This catches the slow ones before they reach production, not during an incident.
+</Callout>
+
+## Rollback Strategies That Actually Work
+
+Here's an uncomfortable truth: most teams' rollback strategy is "restore from backup." That's not a strategy; that's a prayer. Backups take time to restore, you lose all data written since the backup, and the restore process itself can take hours on large databases.
+
+Let me walk you through rollback strategies that actually work in the real world.
+
+### Strategy 1: Forward-Fix Over Rollback
+
+The best rollback is not needing one. If you use expand-contract, every step is additive. If something goes wrong, you just stop the migration process — you don't need to reverse it. The old code still works against the current schema because you haven't removed anything yet.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Forward-Fix vs Rollback                             │
+│                                                                  │
+│  Traditional:                                                    │
+│  v1 schema ──► MIGRATE ──► v2 schema ──► ROLLBACK ──► v1 schema│
+│                    ▲                         ▲                   │
+│                    │                         │                   │
+│              (risky)                   (also risky!)             │
+│                                                                  │
+│  Expand-Contract:                                                │
+│  v1 schema ──► EXPAND ──► v1.5 schema ──► CONTRACT ──► v2      │
+│                    ▲            │                                 │
+│                    │            └── Both v1 and v2 code work     │
+│              (safe: additive)       here. No rollback needed.    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Strategy 2: Paired Down Migrations
+
+Every `up` migration should have a corresponding `down` migration. This sounds obvious, but I've audited codebases where half the down migrations are just `// TODO: implement rollback`. In production. With real data. (I physically felt my eye twitch typing that.)
+
+```typescript
+// A proper paired migration
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('customers', (table) => {
+    table.string('phone_country_code', 5).nullable();
+    table.string('phone_number', 20).nullable();
+  });
+
+  // Backfill from existing phone column
+  await knex.raw(`
+    UPDATE customers
+    SET phone_country_code = '+1',
+        phone_number = regexp_replace(phone, '[^0-9]', '', 'g')
+    WHERE phone IS NOT NULL
+  `);
+}
+
+export async function down(knex: Knex): Promise<void> {
+  // IMPORTANT: We DON'T drop the old 'phone' column in the up migration
+  // until we're sure the new columns are working.
+  // So rolling back is just dropping the new columns.
+  await knex.schema.alterTable('customers', (table) => {
+    table.dropColumn('phone_country_code');
+    table.dropColumn('phone_number');
+  });
+}
+```
+
+### Strategy 3: Point-in-Time Snapshots
+
+For truly scary migrations (the ones where you're transforming data and can't easily reverse the transformation), take a snapshot before you start:
+
+```sql
+-- Before the migration: snapshot the affected table
+CREATE TABLE orders_pre_migration_20260320 AS
+SELECT * FROM orders;
+
+-- Add an index so rollback queries are fast
+CREATE INDEX ON orders_pre_migration_20260320(id);
+
+-- Run your migration...
+-- If things go wrong:
+BEGIN;
+  DELETE FROM orders;
+  INSERT INTO orders SELECT * FROM orders_pre_migration_20260320;
+COMMIT;
+
+-- If things go right, clean up after your verification period:
+-- DROP TABLE orders_pre_migration_20260320;
+```
+
+<Callout type="warning" title="Snapshot Size Warning">
+This obviously doubles your storage for that table for the duration. On a 200GB orders table, make sure you have the disk space. I once saw a migration fail because the snapshot table filled the disk, which then caused PostgreSQL to go into read-only mode, which then caused the migration to hang, which then caused the connection pool to exhaust, which then... you get the picture. Check your disk space before snapshotting.
+</Callout>
+
+### Strategy 4: Feature Flags for Migration Code
+
+Use feature flags to control whether your application reads from old or new schema. This lets you "rollback" by flipping a flag, without touching the database at all.
+
+```typescript
+// Using a feature flag to control read path
+async function getOrderTotal(orderId: string): Promise<number> {
+  const order = await db('orders').where({ id: orderId }).first();
+
+  if (featureFlags.isEnabled('use-total-cents')) {
+    // New path: read from the new column
+    return order.total_cents / 100;
+  } else {
+    // Old path: read from the old column
+    return order.total;
+  }
+}
+
+// If the migration goes wrong, flip the flag back.
+// No deploy needed. No rollback migration needed.
+// Just one API call to your feature flag service.
+```
+
+## The Migration Checklist
+
+I run through this checklist before every migration. It's saved me more times than I can count. Print it out. Tape it to your monitor. Tattoo it on your forearm. I don't care, just use it.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│             PRE-MIGRATION CHECKLIST                               │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  BEFORE WRITING THE MIGRATION:                                    │
+│  □ Is this a schema change, data migration, or both?              │
+│  □ If both, have I split them into separate migrations?           │
+│  □ What's the table size? (SELECT pg_size_pretty(                 │
+│    pg_total_relation_size('table_name')))                         │
+│  □ How many rows will be affected?                                │
+│  □ Are there active locks on this table right now?                │
+│  □ Are there long-running transactions that might conflict?       │
+│                                                                   │
+│  WHILE WRITING THE MIGRATION:                                     │
+│  □ Does the migration use CREATE INDEX CONCURRENTLY               │
+│    (not regular CREATE INDEX)?                                    │
+│  □ Is the migration idempotent (safe to run twice)?               │
+│  □ Is there a working down migration?                             │
+│  □ Are data updates batched (not one giant UPDATE)?               │
+│  □ Have I set lock_timeout and statement_timeout?                 │
+│  □ Does the migration work with BOTH old and new app code?        │
+│                                                                   │
+│  BEFORE DEPLOYING:                                                │
+│  □ Tested against production-sized dataset?                       │
+│  □ Timed the migration? (How long on realistic data?)             │
+│  □ Verified sufficient disk space for the operation?              │
+│  □ Scheduled during low-traffic window? (if applicable)           │
+│  □ Alerted the team that a migration is going out?                │
+│  □ Database backup is recent and verified?                        │
+│  □ Monitoring dashboards are open? (connections, locks,           │
+│    query latency, disk I/O)                                       │
+│                                                                   │
+│  DURING THE MIGRATION:                                            │
+│  □ Monitoring lock waits (pg_stat_activity)                       │
+│  □ Monitoring replication lag (if applicable)                     │
+│  □ Ready to kill the migration if it exceeds timeout              │
+│                                                                   │
+│  AFTER THE MIGRATION:                                             │
+│  □ Schema matches expectations?                                   │
+│  □ Application health checks passing?                             │
+│  □ No invalid indexes? (check pg_index WHERE NOT indisvalid)     │
+│  □ Query performance is normal? (check pg_stat_statements)        │
+│  □ Run ANALYZE on affected tables?                                │
+│  □ Cleaned up temporary tables/columns?                           │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Monitoring Queries You Should Have Bookmarked
+
+These are the queries I keep in a snippet manager and pull up during every migration:
+
+```sql
+-- Active locks: who's waiting for what?
+SELECT
+  pid,
+  age(clock_timestamp(), query_start) AS duration,
+  state,
+  wait_event_type,
+  wait_event,
+  left(query, 80) AS query_snippet
+FROM pg_stat_activity
+WHERE state != 'idle'
+  AND pid != pg_backend_pid()
+ORDER BY query_start;
+
+-- Lock conflicts: who's blocking whom?
+SELECT
+  blocked.pid AS blocked_pid,
+  blocked.query AS blocked_query,
+  blocking.pid AS blocking_pid,
+  blocking.query AS blocking_query,
+  age(clock_timestamp(), blocked.query_start) AS waiting_duration
+FROM pg_stat_activity blocked
+JOIN pg_locks blocked_locks ON blocked.pid = blocked_locks.pid
+JOIN pg_locks blocking_locks ON blocked_locks.locktype = blocking_locks.locktype
+  AND blocked_locks.relation = blocking_locks.relation
+  AND blocked_locks.pid != blocking_locks.pid
+JOIN pg_stat_activity blocking ON blocking_locks.pid = blocking.pid
+WHERE NOT blocked_locks.granted;
+
+-- Table bloat after migration (run VACUUM ANALYZE first)
+SELECT
+  schemaname || '.' || relname AS table_name,
+  pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+  pg_size_pretty(pg_relation_size(relid)) AS table_size,
+  pg_size_pretty(pg_indexes_size(relid)) AS index_size,
+  n_dead_tup AS dead_rows,
+  n_live_tup AS live_rows,
+  round(n_dead_tup::numeric / greatest(n_live_tup, 1) * 100, 2) AS dead_pct
+FROM pg_stat_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 20;
+
+-- Replication lag (if you have replicas)
+SELECT
+  client_addr,
+  state,
+  sent_lsn,
+  write_lsn,
+  flush_lsn,
+  replay_lsn,
+  pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replay_lag_bytes,
+  pg_size_pretty(pg_wal_lsn_diff(sent_lsn, replay_lsn)) AS replay_lag_pretty
+FROM pg_stat_replication;
+```
+
+## Wrapping Up
+
+Database migrations don't have to be terrifying. They're terrifying when you're unprepared — when you don't know how big the table is, when you haven't tested against realistic data, when your rollback plan is "I guess we restore from backup?"
+
+The patterns in this post — expand-contract, ghost tables, concurrent indexes, advisory locks, shadow database testing — they're not rocket science. They're just discipline. The discipline to split a "simple rename" into three migrations. The discipline to time your migrations against production-scale data. The discipline to write a down migration even when you're sure you won't need it.
+
+That 45-minute outage I mentioned at the start? It was a $0 column addition that cost us roughly $30,000 in SLA credits and about 200 hours of lost engineering time across the incident response, postmortem, and remediation. The expand-contract approach that would have prevented it takes maybe an extra 30 minutes of engineering time per migration.
+
+The math is not hard.
+
+Run the checklist. Test against real data. Have a rollback plan that isn't a prayer. And for the love of your uptime SLA, use `CREATE INDEX CONCURRENTLY`.
+
+Your future 2 AM self will thank you.

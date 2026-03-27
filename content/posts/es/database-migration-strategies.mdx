@@ -1,0 +1,890 @@
+---
+title: "Estrategias de Migración de Base de Datos Que No Te Quitarán el Sueño"
+description: "Lecciones ganadas a pulso después de años migrando bases de datos en producción sin perder datos, sueño ni cordura. Patrones de cero tiempo de inactividad, trucos de PostgreSQL, comparación de herramientas, estrategias de rollback, y el checklist que reviso antes de cada deploy. Porque 'funcionó en staging' no es una estrategia de migración."
+date: 2026-03-20
+published: true
+category: "Ingeniería Backend"
+tags: ["Base de Datos", "Migraciones", "PostgreSQL", "DevOps", "Cero Tiempo de Inactividad"]
+author: "Osvaldo Restrepo"
+translationOf: "database-migration-strategies"
+tldr: "Nunca corras una migración que no puedas revertir, y nunca confíes en una que no hayas probado contra datos del tamaño de producción. Usa expand-contract para deploys sin tiempo de inactividad, CREATE INDEX CONCURRENTLY para cualquier tabla con más de unos pocos miles de filas, advisory locks para prevenir ejecuciones concurrentes de migraciones, y shadow databases para atrapar sorpresas antes de que se conviertan en incidentes. Las migraciones solo de schema son fáciles; las migraciones de datos son donde las carreras se ponen a prueba. Sepáralas. Pruébalas. Cronometrálas. Y por el amor de todo lo sagrado, ten un plan de rollback que no sea 'restaurar desde backup.'"
+faqs:
+  - question: "¿Qué es el patrón de migración expand-contract?"
+    answer: "Expand-contract (también llamado cambio paralelo) es un enfoque de dos fases: primero 'expandes' agregando nuevas columnas o tablas junto a las antiguas, desplegando código que escribe en ambas. Luego 'contraes' eliminando la estructura vieja después de que todas las lecturas se han movido a la nueva. Esto evita cualquier momento donde el código viejo y nuevo sean incompatibles con el schema."
+  - question: "¿Cómo agrego un índice a una tabla grande de PostgreSQL sin tiempo de inactividad?"
+    answer: "Usa CREATE INDEX CONCURRENTLY, que construye el índice sin mantener un bloqueo exclusivo en la tabla. Toma más tiempo y usa más recursos, pero las lecturas y escrituras continúan sin interrupción. Siempre verifica los índices inválidos después con pg_stat_user_indexes y prepárate para hacer DROP y reintentar si falla."
+  - question: "¿Debería usar una herramienta de migración de ORM o SQL puro?"
+    answer: "Depende de tu equipo y la complejidad. Herramientas de ORM como Prisma y Knex son geniales para cambios de schema simples y ergonomía de desarrollador. SQL puro te da control total para migraciones de datos complejas, características específicas de PostgreSQL y operaciones críticas en rendimiento. Muchos equipos maduros usan migraciones de ORM para cambios de schema y SQL puro para migraciones de datos."
+  - question: "¿Cómo pruebo las migraciones de base de datos antes de correrlas en producción?"
+    answer: "Usa shadow databases clonadas de producción (con datos sanitizados), corre las migraciones contra ellas, y compara los diffs de schema. Cronometra tus migraciones contra volúmenes de datos realistas. Usa pg_dump --schema-only para verificar que el estado final coincide con las expectativas. Y siempre corre la suite de tests de tu aplicación contra el schema migrado."
+relatedPosts: ["postgres-beyond-basics", "data-modeling-real-world"]
+---
+
+Déjame contarte sobre los peores 45 minutos de mi carrera como ingeniero.
+
+Era un martes por la tarde. Día de deploy. Teníamos una migración que agregaba una columna `NOT NULL` con un valor por defecto a nuestra tabla `orders`. Simple, ¿verdad? Catorce millones de filas. PostgreSQL, pre-11 (antes de la optimización de fast default). La migración tomó un bloqueo `ACCESS EXCLUSIVE` en la tabla y empezó a reescribir cada. Una. De. Las. Filas.
+
+Por 45 minutos, cada endpoint de la API que tocaba la tabla `orders` devolvía errores 500. La cola se atascó. Los webhooks dieron timeout. Soporte al cliente se iluminó como un árbol de Navidad. Nuestro canal de Slack era un muro de alertas rojas. El jefe del jefe de mi jefe aprendió mi nombre ese día, y no por una buena razón.
+
+La solución era vergonzosamente simple — algo que debería haber sabido, algo que te voy a enseñar ahora mismo para que nunca tengas que experimentar a tu CEO preguntando "¿qué es un bloqueo de base de datos?" en medio de una llamada de incidente.
+
+Este post es todo lo que he aprendido sobre migraciones de base de datos desde ese día. Los patrones, las herramientas, los trucos específicos de PostgreSQL, y el checklist que ahora reviso religiosamente antes de que cada migración toque producción.
+
+## El Espectro de Migraciones: No Todas las Migraciones Son Iguales
+
+Antes de sumergirnos en los patrones, aclaremos el vocabulario. He visto equipos tratar cada migración de la misma manera, y es como usar un mazo tanto para colgar cuadros como para demoler paredes. Técnicamente posible. Prácticamente desastroso.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   El Espectro de Migraciones                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Solo Schema         Datos            Combinada                  │
+│  ────────────        ────────────     ────────────              │
+│  ADD COLUMN          Rellenar nulls   Agregar col + rellenar    │
+│  CREATE TABLE        Transformar      Renombrar + migrar vals   │
+│  ADD INDEX           Sembrar ref      Dividir tabla + mover     │
+│  ADD CONSTRAINT      Archivar filas   Fusionar tablas + dedup   │
+│                                                                  │
+│  Riesgo: BAJO ◄────────────────────────────► Riesgo: ALTO      │
+│  Velocidad: RÁPIDA ◄────────────────────────► Velocidad: LENTA │
+│  Reversibilidad: FÁCIL ◄────────────────────► Reversibilidad: 😬│
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Migraciones Solo de Schema
+
+Estas son tu pan de cada día. Agregar una columna nullable, crear una tabla nueva, agregar un índice. Generalmente son rápidas, de bajo riesgo y fáciles de revertir. En PostgreSQL, agregar una columna nullable sin valor por defecto es prácticamente instantáneo — solo actualiza el catálogo, no se necesita reescribir la tabla.
+
+```sql
+-- Rápido: solo una actualización del catálogo, sin reescritura
+ALTER TABLE orders ADD COLUMN tracking_number VARCHAR(100);
+
+-- También rápido en PostgreSQL 11+: los defaults ya no disparan reescrituras
+ALTER TABLE orders ADD COLUMN priority INTEGER NOT NULL DEFAULT 0;
+
+-- Pre-PostgreSQL 11, ese mismo comando reescribe TODA la tabla.
+-- Pregúntame cómo lo sé. (Ver: la historia de horror de 45 minutos arriba.)
+```
+
+### Migraciones de Datos
+
+Aquí es donde las cosas se ponen interesantes. Necesitas transformar datos existentes — rellenar una columna, fusionar registros duplicados, convertir un string separado por comas en una tabla de juntura apropiada (todos hemos heredado ese schema, no finjan que no). Las migraciones de datos son más lentas, más riesgosas y más difíciles de revertir porque estás cambiando valores reales, no solo estructura.
+
+```typescript
+// Una migración de datos para rellenar una columna 'slug' desde 'title'
+// NUNCA hagas esto en un solo UPDATE en una tabla grande
+// Hazlo por lotes. Siempre por lotes.
+
+async function backfillSlugs(db: Knex): Promise<void> {
+  const BATCH_SIZE = 1000;
+  let lastId = 0;
+  let updated = 0;
+
+  while (true) {
+    const rows = await db('articles')
+      .whereNull('slug')
+      .where('id', '>', lastId)
+      .orderBy('id', 'asc')
+      .limit(BATCH_SIZE)
+      .select('id', 'title');
+
+    if (rows.length === 0) break;
+
+    for (const row of rows) {
+      await db('articles')
+        .where('id', row.id)
+        .update({ slug: slugify(row.title) });
+    }
+
+    lastId = rows[rows.length - 1].id;
+    updated += rows.length;
+    console.log(`Rellenados ${updated} slugs (último id: ${lastId})`);
+
+    // Dale un respiro a la base de datos
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+```
+
+### Migraciones Combinadas
+
+El dragón. Cambio de schema más migración de datos en el mismo deploy. Agregar una columna y rellenarla inmediatamente. Dividir una tabla y mover datos. Estas son las que te despiertan por la noche, y son las que más desesperadamente necesitan los patrones que vamos a cubrir.
+
+<Callout type="warning" title="La Regla Cardinal">
+Nunca combines un cambio de schema y una migración de datos en el mismo archivo de migración. Sepáralos. Corre el cambio de schema primero, despliega código que maneje ambos estados, luego corre la migración de datos por separado. Tu yo del futuro te lo agradecerá cuando algo salga mal y necesites depurar cuál mitad falló.
+</Callout>
+
+## Patrones de Migración con Cero Tiempo de Inactividad
+
+Si tu proceso de deployment involucra una ventana de mantenimiento, no te estoy juzgando. Algunos sistemas genuinamente la necesitan. Pero para la mayoría de las aplicaciones web, no hay razón para que tus usuarios vean tiempo de inactividad por una migración de base de datos. Aquí están los patrones que lo hacen posible.
+
+### Patrón 1: Expand y Contract
+
+Este es el caballo de batalla. El que uso probablemente para el 80% de las migraciones no triviales. La idea es simple: nunca hagas un cambio destructivo en un solo paso. En cambio, expande el schema para soportar tanto lo viejo como lo nuevo, luego contrae una vez que todo se haya movido.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 Patrón Expand-Contract                           │
+│                                                                  │
+│  Paso 1: EXPAND                                                  │
+│  ┌──────────────┐     ┌──────────────┐                          │
+│  │ users        │     │ users        │                          │
+│  │ ─────────    │ ──► │ ─────────    │                          │
+│  │ name VARCHAR │     │ name VARCHAR │  ← columna vieja (se queda)│
+│  │              │     │ first_name   │  ← columna nueva (agregada)│
+│  │              │     │ last_name    │  ← columna nueva (agregada)│
+│  └──────────────┘     └──────────────┘                          │
+│                                                                  │
+│  Paso 2: MIGRAR                                                  │
+│  - Despliega código que escribe en AMBOS name y first/last_name │
+│  - Rellena first_name/last_name desde name                      │
+│  - Despliega código que lee desde first_name/last_name          │
+│                                                                  │
+│  Paso 3: CONTRACT                                                │
+│  ┌──────────────┐     ┌──────────────┐                          │
+│  │ users        │     │ users        │                          │
+│  │ ─────────    │ ──► │ ─────────    │                          │
+│  │ name VARCHAR │     │ first_name   │                          │
+│  │ first_name   │     │ last_name    │                          │
+│  │ last_name    │     │              │  ← columna vieja eliminada│
+│  └──────────────┘     └──────────────┘                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+La idea clave es que en cada paso, tanto el código viejo como el nuevo pueden ejecutarse contra el schema actual. No hay ningún momento donde un deploy necesite ser atómico con la migración. Así se ve en la práctica:
+
+```typescript
+// Migración 1: EXPAND - agregar nuevas columnas
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.string('first_name', 100).nullable();
+    table.string('last_name', 100).nullable();
+  });
+}
+
+// Deploy 1: Escribir en ambas columnas, vieja y nueva
+// (el código viejo todavía lee de 'name', que aún existe)
+async function updateUser(id: string, firstName: string, lastName: string) {
+  await db('users').where({ id }).update({
+    name: `${firstName} ${lastName}`,        // mantener columna vieja en sync
+    first_name: firstName,                    // escribir en nuevas columnas
+    last_name: lastName,
+  });
+}
+
+// Migración 2: BACKFILL - popular nuevas columnas desde datos viejos
+export async function up(knex: Knex): Promise<void> {
+  // Update por lotes - no hagas esto de un solo golpe en tablas grandes
+  await knex.raw(`
+    UPDATE users
+    SET first_name = split_part(name, ' ', 1),
+        last_name  = substring(name from position(' ' in name) + 1)
+    WHERE first_name IS NULL
+  `);
+}
+
+// Deploy 2: Leer de nuevas columnas, dejar de escribir en la vieja
+// Migración 3: CONTRACT - eliminar columna vieja
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.dropColumn('name');
+  });
+}
+```
+
+Sí, esto son tres migraciones y dos deploys para lo que parece un "simple renombrado." Ese es el costo de cero tiempo de inactividad. Y créeme, es más barato que 45 minutos de errores 500.
+
+### Patrón 2: Ghost Tables (Tablas Fantasma)
+
+Para cambios de schema a gran escala donde incluso `ALTER TABLE` es demasiado riesgoso, el patrón de ghost tables crea una copia sombra de la tabla con el nuevo schema, sincroniza datos en segundo plano, y luego hace un renombrado atómico.
+
+Esto es esencialmente lo que herramientas como `gh-ost` (GitHub Online Schema Migrations para MySQL) y `pg_repack` hacen internamente.
+
+```sql
+-- Paso 1: Crear la nueva tabla con el schema deseado
+CREATE TABLE orders_new (
+  id            BIGSERIAL PRIMARY KEY,
+  customer_id   BIGINT NOT NULL,
+  total_cents   BIGINT NOT NULL,         -- Cambiado de NUMERIC a BIGINT
+  currency      VARCHAR(3) NOT NULL DEFAULT 'USD',  -- Columna nueva
+  status        VARCHAR(20) NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Paso 2: Copiar datos existentes con transformación
+INSERT INTO orders_new (id, customer_id, total_cents, currency, status, created_at, updated_at)
+SELECT
+  id,
+  customer_id,
+  (total * 100)::BIGINT,    -- Convertir dólares a centavos
+  'USD',                      -- Default para pedidos existentes
+  status,
+  created_at,
+  updated_at
+FROM orders;
+
+-- Paso 3: Configurar un trigger para capturar cambios durante la copia
+CREATE OR REPLACE FUNCTION sync_orders_to_new() RETURNS trigger AS $$
+BEGIN
+  INSERT INTO orders_new (id, customer_id, total_cents, currency, status, created_at, updated_at)
+  VALUES (
+    NEW.id,
+    NEW.customer_id,
+    (NEW.total * 100)::BIGINT,
+    'USD',
+    NEW.status,
+    NEW.created_at,
+    NEW.updated_at
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    customer_id = EXCLUDED.customer_id,
+    total_cents = EXCLUDED.total_cents,
+    status      = EXCLUDED.status,
+    updated_at  = EXCLUDED.updated_at;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Paso 4: Intercambio atómico (bloqueo breve, milisegundos no minutos)
+BEGIN;
+  ALTER TABLE orders RENAME TO orders_old;
+  ALTER TABLE orders_new RENAME TO orders;
+COMMIT;
+
+-- Paso 5: Eliminar tabla vieja después del período de verificación
+-- DROP TABLE orders_old;  -- Haz esto días después, cuando estés seguro
+```
+
+<Callout type="info" title="Cuándo Usar Ghost Tables">
+Las ghost tables brillan cuando necesitas cambiar tipos de columnas, reestructurar la tabla significativamente, o cuando la tabla es tan grande que incluso `ALTER TABLE ... ADD COLUMN` con un default tarda demasiado. Para adiciones simples, expand-contract es más simple y seguro.
+</Callout>
+
+### Patrón 3: Cambios de Schema en Línea con pg_repack
+
+Las operaciones `ALTER TABLE` de PostgreSQL que requieren una reescritura de tabla (cambiar tipos de columnas, agregar restricciones `NOT NULL` a columnas existentes sin un default) toman un bloqueo `ACCESS EXCLUSIVE`. En una tabla con millones de filas, ese bloqueo podría mantenerse por minutos. `pg_repack` te permite hacer estas operaciones sin ese bloqueo brutal.
+
+```bash
+# Instalar pg_repack (disponible en la mayoría de gestores de paquetes)
+# En Ubuntu/Debian:
+sudo apt-get install postgresql-16-repack
+
+# Reempaquetar una tabla (la reconstruye sin bloqueos largos)
+pg_repack --no-order --table orders -d myapp_production
+
+# Reempaquetar un índice específico
+pg_repack --index idx_orders_customer_id -d myapp_production
+```
+
+La forma en que `pg_repack` funciona es ingeniosa: crea una nueva tabla con la estructura deseada, copia datos mientras rastrea cambios vía triggers, y luego intercambia las tablas con un bloqueo muy breve. Es esencialmente el patrón de ghost tables automatizado.
+
+## Tips Específicos de PostgreSQL (Lo Bueno de Verdad)
+
+PostgreSQL es mi base de datos preferida por una razón, pero tiene peculiaridades alrededor de las migraciones que te morderán si no las conoces. Aquí está mi guía de supervivencia.
+
+### Creación Concurrente de Índices
+
+Este es el tip más importante de migraciones de PostgreSQL que puedo darte. Un `CREATE INDEX` regular toma un bloqueo `SHARE` en la tabla, bloqueando todas las escrituras durante la construcción del índice. En una tabla grande, eso podrían ser minutos.
+
+```sql
+-- MAL: Bloquea todo INSERT/UPDATE/DELETE durante toda la construcción
+CREATE INDEX idx_orders_customer_id ON orders(customer_id);
+
+-- BIEN: Construye el índice sin bloquear escrituras
+CREATE INDEX CONCURRENTLY idx_orders_customer_id ON orders(customer_id);
+```
+
+Sin embargo, hay advertencias. `CREATE INDEX CONCURRENTLY`:
+- Tarda más (aproximadamente 2-3x)
+- No puede ejecutarse dentro de un bloque de transacción
+- Puede fallar y dejar un índice inválido
+- Usa más memoria durante la construcción
+
+```sql
+-- Siempre verifica índices inválidos después de operaciones CONCURRENTLY
+SELECT indexrelid::regclass AS index_name,
+       indrelid::regclass AS table_name,
+       pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
+FROM pg_index
+WHERE NOT indisvalid;
+
+-- Si encuentras un índice inválido, elimínalo y reintenta
+DROP INDEX CONCURRENTLY idx_orders_customer_id;
+-- Luego recréalo
+CREATE INDEX CONCURRENTLY idx_orders_customer_id ON orders(customer_id);
+```
+
+<Callout type="warning" title="Trampa de Herramientas de Migración">
+La mayoría de herramientas de migración envuelven todo en una transacción por defecto. `CREATE INDEX CONCURRENTLY` no puede ejecutarse dentro de una transacción. Necesitarás o deshabilitar el wrapper de transacción para esa migración específica o ejecutarlo fuera de tu herramienta de migración. En Knex, usa `knex.schema.raw()` fuera de una transacción. En Prisma, usa `prisma.$executeRawUnsafe()`. Cada herramienta maneja esto diferente, y equivocarte silenciosamente vuelve a una construcción de índice con bloqueo. Pregúntame cuántas veces he visto eso pasar.
+</Callout>
+
+### Advisory Locks para Seguridad de Migraciones
+
+¿Qué pasa cuando dos instancias de tu aplicación arrancan simultáneamente y ambas intentan correr migraciones? Condición de carrera. Migraciones duplicadas. Estado corrompido. Lo he visto pasar en deployments de Kubernetes donde dos pods arrancan al mismo tiempo.
+
+Los advisory locks de PostgreSQL resuelven esto elegantemente:
+
+```typescript
+// Adquirir un advisory lock antes de correr migraciones
+async function runMigrationsWithLock(db: Knex): Promise<void> {
+  const MIGRATION_LOCK_ID = 8675309; // Escoge un número único
+
+  try {
+    // pg_try_advisory_lock devuelve true si se adquirió, false si no
+    const result = await db.raw(
+      'SELECT pg_try_advisory_lock(?) AS locked',
+      [MIGRATION_LOCK_ID]
+    );
+
+    if (!result.rows[0].locked) {
+      console.log('Otro proceso está corriendo migraciones. Saltando.');
+      return;
+    }
+
+    console.log('Advisory lock adquirido. Corriendo migraciones...');
+    await db.migrate.latest();
+    console.log('Migraciones completadas.');
+
+  } finally {
+    // Siempre liberar el lock
+    await db.raw('SELECT pg_advisory_unlock(?)', [MIGRATION_LOCK_ID]);
+  }
+}
+```
+
+### La Red de Seguridad del Lock Timeout
+
+Incluso con la mejor planificación, a veces una migración toma un bloqueo inesperado. Configura un lock timeout para que falle rápido en lugar de bloquear toda la aplicación:
+
+```sql
+-- Configurar un timeout de bloqueo de 5 segundos para esta sesión
+SET lock_timeout = '5s';
+
+-- Ahora si este ALTER TABLE no puede adquirir su bloqueo en 5 segundos,
+-- falla en lugar de esperar indefinidamente
+ALTER TABLE orders ADD COLUMN notes TEXT;
+
+-- Resetear cuando termines
+RESET lock_timeout;
+```
+
+En tu herramienta de migración:
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  // Fallar rápido si no podemos obtener un bloqueo en 5 segundos
+  await knex.raw("SET lock_timeout = '5s'");
+
+  await knex.schema.alterTable('orders', (table) => {
+    table.text('notes').nullable();
+  });
+
+  await knex.raw('RESET lock_timeout');
+}
+```
+
+### Statement Timeout para Migraciones de Larga Duración
+
+De manera similar, configura un statement timeout para prevenir que una migración se ejecute para siempre:
+
+```sql
+-- Si cualquier sentencia individual tarda más de 30 segundos, abortarla
+SET statement_timeout = '30s';
+
+-- Esto protege contra ejecutar accidentalmente un UPDATE sin índice
+-- en una tabla de 100M de filas
+UPDATE orders SET status = 'archived' WHERE created_at < '2020-01-01';
+-- Si esto tarda > 30s, hace rollback automáticamente
+
+RESET statement_timeout;
+```
+
+<Callout type="tip" title="El Fast Default de PostgreSQL 11+">
+A partir de PostgreSQL 11, `ALTER TABLE ... ADD COLUMN ... DEFAULT ...` ya no reescribe la tabla. El valor por defecto se almacena en el catálogo y se aplica al leer. Esto convirtió lo que solía ser una de las operaciones más peligrosas (mi pesadilla de 45 minutos) en un cambio de metadatos casi instantáneo. Si estás en PostgreSQL 11 o posterior, respira tranquilo. Si estás en una versión anterior, actualiza. En serio. Solo esto ya vale la pena la actualización.
+</Callout>
+
+## Herramientas de Migración: Una Comparación Honesta
+
+He usado todas estas en producción. Déjame ahorrarte el tiempo de evaluación.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│              Comparación de Herramientas de Migración             │
+├────────────┬──────────┬──────────┬──────────────┬───────────────┤
+│            │ Prisma   │ Knex     │ Flyway       │ SQL Puro      │
+├────────────┼──────────┼──────────┼──────────────┼───────────────┤
+│ DX         │ ★★★★★   │ ★★★★    │ ★★★         │ ★★           │
+│ Poder      │ ★★★     │ ★★★★    │ ★★★★       │ ★★★★★        │
+│ PG-nativo  │ ★★      │ ★★★     │ ★★★★       │ ★★★★★        │
+│ Reversible │ ★★★★   │ ★★★★★  │ ★★★        │ ★★ (manual)   │
+│ Datos      │ ★★      │ ★★★★    │ ★★★        │ ★★★★★        │
+│ Equipo     │ ★★★★   │ ★★★     │ ★★★★★     │ ★★ (manual)   │
+│ CI/CD      │ ★★★★   │ ★★★     │ ★★★★★     │ ★★★          │
+├────────────┼──────────┼──────────┼──────────────┼───────────────┤
+│ Mejor para │ Proto-   │ Proyec-  │ Empresarial  │ Operaciones   │
+│            │ tipado   │ tos Node │ equipos Java │ complejas     │
+│            │ rápido   │ que      │ gobernanza   │ puntuales     │
+│            │          │ necesitan│ estricta     │               │
+│            │          │ flex     │              │               │
+└────────────┴──────────┴──────────┴──────────────┴───────────────┘
+```
+
+### Prisma Migrate
+
+Prisma genera migraciones desde diffs de schema. Cambias tu archivo `schema.prisma`, corres `prisma migrate dev`, y te crea una migración SQL. La experiencia de desarrollador es inigualable.
+
+El problema: envuelve todo en transacciones (así que nada de `CREATE INDEX CONCURRENTLY`), le cuesta con migraciones de datos complejas, y a veces genera migraciones que no son óptimas para tablas grandes. He tenido que editar manualmente migraciones generadas por Prisma más veces de las que me gustaría admitir.
+
+```typescript
+// Cambio de schema en Prisma
+model Order {
+  id          Int      @id @default(autoincrement())
+  customerId  Int      @map("customer_id")
+  totalCents  BigInt   @map("total_cents")   // Cambiado de Decimal
+  currency    String   @default("USD") @db.VarChar(3)  // Campo nuevo
+  status      String   @db.VarChar(20)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("orders")
+}
+
+// Ejecutar: npx prisma migrate dev --name add_currency_to_orders
+// Revisa el SQL generado. SIEMPRE revisa el SQL generado.
+// Edítalo si es necesario. Prisma no se ofenderá. Probablemente.
+```
+
+### Migraciones con Knex
+
+Mi opción predeterminada para proyectos Node.js/TypeScript. Knex te da una API JavaScript agradable mientras te permite bajar a SQL puro cuando lo necesitas. El patrón `up`/`down` hace los rollbacks explícitos.
+
+```typescript
+// Migración con Knex: enfoque cuidadoso, listo para producción
+export async function up(knex: Knex): Promise<void> {
+  // Paso 1: Agregar columna (rápido, sin reescritura en PG 11+)
+  await knex.schema.alterTable('orders', (table) => {
+    table.string('currency', 3).defaultTo('USD').notNullable();
+  });
+
+  // Paso 2: Crear índice concurrentemente (fuera de transacción!)
+  // Nota: Knex envuelve migraciones en transacciones por defecto.
+  // Necesitas deshabilitarlo para esta migración.
+  await knex.raw(`
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_currency
+    ON orders(currency);
+  `);
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.raw('DROP INDEX IF EXISTS idx_orders_currency');
+  await knex.schema.alterTable('orders', (table) => {
+    table.dropColumn('currency');
+  });
+}
+
+// knexfile.ts - deshabilitar transacciones para migraciones específicas
+// export default {
+//   migrations: {
+//     disableTransactions: true,  // Requerido para CONCURRENTLY
+//   }
+// };
+```
+
+### SQL Puro (Flyway / Manual)
+
+Para migraciones complejas, nada supera al SQL puro. Tienes todo el poder de PostgreSQL, control total sobre bloqueos, y ninguna capa de abstracción adivinando lo que quisiste decir. La desventaja es que eres responsable de todo — scripts de rollback, idempotencia, testing.
+
+```sql
+-- V20260320_001__add_order_currency.sql (convención de nombres de Flyway)
+
+-- Verificación de precondición: hacer la migración idempotente
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'currency'
+  ) THEN
+    ALTER TABLE orders ADD COLUMN currency VARCHAR(3) NOT NULL DEFAULT 'USD';
+  END IF;
+END $$;
+
+-- Crear índice concurrentemente (no puede estar en un bloque de transacción)
+-- Flyway: configurar executeInTransaction=false en la config de migración
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_orders_currency
+ON orders(currency);
+
+-- Verificar
+DO $$
+BEGIN
+  ASSERT (
+    SELECT COUNT(*) FROM pg_indexes
+    WHERE indexname = 'idx_orders_currency'
+  ) = 1, 'El índice idx_orders_currency no fue creado';
+END $$;
+```
+
+<Callout type="tip" title="Mi Recomendación">
+Usa la herramienta de migración de tu ORM para cambios de schema (la conveniencia gana), pero escribe las migraciones de datos como scripts SQL puros que corres por separado. Los peores bugs de migración de datos que he visto vinieron de ORMs tratando de ser inteligentes con updates por lotes. Para datos, escribe el SQL tú mismo. Entenderás exactamente lo que está pasando, y cuando se tuerza a las 3 AM, podrás depurarlo sin tener que hacer ingeniería inversa de una capa de abstracción.
+</Callout>
+
+## Probando Migraciones Antes de Producción
+
+"Funcionó en staging" no es una estrategia de migración. Las bases de datos de staging son típicamente 1/100 del tamaño de producción, tienen diferentes distribuciones de datos, y se pierden los casos borde que solo aparecen a escala. Así es cómo realmente pruebas migraciones.
+
+### Shadow Databases (Bases de Datos Sombra)
+
+Un shadow database es una copia del schema de producción (no datos — eso sería una pesadilla de compliance) contra el que corres migraciones en CI.
+
+```typescript
+// shadow-migration-test.ts
+import { execSync } from 'child_process';
+
+async function testMigrationAgainstShadow(): Promise<void> {
+  const shadowDbUrl = process.env.SHADOW_DATABASE_URL;
+
+  // Paso 1: Clonar schema de producción al shadow
+  console.log('Clonando schema de producción...');
+  execSync(
+    `pg_dump --schema-only ${process.env.PROD_DATABASE_URL} | psql ${shadowDbUrl}`
+  );
+
+  // Paso 2: Generar datos de prueba realistas
+  console.log('Generando datos de prueba...');
+  await seedRealisticData(shadowDbUrl, {
+    orders: 1_000_000,    // Igualar la escala de producción
+    customers: 100_000,
+    products: 10_000,
+  });
+
+  // Paso 3: Correr migraciones pendientes y cronometrarlas
+  console.log('Corriendo migraciones...');
+  const start = Date.now();
+  execSync(`DATABASE_URL=${shadowDbUrl} npx knex migrate:latest`);
+  const duration = Date.now() - start;
+
+  console.log(`Migraciones completadas en ${duration}ms`);
+
+  // Paso 4: Verificar que el schema coincide con las expectativas
+  const schemaDiff = execSync(
+    `pg_dump --schema-only ${shadowDbUrl} > /tmp/shadow.sql && ` +
+    `diff /tmp/expected-schema.sql /tmp/shadow.sql`
+  ).toString();
+
+  if (schemaDiff) {
+    throw new Error(`Discrepancia de schema después de migración:\n${schemaDiff}`);
+  }
+
+  // Paso 5: Correr la suite de tests contra el schema migrado
+  execSync(`DATABASE_URL=${shadowDbUrl} npm test`);
+}
+```
+
+### Cronometrando Migraciones Contra Datos Realistas
+
+Este es el paso más pasado por alto. Una migración que toma 50ms en tu base de datos de desarrollo de 500 filas podría tomar 45 minutos en tu tabla de producción de 14 millones de filas. (De nuevo: pregúntame cómo lo sé.)
+
+```sql
+-- Forma rápida de estimar el tiempo de migración: EXPLAIN ANALYZE en una muestra
+-- Crear una tabla temporal con un subconjunto de datos a escala de producción
+CREATE TEMP TABLE orders_sample AS
+SELECT * FROM orders LIMIT 100000;
+
+-- Cronometrar la operación real
+\timing on
+ALTER TABLE orders_sample ADD COLUMN currency VARCHAR(3) DEFAULT 'USD';
+-- Ahora extrapola: si 100k filas tomaron Xms, 14M filas tomarán ~140X ms
+
+-- Para migraciones de datos basadas en UPDATE, verifica el plan de consulta primero
+EXPLAIN ANALYZE
+UPDATE orders_sample
+SET total_cents = (total * 100)::BIGINT
+WHERE total_cents IS NULL;
+```
+
+### Modo de Ejecución en Seco (Dry Run)
+
+Algunas herramientas de migración soportan dry runs. Si la tuya no, construye uno:
+
+```typescript
+// dry-run-migration.ts
+async function dryRunMigration(knex: Knex): Promise<void> {
+  const pendingMigrations = await knex.migrate.list();
+  const [, pending] = pendingMigrations;
+
+  if (pending.length === 0) {
+    console.log('No hay migraciones pendientes.');
+    return;
+  }
+
+  console.log(`Migraciones pendientes (${pending.length}):`);
+  for (const migration of pending) {
+    console.log(`  - ${migration.name}`);
+  }
+
+  // Ejecutar dentro de una transacción y hacer rollback
+  const trx = await knex.transaction();
+  try {
+    console.log('\nEjecutando en modo dry-run (se hará rollback)...');
+    await trx.migrate.latest();
+    console.log('Migración exitosa en modo dry-run.');
+
+    // Mostrar qué cambió
+    const tables = await trx.raw(`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `);
+    console.log('\nTablas después de migración:', tables.rows.map((r: any) => r.tablename));
+
+  } finally {
+    await trx.rollback();
+    console.log('\nDry run completo. Todos los cambios revertidos.');
+  }
+}
+```
+
+<Callout type="info" title="Integración con Pipeline CI">
+Agrega testing de migraciones a tu pipeline de CI. Cada PR que incluya un archivo de migración debería automáticamente: (1) correr la migración contra un shadow database, (2) correr la suite completa de tests contra el schema migrado, y (3) mostrar información de timing. Si una migración tarda más que tu umbral (yo uso 10 segundos), márcala para revisión. Esto atrapa las lentas antes de que lleguen a producción, no durante un incidente.
+</Callout>
+
+## Estrategias de Rollback Que Realmente Funcionan
+
+Aquí va una verdad incómoda: la estrategia de rollback de la mayoría de los equipos es "restaurar desde backup." Eso no es una estrategia; es una oración. Los backups toman tiempo en restaurar, pierdes todos los datos escritos desde el backup, y el proceso de restauración en sí puede tomar horas en bases de datos grandes.
+
+Déjame guiarte por estrategias de rollback que realmente funcionan en el mundo real.
+
+### Estrategia 1: Arreglar Hacia Adelante en Vez de Rollback
+
+El mejor rollback es no necesitar uno. Si usas expand-contract, cada paso es aditivo. Si algo sale mal, simplemente detienes el proceso de migración — no necesitas revertirlo. El código viejo sigue funcionando contra el schema actual porque no has eliminado nada todavía.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│           Arreglar Hacia Adelante vs Rollback                    │
+│                                                                  │
+│  Tradicional:                                                    │
+│  schema v1 ──► MIGRAR ──► schema v2 ──► ROLLBACK ──► schema v1 │
+│                   ▲                         ▲                    │
+│                   │                         │                    │
+│             (riesgoso)                (también riesgoso!)        │
+│                                                                  │
+│  Expand-Contract:                                                │
+│  schema v1 ──► EXPAND ──► schema v1.5 ──► CONTRACT ──► v2      │
+│                   ▲            │                                  │
+│                   │            └── Código v1 y v2 funcionan      │
+│             (seguro: aditivo)       aquí. No se necesita rollback│
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Estrategia 2: Migraciones Down Emparejadas
+
+Cada migración `up` debería tener una migración `down` correspondiente. Esto suena obvio, pero he auditado codebases donde la mitad de las migraciones down son solo `// TODO: implementar rollback`. En producción. Con datos reales. (Sentí físicamente un tic en el ojo al escribir eso.)
+
+```typescript
+// Una migración emparejada apropiada
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('customers', (table) => {
+    table.string('phone_country_code', 5).nullable();
+    table.string('phone_number', 20).nullable();
+  });
+
+  // Backfill desde columna phone existente
+  await knex.raw(`
+    UPDATE customers
+    SET phone_country_code = '+1',
+        phone_number = regexp_replace(phone, '[^0-9]', '', 'g')
+    WHERE phone IS NOT NULL
+  `);
+}
+
+export async function down(knex: Knex): Promise<void> {
+  // IMPORTANTE: NO eliminamos la columna vieja 'phone' en la migración up
+  // hasta que estemos seguros de que las nuevas columnas funcionan.
+  // Así que revertir es solo eliminar las nuevas columnas.
+  await knex.schema.alterTable('customers', (table) => {
+    table.dropColumn('phone_country_code');
+    table.dropColumn('phone_number');
+  });
+}
+```
+
+### Estrategia 3: Snapshots Puntuales
+
+Para migraciones realmente aterradoras (esas donde estás transformando datos y no puedes revertir fácilmente la transformación), toma un snapshot antes de empezar:
+
+```sql
+-- Antes de la migración: snapshot de la tabla afectada
+CREATE TABLE orders_pre_migration_20260320 AS
+SELECT * FROM orders;
+
+-- Agregar un índice para que las consultas de rollback sean rápidas
+CREATE INDEX ON orders_pre_migration_20260320(id);
+
+-- Correr tu migración...
+-- Si las cosas salen mal:
+BEGIN;
+  DELETE FROM orders;
+  INSERT INTO orders SELECT * FROM orders_pre_migration_20260320;
+COMMIT;
+
+-- Si las cosas salen bien, limpiar después del período de verificación:
+-- DROP TABLE orders_pre_migration_20260320;
+```
+
+<Callout type="warning" title="Advertencia de Tamaño de Snapshot">
+Esto obviamente duplica tu almacenamiento para esa tabla durante la duración. En una tabla de orders de 200GB, asegúrate de tener el espacio en disco. Una vez vi una migración fallar porque la tabla de snapshot llenó el disco, lo que luego causó que PostgreSQL entrara en modo de solo lectura, lo que luego causó que la migración se colgara, lo que luego causó que el pool de conexiones se agotara, lo que luego... ya te haces la idea. Verifica tu espacio en disco antes de tomar snapshots.
+</Callout>
+
+### Estrategia 4: Feature Flags para Código de Migración
+
+Usa feature flags para controlar si tu aplicación lee del schema viejo o nuevo. Esto te permite "hacer rollback" cambiando un flag, sin tocar la base de datos en absoluto.
+
+```typescript
+// Usando un feature flag para controlar la ruta de lectura
+async function getOrderTotal(orderId: string): Promise<number> {
+  const order = await db('orders').where({ id: orderId }).first();
+
+  if (featureFlags.isEnabled('use-total-cents')) {
+    // Ruta nueva: leer de la nueva columna
+    return order.total_cents / 100;
+  } else {
+    // Ruta vieja: leer de la columna vieja
+    return order.total;
+  }
+}
+
+// Si la migración sale mal, cambia el flag de vuelta.
+// No se necesita deploy. No se necesita migración de rollback.
+// Solo una llamada API a tu servicio de feature flags.
+```
+
+## El Checklist de Migración
+
+Reviso este checklist antes de cada migración. Me ha salvado más veces de las que puedo contar. Imprímelo. Pégalo en tu monitor. Tatúatelo en el antebrazo. No me importa, solo úsalo.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│             CHECKLIST PRE-MIGRACIÓN                               │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  ANTES DE ESCRIBIR LA MIGRACIÓN:                                  │
+│  □ ¿Es un cambio de schema, migración de datos, o ambos?         │
+│  □ Si son ambos, ¿los separé en migraciones distintas?           │
+│  □ ¿Cuál es el tamaño de la tabla? (SELECT pg_size_pretty(       │
+│    pg_total_relation_size('nombre_tabla')))                       │
+│  □ ¿Cuántas filas serán afectadas?                               │
+│  □ ¿Hay bloqueos activos en esta tabla ahora mismo?              │
+│  □ ¿Hay transacciones de larga duración que puedan conflictuar?  │
+│                                                                   │
+│  MIENTRAS ESCRIBES LA MIGRACIÓN:                                  │
+│  □ ¿La migración usa CREATE INDEX CONCURRENTLY                   │
+│    (no CREATE INDEX normal)?                                      │
+│  □ ¿La migración es idempotente (segura de correr dos veces)?    │
+│  □ ¿Hay una migración down que funciona?                         │
+│  □ ¿Las actualizaciones de datos están por lotes                 │
+│    (no un UPDATE gigante)?                                        │
+│  □ ¿Configuré lock_timeout y statement_timeout?                  │
+│  □ ¿La migración funciona con AMBOS código viejo y nuevo?        │
+│                                                                   │
+│  ANTES DE DESPLEGAR:                                              │
+│  □ ¿Probada contra dataset del tamaño de producción?             │
+│  □ ¿Cronometrada la migración? (¿Cuánto en datos realistas?)    │
+│  □ ¿Verificado espacio en disco suficiente?                      │
+│  □ ¿Programada durante ventana de bajo tráfico? (si aplica)     │
+│  □ ¿Alertado al equipo que sale una migración?                   │
+│  □ ¿El backup de base de datos es reciente y verificado?         │
+│  □ ¿Dashboards de monitoreo están abiertos? (conexiones,        │
+│    bloqueos, latencia de consultas, I/O de disco)                │
+│                                                                   │
+│  DURANTE LA MIGRACIÓN:                                            │
+│  □ Monitoreando esperas de bloqueo (pg_stat_activity)            │
+│  □ Monitoreando lag de replicación (si aplica)                   │
+│  □ Listo para matar la migración si excede el timeout            │
+│                                                                   │
+│  DESPUÉS DE LA MIGRACIÓN:                                         │
+│  □ ¿El schema coincide con las expectativas?                     │
+│  □ ¿Los health checks de la aplicación pasan?                    │
+│  □ ¿No hay índices inválidos? (verificar pg_index                │
+│    WHERE NOT indisvalid)                                          │
+│  □ ¿El rendimiento de consultas es normal?                       │
+│    (verificar pg_stat_statements)                                 │
+│  □ ¿Se ejecutó ANALYZE en las tablas afectadas?                  │
+│  □ ¿Se limpiaron tablas/columnas temporales?                     │
+│                                                                   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Consultas de Monitoreo Que Deberías Tener Guardadas
+
+Estas son las consultas que tengo en un gestor de snippets y abro durante cada migración:
+
+```sql
+-- Bloqueos activos: ¿quién está esperando qué?
+SELECT
+  pid,
+  age(clock_timestamp(), query_start) AS duration,
+  state,
+  wait_event_type,
+  wait_event,
+  left(query, 80) AS query_snippet
+FROM pg_stat_activity
+WHERE state != 'idle'
+  AND pid != pg_backend_pid()
+ORDER BY query_start;
+
+-- Conflictos de bloqueo: ¿quién está bloqueando a quién?
+SELECT
+  blocked.pid AS blocked_pid,
+  blocked.query AS blocked_query,
+  blocking.pid AS blocking_pid,
+  blocking.query AS blocking_query,
+  age(clock_timestamp(), blocked.query_start) AS waiting_duration
+FROM pg_stat_activity blocked
+JOIN pg_locks blocked_locks ON blocked.pid = blocked_locks.pid
+JOIN pg_locks blocking_locks ON blocked_locks.locktype = blocking_locks.locktype
+  AND blocked_locks.relation = blocking_locks.relation
+  AND blocked_locks.pid != blocking_locks.pid
+JOIN pg_stat_activity blocking ON blocking_locks.pid = blocking.pid
+WHERE NOT blocked_locks.granted;
+
+-- Bloat de tabla después de migración (correr VACUUM ANALYZE primero)
+SELECT
+  schemaname || '.' || relname AS table_name,
+  pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+  pg_size_pretty(pg_relation_size(relid)) AS table_size,
+  pg_size_pretty(pg_indexes_size(relid)) AS index_size,
+  n_dead_tup AS dead_rows,
+  n_live_tup AS live_rows,
+  round(n_dead_tup::numeric / greatest(n_live_tup, 1) * 100, 2) AS dead_pct
+FROM pg_stat_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 20;
+
+-- Lag de replicación (si tienes réplicas)
+SELECT
+  client_addr,
+  state,
+  sent_lsn,
+  write_lsn,
+  flush_lsn,
+  replay_lsn,
+  pg_wal_lsn_diff(sent_lsn, replay_lsn) AS replay_lag_bytes,
+  pg_size_pretty(pg_wal_lsn_diff(sent_lsn, replay_lsn)) AS replay_lag_pretty
+FROM pg_stat_replication;
+```
+
+## Cerrando
+
+Las migraciones de base de datos no tienen que ser aterradoras. Son aterradoras cuando no estás preparado — cuando no sabes qué tan grande es la tabla, cuando no has probado contra datos realistas, cuando tu plan de rollback es "supongo que restauramos desde backup."
+
+Los patrones en este post — expand-contract, ghost tables, índices concurrentes, advisory locks, testing con shadow databases — no son ciencia espacial. Son solo disciplina. La disciplina de dividir un "simple renombrado" en tres migraciones. La disciplina de cronometrar tus migraciones contra datos a escala de producción. La disciplina de escribir una migración down incluso cuando estás seguro de que no la vas a necesitar.
+
+Esa caída de 45 minutos que mencioné al inicio fue una adición de columna de $0 que nos costó aproximadamente $30,000 en créditos de SLA y unas 200 horas de tiempo de ingeniería perdidas entre la respuesta al incidente, el postmortem y la remediación. El enfoque expand-contract que lo habría prevenido toma quizás 30 minutos extra de tiempo de ingeniería por migración.
+
+La matemática no es difícil.
+
+Corre el checklist. Prueba contra datos reales. Ten un plan de rollback que no sea una oración. Y por el amor de tu SLA de uptime, usa `CREATE INDEX CONCURRENTLY`.
+
+Tu yo de las 2 AM del futuro te lo agradecerá.
