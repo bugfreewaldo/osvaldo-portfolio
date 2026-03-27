@@ -47,7 +47,7 @@ Here's the decision framework I use:
 │  ──────                   ────                 ──────            │
 │  Latency > 200ms OK       Latency < 50ms       Small model edge  │
 │  Always online             Offline required     Large model cloud │
-│  Large models (>1B)        Small models (<50M)  Edge for triage   │
+│  Large models (>1B)        Small models (&lt;50M)  Edge for triage   │
 │  Frequent retraining       Stable models        Cloud for detail  │
 │  Shared infrastructure     Data stays local     Sync when online  │
 │  Easy scaling              Fixed capacity        │
@@ -115,7 +115,7 @@ from onnxruntime.quantization import quantize_dynamic, QuantType
 
 # Dynamic quantization — the easiest starting point
 # Converts weights to INT8, keeps activations in FP32
-# Typically 2-4x speedup with <2% accuracy loss
+# Typically 2-4x speedup with &lt;2% accuracy loss
 quantize_dynamic(
     model_input="model_fp32.onnx",
     model_output="model_int8.onnx",
@@ -945,7 +945,7 @@ Edge inference is the right tool for specific situations. It is not the default.
 
 **Skip edge if you need large models.** Running a 7B parameter LLM on a Jetson is technically possible but practically miserable. If your use case needs GPT-4-class capabilities, call the API. That's what it's for.
 
-**Skip edge if you have reliable, low-latency connectivity.** If your devices are always online with <50ms to your cloud region, the complexity of edge deployment buys you very little.
+**Skip edge if you have reliable, low-latency connectivity.** If your devices are always online with &lt;50ms to your cloud region, the complexity of edge deployment buys you very little.
 
 **Skip edge if you're a small team.** Edge deployment doubles your operational surface area. If you're three engineers shipping fast, cloud inference with a good caching layer is probably enough.
 

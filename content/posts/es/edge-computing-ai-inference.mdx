@@ -45,9 +45,9 @@ Este es el marco de decisión que uso:
 │                                                                  │
 │  CLOUD                    EDGE                 HÍBRIDO           │
 │  ──────                   ────                 ───────           │
-│  Latencia > 200ms OK      Latencia < 50ms      Modelo chico edge│
+│  Latencia > 200ms OK      Latencia &lt; 50ms      Modelo chico edge│
 │  Siempre online            Offline requerido    Modelo grande cloud│
-│  Modelos grandes (>1B)    Modelos chicos (<50M) Edge para triage │
+│  Modelos grandes (>1B)    Modelos chicos (&lt;50M) Edge para triage │
 │  Reentrenamiento freq.    Modelos estables      Cloud para detalle│
 │  Infraestructura compart. Datos quedan local    Sync cuando online│
 │  Escalado fácil            Capacidad fija                        │
@@ -118,7 +118,7 @@ from onnxruntime.quantization import quantize_dynamic, QuantType
 
 # Cuantización dinámica — el punto de inicio más fácil
 # Convierte pesos a INT8, mantiene activaciones en FP32
-# Típicamente 2-4x de aceleración con <2% de pérdida de precisión
+# Típicamente 2-4x de aceleración con &lt;2% de pérdida de precisión
 quantize_dynamic(
     model_input="model_fp32.onnx",
     model_output="model_int8.onnx",
@@ -948,7 +948,7 @@ La inferencia edge es la herramienta correcta para situaciones específicas. No 
 
 **Sáltate edge si necesitas modelos grandes.** Ejecutar un LLM de 7B parámetros en un Jetson es técnicamente posible pero prácticamente miserable. Si tu caso de uso necesita capacidades nivel GPT-4, llama a la API. Para eso está.
 
-**Sáltate edge si tienes conectividad confiable y de baja latencia.** Si tus dispositivos siempre están online con <50ms a tu región de cloud, la complejidad del despliegue edge te compra muy poco.
+**Sáltate edge si tienes conectividad confiable y de baja latencia.** Si tus dispositivos siempre están online con &lt;50ms a tu región de cloud, la complejidad del despliegue edge te compra muy poco.
 
 **Sáltate edge si eres un equipo pequeño.** El despliegue edge duplica tu superficie operativa. Si son tres ingenieros enviando código rápido, la inferencia en la nube con una buena capa de caché probablemente es suficiente.
 
