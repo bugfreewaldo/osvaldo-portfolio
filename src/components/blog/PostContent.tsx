@@ -20,8 +20,7 @@ export default function PostContent({ source }: PostContentProps) {
           rehypePlugins: [
             rehypeSlug,
             [
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              rehypePrettyCode as any,
+              rehypePrettyCode as any, // eslint-disable-line @typescript-eslint/no-explicit-any
               {
                 theme: "github-dark",
               },
