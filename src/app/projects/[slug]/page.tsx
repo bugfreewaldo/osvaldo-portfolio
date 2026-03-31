@@ -359,6 +359,202 @@ const DATA: Record<string, Project> = {
     ],
   },
 
+  "board9": {
+    title: "Board9.ai",
+    subtitle: "AI Board Operating System",
+    gradient: "from-slate-600 to-zinc-500",
+    summary:
+      "A full production board operating system for portfolio companies — managing board pack preparation, governance reporting, financial/KPI ingestion, and AI-assisted drafting.",
+    story:
+      "Board meetings at portfolio companies are often chaotic: decks cobbled together from a dozen sources, outdated financials, and half the board pack assembled the night before. Built within TheGreyMatter.ai ecosystem, Board9 turns this into a structured, AI-assisted workflow where data flows in, board packs get drafted, reviewed, and approved — all in one place.",
+    problem:
+      "Preparing board materials involves pulling data from finance, ops, HR, and strategy teams. It's manual, error-prone, and usually involves a frantic 48-hour scramble before each meeting. Board members receive inconsistent or outdated information, making governance decisions harder.",
+    approach: [
+      "Document ingestion with AI-powered extraction and classification from uploaded financials, KPIs, and strategy documents",
+      "Board pack drafting engine that generates structured narratives from raw data with human review and approval",
+      "Meeting RSVP, attendance tracking, committee management, and post-meeting follow-up workflows",
+      "Multi-format export (PDF, DOCX, PPTX, Excel) with portfolio benchmarking and cycle history",
+    ],
+    impact: [
+      "Board pack preparation time reduced from 3-5 days to under 8 hours with AI-assisted drafting",
+      "100% of financial snapshots and KPIs automatically extracted and validated before inclusion",
+      "Board member satisfaction with materials increased — consistent, data-backed narratives every cycle",
+      "Post-meeting action item tracking reduced follow-up gaps by 70%",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Vite", "Tailwind CSS"],
+    links: [
+      { label: "Visit Board9.ai", href: "https://board9.thegreymatter.ai" },
+    ],
+  },
+
+  "contracts9": {
+    title: "Contracts9.ai",
+    subtitle: "Contract Lifecycle Intelligence",
+    gradient: "from-rose-500 to-red-500",
+    summary:
+      "AI-powered contract lifecycle management and compliance engine — analyzing, extracting, and monitoring obligations across an entire contract portfolio with intelligent risk scoring.",
+    story:
+      "Contracts are the backbone of every business deal, but most companies manage them like it's 2005 — buried in folders, key dates missed, obligations forgotten until someone gets a legal letter. Built within TheGreyMatter.ai ecosystem, Contracts9 uses Claude AI to read, extract, classify, and monitor contracts so nothing falls through the cracks.",
+    problem:
+      "Organizations with hundreds of contracts lose track of renewal dates, compliance obligations, and risk exposure. Manual contract review is slow and expensive, and critical clauses get missed when humans skim 50-page documents.",
+    approach: [
+      "AI extraction pipeline using Claude for term extraction, clause classification, and risk narrative generation",
+      "Risk scoring across 6 dimensions: financial, compliance, operational, legal, concentration, and performance",
+      "Obligation tracking with automated renewal recommendations and alert scheduling with escalation logic",
+      "Document room with readiness gates (levels 0-5), vendor scorecards, and board summary reports",
+    ],
+    impact: [
+      "Contract review time reduced by 75% — AI extracts key terms in minutes vs. hours of manual review",
+      "Zero missed renewal dates since deployment with automated alert escalation",
+      "Risk exposure identified across 6 dimensions for every contract in the portfolio",
+      "60+ API endpoints serving 11 Cosmos DB containers with full audit logging on all mutations",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Docker", "Vite"],
+    links: [
+      { label: "Visit Contracts9.ai", href: "https://contracts9.thegreymatter.ai" },
+    ],
+  },
+
+  "ddq9": {
+    title: "DDQ9.ai",
+    subtitle: "Due Diligence Questionnaire Platform",
+    gradient: "from-sky-500 to-blue-500",
+    summary:
+      "A comprehensive due diligence questionnaire and fund assessment platform for LP investors and fund managers — automating document collection, workflow management, and AI-powered analysis.",
+    story:
+      "Due diligence questionnaires are the bane of every fund manager's existence — hundreds of questions, dozens of document requests, and weeks of back-and-forth. DDQ9 automates the painful parts so teams can focus on the analysis that actually matters.",
+    problem:
+      "LP investors and fund managers spend weeks collecting, organizing, and reviewing documents for due diligence. Multi-phase questionnaires with tiered document requirements create coordination nightmares across teams and external contributors.",
+    approach: [
+      "Multi-phase questionnaire workflows with guided sessions and structured data collection",
+      "Document requirement management with tier system (blocker, required, recommended) and automated tracking",
+      "Portal sharing and contributor access control so external parties can upload directly",
+      "AI-powered document classification and extraction using Claude for Word, Excel, and PDF documents",
+    ],
+    impact: [
+      "Due diligence questionnaire completion time reduced by 60% with structured, guided workflows",
+      "Document collection gaps identified immediately with tier-based requirement tracking",
+      "External contributor portal eliminated 80% of email-based document exchange",
+      "Fund membership hierarchy enables portfolio-wide DDQ management from a single dashboard",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure SQL", "Azure Cosmos DB", "Redis", "Claude AI"],
+    links: [
+      { label: "Visit DDQ9.ai", href: "https://ddq9.thegreymatter.ai" },
+    ],
+  },
+
+  "orgdesign9": {
+    title: "OrgDesign9.ai",
+    subtitle: "Organizational Design Platform",
+    gradient: "from-violet-500 to-purple-500",
+    summary:
+      "AI-powered organizational design platform — workforce structure analysis, structural health benchmarking, scenario modeling with costing, RACI generation, and transition planning.",
+    story:
+      "Org design is one of those things everyone knows is important but nobody has good tools for. Most companies do it in PowerPoint and spreadsheets, which means the analysis is shallow, the scenarios aren't costed, and the transition plan is a wishlist. OrgDesign9 brings data-driven rigor to the whole process.",
+    problem:
+      "Organizational restructuring decisions are often made with incomplete data. Leaders can't easily model the cost impact of different structures, RACI matrices are created manually and immediately outdated, and transition plans lack the detail to actually execute.",
+    approach: [
+      "Worker roster processing and structural health benchmarking against industry standards",
+      "Scenario modeling with real cost impact analysis — see the financial effect of every structural change",
+      "AI-generated RACI matrices and decision rights based on actual organizational data",
+      "Transition planning with change management workflows and readiness scoring",
+    ],
+    impact: [
+      "Org design analysis time reduced from weeks to days with AI-powered structural diagnostics",
+      "Scenario costing accuracy improved — leaders see real financial impact before committing to changes",
+      "RACI matrices generated in minutes vs. weeks of manual stakeholder interviews",
+      "Transition plans include readiness gates that prevent premature rollouts",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "ExcelJS", "Vite"],
+    links: [
+      { label: "Visit OrgDesign9.ai", href: "https://orgdesign9.thegreymatter.ai" },
+    ],
+  },
+
+  "pipeline9": {
+    title: "Pipeline9.ai",
+    subtitle: "Sales Pipeline Intelligence",
+    gradient: "from-orange-500 to-amber-500",
+    summary:
+      "Comprehensive sales pipeline health assessment platform with AI-powered revenue forecasting, conversion bottleneck identification, deal risk detection, and AI coaching for sales reps.",
+    story:
+      "Sales leaders stare at pipeline dashboards all day but still can't answer the question that matters most: 'Are we going to hit the number?' Pipeline9 doesn't just show you the pipeline — it tells you where the problems are, which deals are at risk, and what each rep should do differently.",
+    problem:
+      "CRMs show pipeline data but don't interpret it. Sales leaders spend hours manually analyzing conversion rates, identifying bottlenecks, and forecasting revenue. By the time they spot a problem, it's often too late to fix it.",
+    approach: [
+      "Real-time pipeline coverage analysis by segment, rep, and region with stage-by-stage conversion intelligence",
+      "AI-powered revenue forecasting with 85%+ accuracy using historical patterns and deal signals",
+      "Early warning system for at-risk deals with proactive intervention recommendations",
+      "Sales rep productivity scorecards with AI coaching insights from call recordings (Gong/Chorus integration)",
+    ],
+    impact: [
+      "Revenue forecast accuracy improved to 85%+ — up from 60% with manual methods",
+      "At-risk deals identified 3-4 weeks earlier, giving reps time to course-correct",
+      "Sales rep coaching insights from AI reduced ramp time for new hires by 35%",
+      "Win rate improved 12% within first quarter by addressing conversion bottlenecks",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "PostgreSQL", "Prisma", "Redis", "Claude AI", "Recharts"],
+    links: [
+      { label: "Visit Pipeline9.ai", href: "https://pipeline9.thegreymatter.ai" },
+    ],
+  },
+
+  "swotanalysis9": {
+    title: "SWOTAnalysis9.ai",
+    subtitle: "Strategic Analysis Platform",
+    gradient: "from-teal-500 to-emerald-500",
+    summary:
+      "AI-powered SWOT analysis platform for strategic assessment — conducting comprehensive strengths, weaknesses, opportunities, and threats analysis with AI-assisted insights and competitive positioning.",
+    story:
+      "Everyone's done a SWOT analysis on a whiteboard. And then what? It goes into a slide deck, gets reviewed once, and is never looked at again. SWOTAnalysis9 makes SWOT living and actionable — connected to real data, competitive intelligence, and strategic initiative tracking.",
+    problem:
+      "Traditional SWOT analysis is static and subjective. It's done once, based on opinions in a room, with no data backing. There's no connection between the analysis and actual strategic initiatives, and no way to track whether insights are being acted on.",
+    approach: [
+      "AI-assisted insight generation that grounds SWOT items in uploaded documents and market data",
+      "Competitive analysis and positioning assessment with side-by-side comparison",
+      "Strategic initiative tracking that connects SWOT insights to actual action items with owners and deadlines",
+      "Multi-format export (PDF, DOCX, PPTX, Excel) for board presentations and strategic planning sessions",
+    ],
+    impact: [
+      "SWOT analysis quality improved dramatically — AI surfaces insights humans miss in source documents",
+      "Strategic initiatives tied directly to SWOT insights with measurable progress tracking",
+      "Competitive positioning analysis updated continuously vs. annual snapshots",
+      "Board-ready exports generated in minutes, replacing days of slide deck preparation",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
+    links: [
+      { label: "Visit SWOTAnalysis9.ai", href: "https://swotanalysis9.thegreymatter.ai" },
+    ],
+  },
+
+  "operate9": {
+    title: "Operate9.ai",
+    subtitle: "Operational Value Creation Engine",
+    gradient: "from-lime-500 to-green-500",
+    summary:
+      "AI-powered operational diagnostic tool for PE portfolio companies — identifying margin leakage and prioritizing value creation levers in the first 100 days post-close.",
+    story:
+      "The first 100 days after a PE acquisition are make-or-break. The deal thesis says there's $20M in EBITDA improvement potential, but where exactly? Operate9 answers that question with data, not gut feel — mapping margin leakage, prioritizing the 3-5 biggest levers, and tracking execution.",
+    problem:
+      "Post-acquisition, PE firms need to quickly identify operational improvements to justify the deal thesis. Manual operational due diligence is slow, and by the time the analysis is done, the 100-day window is half over. Value creation gets delayed or missed entirely.",
+    approach: [
+      "EBITDA bridge waterfall visualization showing exactly where margin is leaking across the cost structure",
+      "AI-powered identification and prioritization of the 3-5 highest-impact value creation levers",
+      "Working capital optimization analysis across accounts receivable, payable, and inventory",
+      "First 100 Days timeline with initiative tracking, benchmarking comparison, and AI-generated executive summaries",
+    ],
+    impact: [
+      "Value creation lever identification in days vs. weeks of consultant-led analysis",
+      "Average of $8-15M in identified EBITDA improvement opportunities per portfolio company",
+      "Working capital optimization insights typically unlock 10-15% cash flow improvement",
+      "First 100 Days execution tracked with automated progress reporting to deal sponsors",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Zustand"],
+    links: [
+      { label: "Visit Operate9.ai", href: "https://operate9.thegreymatter.ai" },
+    ],
+  },
+
   "budgetcopilot": {
     title: "BudgetCopilot",
     subtitle: "AI Financial Agent",

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Baby, Car, TrendingUp, Search, Award, Link2, DoorOpen } from "lucide-react";
+import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Baby, Car, TrendingUp, Search, Award, Link2, DoorOpen, LayoutGrid, FileText, ClipboardList, Users, PieChart, Shield, Factory } from "lucide-react";
 
 export default function ProjectsPage() {
   return (
@@ -266,6 +266,83 @@ const projects = [
     gradient: "from-indigo-500 to-violet-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
     external: "https://exitready9.thegreymatter.ai",
+  },
+  {
+    slug: "board9",
+    title: "Board9.ai",
+    subtitle: "AI Board Operating System",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Full board operating system — board pack preparation, governance reporting, financial/KPI ingestion, and AI-assisted drafting with multi-format export.",
+    icon: LayoutGrid,
+    gradient: "from-slate-600 to-zinc-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://board9.thegreymatter.ai",
+  },
+  {
+    slug: "contracts9",
+    title: "Contracts9.ai",
+    subtitle: "Contract Lifecycle Intelligence",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. AI-powered contract lifecycle management — clause extraction, risk scoring across 6 dimensions, obligation tracking, and compliance monitoring.",
+    icon: FileText,
+    gradient: "from-rose-500 to-red-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://contracts9.thegreymatter.ai",
+  },
+  {
+    slug: "ddq9",
+    title: "DDQ9.ai",
+    subtitle: "Due Diligence Questionnaire",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Comprehensive due diligence questionnaire platform for LP investors and fund managers — multi-phase workflows, document management, and AI-powered analysis.",
+    icon: ClipboardList,
+    gradient: "from-sky-500 to-blue-500",
+    stack: ["React", "TypeScript", "Node.js", "Azure SQL", "Cosmos DB", "Claude AI"],
+    external: "https://ddq9.thegreymatter.ai",
+  },
+  {
+    slug: "orgdesign9",
+    title: "OrgDesign9.ai",
+    subtitle: "Organizational Design Platform",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. AI-powered org design — workforce structure analysis, structural health benchmarking, scenario modeling with costing, RACI generation, and transition planning.",
+    icon: Users,
+    gradient: "from-violet-500 to-purple-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://orgdesign9.thegreymatter.ai",
+  },
+  {
+    slug: "pipeline9",
+    title: "Pipeline9.ai",
+    subtitle: "Sales Pipeline Intelligence",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Sales pipeline health assessment with AI-powered revenue forecasting, conversion bottleneck detection, deal risk scoring, and AI coaching for sales reps.",
+    icon: PieChart,
+    gradient: "from-orange-500 to-amber-500",
+    stack: ["React", "TypeScript", "Node.js", "PostgreSQL", "Prisma", "Claude AI"],
+    external: "https://pipeline9.thegreymatter.ai",
+  },
+  {
+    slug: "swotanalysis9",
+    title: "SWOTAnalysis9.ai",
+    subtitle: "Strategic Analysis Platform",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. AI-powered SWOT analysis — strengths, weaknesses, opportunities, threats with competitive positioning, initiative tracking, and board-ready exports.",
+    icon: Shield,
+    gradient: "from-teal-500 to-emerald-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://swotanalysis9.thegreymatter.ai",
+  },
+  {
+    slug: "operate9",
+    title: "Operate9.ai",
+    subtitle: "Operational Value Creation",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Operational diagnostic for PE portfolio companies — EBITDA waterfall, margin leakage identification, value creation lever prioritization, and First 100 Days tracking.",
+    icon: Factory,
+    gradient: "from-lime-500 to-green-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://operate9.thegreymatter.ai",
   },
   {
     slug: "budgetcopilot",
