@@ -17,6 +17,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/ai-engineer-panama`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.9 },
     { url: `${base}/resume`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
     { url: `${base}/es/ai-engineer-panama`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.9 },
+    { url: `${base}/now`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.7 },
   ];
 
   // All project detail pages
