@@ -1,0 +1,346 @@
+---
+title: "Estrategias de Caché que Realmente Funcionan en Producción"
+description: "Una guía sin rodeos sobre caching en sistemas reales. Patrones de Redis, invalidación de caché (la parte difícil), caching en el edge con CDN, estrategias a nivel de aplicación, y los errores que cometí para que tú no tengas que hacerlo."
+date: 2026-03-29
+published: true
+category: "Ingeniería Backend"
+tags: ["Caché", "Redis", "Rendimiento", "CDN", "Arquitectura"]
+author: "Osvaldo Restrepo"
+translationOf: "caching-strategies-production"
+tldr: "Cachea cerca del usuario (CDN para estático, Redis para dinámico), usa cache-aside para la mayoría de las cosas, write-through cuando la consistencia importa. Los TTLs son tu red de seguridad — configúralos incluso cuando pienses que no los necesitas. La invalidación de caché SÍ es tan difícil como dicen los memes, pero la invalidación basada en eventos con un TTL de respaldo maneja el 95% de los casos. Y por favor, monitorea tus tasas de hit. Un caché que nadie consulta es solo una base de datos caliente por la que estás pagando."
+faqs:
+  - question: "¿Cuándo debería usar Redis vs un CDN para caching?"
+    answer: "Los CDNs cachean contenido estático o semi-estático en el edge (páginas HTML, imágenes, respuestas de API que no cambian por usuario). Redis cachea datos dinámicos y específicos por usuario en la capa de aplicación (datos de sesión, resultados computados, resultados de consultas a base de datos). La mayoría de sistemas en producción usan ambos: CDN para la capa exterior, Redis para la capa interior."
+  - question: "¿Cómo manejo correctamente la invalidación de caché?"
+    answer: "El patrón más confiable es invalidación basada en eventos con un TTL de seguridad. Cuando los datos cambian, publica un evento que invalide las claves de caché relevantes. Configura un TTL (incluso uno largo como 1 hora) como respaldo en caso de que el evento falle. Esto te da frescura cuando los eventos funcionan y consistencia eventual cuando no."
+  - question: "¿Vale la pena cachear consultas de base de datos?"
+    answer: "Sí, si la consulta es costosa y los datos no cambian frecuentemente. Cachea el resultado usando los parámetros de consulta como clave. Pero ten cuidado con las claves de caché — una consulta con 10 filtros opcionales puede generar miles de claves únicas que raramente se consultan. Enfócate en cachear el hot path: las 5-10 consultas que representan el 80% de la carga de tu base de datos."
+  - question: "¿Cuál es la diferencia entre cache-aside y write-through?"
+    answer: "Cache-aside (carga lazy): la aplicación verifica el caché primero, y en un miss, consulta la base de datos y llena el caché. Write-through: la aplicación escribe en el caché y la base de datos simultáneamente. Cache-aside es más simple y evita cachear datos que nunca se leen. Write-through garantiza que el caché siempre esté caliente pero puede desperdiciar memoria en datos poco accedidos."
+relatedPosts: ["postgres-beyond-basics", "scalable-microservices-architecture"]
+---
+
+Una vez tumbé una base de datos de producción quitando un caché.
+
+No un caché grande e importante. Uno chiquito. Una pequeña clave de Redis que cacheaba el resultado de una consulta "obtener usuario actual." El tipo de cosa que verías en un code review y pensarías, "¿Por qué está esto cacheado? Es solo un simple SELECT por ID." Así que durante un sprint de limpieza, lo quité. Desplegué un martes por la tarde. En cuatro minutos, el pool de conexiones de la base de datos estaba agotado, la API devolvía 503s, y mi teléfono vibraba con alertas que hicieron que mi Apple Watch pensara que estaba teniendo un evento cardíaco.
+
+Resulta que ese "simple SELECT por ID" se llamaba 47 veces por carga de página a través de varios middleware, componentes y resolvers de API. El caché estaba absorbiendo unas 12,000 peticiones por segundo. Sin él, las 12,000 peticiones golpearon PostgreSQL directamente. PostgreSQL no apreció la sorpresa.
+
+Eso es lo que tiene el caching: nunca lo aprecias hasta que se va. Y quitar un caché que no entiendes es como quitar un muro de carga porque "no está haciendo nada visible." La parte visible es que la casa sigue en pie.
+
+## La Pirámide de Caching
+
+No todos los cachés son iguales. Pienso en el caching por capas, desde lo más cercano al usuario hasta lo más cercano a los datos:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   La Pirámide de Caching                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│                    ┌─────────┐                                   │
+│                    │ Caché   │  ← Headers de caché HTTP           │
+│                    │ Browser │    (Cache-Control, ETag)           │
+│                    └────┬────┘                                   │
+│                         │                                        │
+│                  ┌──────┴──────┐                                  │
+│                  │  Caché Edge │  ← Cloudflare, Vercel Edge       │
+│                  │    (CDN)    │    Estático + semi-dinámico       │
+│                  └──────┬──────┘                                  │
+│                         │                                        │
+│              ┌──────────┴──────────┐                              │
+│              │  Caché de Aplicación │  ← Redis, Memcached         │
+│              │    (Redis/Memoria)   │    Dinámico, por usuario     │
+│              └──────────┬──────────┘                              │
+│                         │                                        │
+│          ┌──────────────┴──────────────┐                          │
+│          │    Caché de Consultas BD     │  ← Caché de PostgreSQL   │
+│          │    (pg_stat, planes)         │    Interno, automático    │
+│          └─────────────────────────────┘                          │
+│                                                                  │
+│  Regla: Cachea lo más CERCA DEL USUARIO posible.                 │
+│  Menos capas recorre una petición, más rápida es.                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Cada capa tiene características diferentes. Los cachés del browser son los más rápidos pero los más difíciles de invalidar. Los cachés CDN son globales y rápidos pero funcionan mejor para contenido igual para todos los usuarios. Los cachés de aplicación (Redis) son el caballo de batalla — flexibles, rápidos, y los controlas completamente. Los cachés de base de datos son automáticos pero limitados.
+
+El arte del caching es saber qué capa usar para qué datos.
+
+## Cache-Aside: El Patrón que Usarás el 90% del Tiempo
+
+Cache-aside (también llamado "carga lazy") es el patrón de caching más simple y común. La aplicación verifica el caché primero. En un hit, devuelve el valor cacheado. En un miss, consulta la base de datos, almacena en caché, y devuelve.
+
+```typescript
+// cache/redis.ts
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const cached = await redis.get(key);
+  if (!cached) return null;
+  return JSON.parse(cached) as T;
+}
+
+export async function cacheSet(
+  key: string,
+  value: unknown,
+  ttlSeconds: number = 3600
+): Promise<void> {
+  await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+}
+
+export async function cacheDelete(key: string): Promise<void> {
+  await redis.del(key);
+}
+
+// Patrón: cache-aside con type safety
+export async function cacheable<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await cacheGet<T>(key);
+  if (cached !== null) return cached;
+
+  const fresh = await fetcher();
+
+  // Almacenar en caché (no await — fire and forget)
+  cacheSet(key, fresh, ttlSeconds).catch((err) =>
+    console.error('Fallo escritura de caché:', err)
+  );
+
+  return fresh;
+}
+```
+
+```typescript
+// Uso en la capa de servicios
+async function getUserProfile(userId: string) {
+  return cacheable(
+    `user:profile:${userId}`,
+    300, // 5 minutos
+    () => db.query('SELECT * FROM users WHERE id = $1', [userId])
+  );
+}
+
+async function getProductCatalog(category: string, page: number) {
+  return cacheable(
+    `catalog:${category}:page:${page}`,
+    600, // 10 minutos — el catálogo no cambia seguido
+    () => db.query(
+      'SELECT * FROM products WHERE category = $1 ORDER BY name LIMIT 20 OFFSET $2',
+      [category, (page - 1) * 20]
+    )
+  );
+}
+```
+
+<Callout type="tip" title="Escrituras de Caché Fire-and-Forget">
+Nota que no hago `await` a la escritura del caché. Si Redis está lento o caído, la petición aún retorna desde la base de datos. El caché es una optimización, no una dependencia. Si la escritura falla, la siguiente petición simplemente será otro miss. Este pequeño detalle me ha salvado de que caídas de Redis se cascadeen en caídas de la aplicación más de una vez.
+</Callout>
+
+## Invalidación de Caché: Sí, Es Tan Difícil Como Dicen
+
+Hay dos cosas difíciles en ciencias de la computación: invalidación de caché, nombrar cosas, y errores de off-by-one. La parte de invalidación de caché no es un chiste. Es la razón por la que los ingenieros senior se ponen nerviosos cuando alguien dice "simplemente cacheémoslo."
+
+El problema fundamental: cuando los datos subyacentes cambian, ¿cómo te aseguras de que el caché refleje ese cambio?
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│            Estrategias de Invalidación de Caché                  │
+├───────────────────┬─────────────────────────────────────────────┤
+│ Estrategia        │ Cómo funciona                                │
+├───────────────────┼─────────────────────────────────────────────┤
+│ Basada en TTL     │ El caché expira después de N segundos.       │
+│                   │ Simple pero datos obsoletos durante el TTL.  │
+│                   │                                              │
+│ Basada en eventos │ Publica evento al cambiar datos, invalida    │
+│                   │ caché en suscriptor. Fresco pero complejo.   │
+│                   │                                              │
+│ Write-through     │ Actualiza caché Y BD en cada escritura.      │
+│                   │ Siempre fresco pero más latencia de escrit.  │
+│                   │                                              │
+│ TTL + Eventos     │ Invalidación por eventos con TTL como        │
+│ (recomendado)     │ red de seguridad. Lo mejor de ambos mundos.  │
+│                   │                                              │
+│ Basada en versión │ Incluye versión en la clave del caché.       │
+│                   │ Incrementa versión para invalidar todo.      │
+└───────────────────┴─────────────────────────────────────────────┘
+```
+
+Mi patrón favorito es **TTL + invalidación por eventos**. Los eventos te dan invalidación casi instantánea cuando todo funciona. Los TTLs te dan consistencia eventual cuando los eventos fallan (y van a fallar — las colas se atrasan, los consumidores crashean, los eventos se pierden). El TTL es tu red de seguridad.
+
+```typescript
+// Invalidación por eventos con TTL de seguridad
+import { EventEmitter } from 'events';
+
+const cacheEvents = new EventEmitter();
+
+// Cuando un usuario actualiza su perfil
+async function updateUserProfile(userId: string, data: UpdateData) {
+  await db.query('UPDATE users SET name = $1, bio = $2 WHERE id = $3', [
+    data.name, data.bio, userId,
+  ]);
+
+  // Emitir evento para invalidar caché
+  cacheEvents.emit('user:updated', { userId });
+}
+
+// Listener de invalidación de caché
+cacheEvents.on('user:updated', async ({ userId }) => {
+  await Promise.all([
+    cacheDelete(`user:profile:${userId}`),
+    cacheDelete(`user:settings:${userId}`),
+    cacheDelete(`user:permissions:${userId}`),
+  ]);
+});
+```
+
+<Callout type="warning" title="El Problema de Cache Stampede">
+Cuando una clave popular expira, cientos de peticiones concurrentes hacen miss al mismo tiempo y golpean la base de datos. Esto es un "cache stampede." Prevenlo con un mutex/lock — solo una petición consulta la base de datos mientras las demás esperan a que el caché se repopule. El `SET ... NX` de Redis funciona genial como lock distribuido para esto.
+</Callout>
+
+## Patrones de Redis que Uso en Cada Proyecto
+
+Redis es más que un almacén clave-valor. Estos son los patrones que más uso:
+
+```typescript
+// Patrón 1: Sorted sets para leaderboards/rankings
+async function updateLeaderboard(userId: string, score: number) {
+  await redis.zadd('leaderboard:weekly', score, userId);
+}
+
+async function getTopPlayers(limit: number = 10) {
+  return redis.zrevrange('leaderboard:weekly', 0, limit - 1, 'WITHSCORES');
+}
+
+// Patrón 2: Hash maps para objetos cacheados estructurados
+async function cacheUserSession(sessionId: string, data: SessionData) {
+  await redis.hset(`session:${sessionId}`, {
+    userId: data.userId,
+    role: data.role,
+    expiresAt: data.expiresAt.toISOString(),
+  });
+  await redis.expire(`session:${sessionId}`, 86400); // 24h
+}
+
+// Patrón 3: Sets para rastrear items únicos
+async function trackUniqueVisitors(pageId: string, userId: string) {
+  await redis.sadd(`visitors:${pageId}:${today()}`, userId);
+}
+
+async function getUniqueVisitorCount(pageId: string): Promise<number> {
+  return redis.scard(`visitors:${pageId}:${today()}`);
+}
+
+// Patrón 4: Pub/Sub para invalidación en tiempo real entre instancias
+const subscriber = redis.duplicate();
+subscriber.subscribe('cache:invalidate');
+
+subscriber.on('message', async (channel, message) => {
+  const { pattern } = JSON.parse(message);
+  const keys = await redis.keys(pattern);
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
+});
+```
+
+## CDN y Caching en el Edge
+
+Para contenido que es igual para todos los usuarios, el caching CDN es la opción más rápida. El contenido se sirve desde un servidor geográficamente cercano al usuario — sin viaje de ida y vuelta a tu origen.
+
+```typescript
+// Ruta de API Next.js con headers de caché
+export async function GET(request: Request) {
+  const data = await fetchPublicData();
+
+  return Response.json(data, {
+    headers: {
+      // CDN cachea por 60 segundos, browser cachea por 10
+      'Cache-Control': 'public, s-maxage=60, max-age=10',
+      'CDN-Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    },
+  });
+}
+```
+
+<Callout type="info" title="stale-while-revalidate Es Magia">
+La directiva `stale-while-revalidate` deja que el CDN sirva una respuesta obsoleta inmediatamente mientras obtiene una fresca en segundo plano. Los usuarios obtienen respuestas instantáneas, y el caché se mantiene fresco. Es la mejor experiencia de usuario para datos que toleran unos segundos de obsolescencia.
+</Callout>
+
+## Diseño de Claves de Caché
+
+Las malas claves de caché son el asesino silencioso de las estrategias de caching. He visto cachés con 0.1% de hit rate porque las claves eran demasiado específicas, y cachés sirviendo datos incorrectos porque las claves eran demasiado genéricas.
+
+```typescript
+// Mal: Demasiado específico — cada combinación crea una clave nueva
+const key = `products:${category}:${sort}:${page}:${limit}:${filters}`;
+// Con 10 categorías, 3 sorts, 100 páginas, 3 límites, y
+// 50 combos de filtros = 450,000 claves únicas. La mayoría se consultará una vez.
+
+// Mejor: Cachea los datos subyacentes, no la presentación
+const key = `products:${category}:page:${page}`;
+// Ordena y filtra en la capa de aplicación después del hit
+
+// Convención de nombres que sigo:
+// {entidad}:{calificador}:{id}:{sub-recurso}
+// Ejemplos:
+// user:profile:abc123
+// product:catalog:electronics:page:3
+// org:settings:org_456
+```
+
+## Monitoreo: La Parte que Todos Olvidan
+
+Un caché sin monitoreo es un caché en el que solo pensarás durante una caída.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                Checklist de Monitoreo de Caché                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Hit Rate                                                        │
+│  ├── Objetivo: > 80% para la mayoría de cachés                   │
+│  ├── ¿Debajo de 50%? Tu caché no ayuda. Revisa claves o TTLs.   │
+│  └── ¿99%+? Podrías estar sobre-cacheando. Revisa uso de mem.   │
+│                                                                  │
+│  Latencia                                                        │
+│  ├── Redis GET: debería ser < 1ms (p99 < 5ms)                   │
+│  ├── Si es mayor, revisa red, pool de conexiones, tamaño         │
+│  └── Compara: tiempo de respuesta cacheado vs sin cachear        │
+│                                                                  │
+│  Uso de Memoria                                                  │
+│  ├── Configura maxmemory en Redis                                │
+│  ├── Usa política de evicción (allkeys-lru para mayoría)         │
+│  └── Alerta al 80% de memoria para prevenir OOM                 │
+│                                                                  │
+│  Tasa de Evicción                                                │
+│  ├── Muchas eviciones = caché muy pequeño                        │
+│  ├── O TTLs muy largos (llenándose de datos obsoletos)           │
+│  └── O claves demasiado específicas (muchas claves únicas)       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Las Reglas por las que Vivo
+
+Después de años de caching en producción (y algunos incidentes memorables), estas son las reglas que sigo:
+
+1. **Siempre configura un TTL.** Incluso si tienes invalidación por eventos. Los TTLs son tu red de seguridad. Nunca me he arrepentido de configurar un TTL. Me he arrepentido profundamente de no configurar uno.
+
+2. **Cachea el hot path primero.** No cachees todo. Encuentra las 5-10 consultas que representan la mayoría de tu carga y cachea esas. El resto puede esperar.
+
+3. **Un miss de caché nunca debería ser un error.** Si Redis se cae, tu app debería seguir funcionando — solo más lento. El caché es una optimización, no una dependencia.
+
+4. **Monitorea hit rates desde el día uno.** Un caché que nadie consulta es solo una nada caliente y cara. Si tu hit rate está debajo del 50%, algo anda mal con el diseño de tus claves o TTLs.
+
+5. **Invalida explícitamente, expira implícitamente.** Elimina claves de caché cuando sabes que los datos cambiaron. Deja que los TTLs manejen los casos en los que no pensaste.
+
+6. **Nunca cachees errores.** Si una consulta a la base de datos falla, no cachees la respuesta de error. Lo hice una vez. El caché sirvió errores a los usuarios por 10 minutos hasta que el TTL expiró. Mis notificaciones de Slack fueron... voluminosas.
+
+7. **Piensa en los arranques en frío.** ¿Qué pasa cuando tu caché está vacío — después de un deploy, después de reiniciar Redis, en una nueva instancia? Si el 100% del tráfico de repente golpea tu base de datos, ¿sobrevivirá? Si no, necesitas calentamiento de caché.
+
+La mejor estrategia de caching es la que entiendes completamente. Un simple cache-aside con TTLs razonables le gana a una arquitectura sofisticada de caching multi-capa que nadie en el equipo puede debuggear a las 3 AM. Empieza simple, mide, y agrega complejidad solo cuando los números te lo digan.

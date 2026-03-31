@@ -1,0 +1,300 @@
+---
+title: "Monorepos in Practice: Turborepo, Nx, and the Tradeoffs Nobody Talks About"
+description: "An honest look at monorepos after running them in production. When they save your team, when they slow you down, Turborepo vs Nx comparison, task orchestration, caching, and the migration path from multi-repo."
+date: 2025-12-15
+published: true
+category: "DevOps"
+tags: ["Monorepo", "Turborepo", "Nx", "Developer Experience", "CI/CD"]
+author: "Osvaldo Restrepo"
+tldr: "Monorepos are great when you have shared code between packages, need atomic cross-project changes, or want consistent tooling. They're painful when your CI isn't set up for them, your team is small enough that coordination isn't a problem, or you're forcing unrelated projects together. Turborepo is simpler and faster to adopt. Nx is more powerful but heavier. Pick Turborepo if you want to get started fast, Nx if you need advanced dependency graphs and code generation. Either way, invest in your CI pipeline — a monorepo with bad CI is worse than separate repos."
+faqs:
+  - question: "What's the difference between Turborepo and Nx?"
+    answer: "Turborepo focuses on task running and caching — it's lightweight and fast to adopt. Nx is a full build system with dependency graph analysis, code generators, affected commands, and plugins for specific frameworks. Think of Turborepo as a turbocharger for your existing setup, and Nx as a complete engine replacement. Turborepo is better for getting started quickly; Nx is better for large teams that need advanced orchestration."
+  - question: "When should I NOT use a monorepo?"
+    answer: "Don't use a monorepo if your projects are truly independent (no shared code, different teams, different deploy cycles), if your CI provider can't handle it (build times will kill you), if your team is small enough that cross-repo coordination isn't a real problem, or if you're mixing very different technology stacks (a Go backend and a React frontend rarely benefit from sharing a repo)."
+  - question: "How do I migrate from multiple repos to a monorepo?"
+    answer: "Migrate incrementally, not all at once. Start with the two most tightly coupled repos. Move shared code into a packages/ directory. Get CI working for the monorepo structure. Then migrate additional repos one at a time. Use git subtree or a tool like Turborepo's codemods. Never do a big-bang migration — I've seen it go wrong every time."
+  - question: "Do monorepos make CI slower?"
+    answer: "Without optimization, yes — dramatically. But with proper caching (Turborepo Remote Cache or Nx Cloud) and affected-only builds (only build/test what changed), monorepo CI can actually be faster than multi-repo because you avoid redundant work. The key is investing in CI configuration upfront. A monorepo with naive CI that builds everything on every commit is a nightmare."
+relatedPosts: ["ci-cd-pipeline-design", "typescript-patterns-large-codebases"]
+---
+
+I've run monorepos that made my team 3x more productive. I've also run monorepos that made every developer on the team fantasize about going back to separate repos. The difference wasn't the monorepo itself — it was whether we'd invested in the tooling to make it work.
+
+Let me tell you about both experiences, because the monorepo discourse online tends to be either "monorepos are the future, Google does it" or "monorepos are a nightmare, never again." The truth, as usual, is annoyingly nuanced.
+
+## The Case FOR Monorepos
+
+The first time a monorepo saved my life was on a project with a Next.js frontend, a Node.js API, and three shared packages (types, validation logic, and a design system). We had these in four separate repos. Every time we changed a TypeScript interface in the shared types package, we had to:
+
+1. Make the change in the types repo
+2. Publish a new npm version
+3. Update the dependency in the API repo
+4. Update the dependency in the frontend repo
+5. Make sure both repos used the same version
+6. Pray that nobody merged something in between
+
+This process took anywhere from 30 minutes to half a day, depending on how many conflicts we hit. A type change. Half a day. I wanted to scream.
+
+We moved everything into a monorepo and that same change became: edit the file, run the tests, push. Done. The frontend and API both referenced the types package directly. No publishing, no version bumping, no coordination dance. The type change was atomic — both consumers updated in the same commit.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Monorepo Structure                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  my-project/                                                     │
+│  ├── apps/                                                       │
+│  │   ├── web/          ← Next.js frontend                        │
+│  │   ├── api/          ← Node.js backend                         │
+│  │   └── mobile/       ← React Native app                        │
+│  ├── packages/                                                   │
+│  │   ├── types/        ← Shared TypeScript types                  │
+│  │   ├── validation/   ← Shared validation (Zod schemas)          │
+│  │   ├── ui/           ← Design system components                 │
+│  │   └── config/       ← Shared ESLint, TS, Prettier configs      │
+│  ├── turbo.json        ← Turborepo pipeline config                │
+│  ├── pnpm-workspace.yaml                                         │
+│  └── package.json                                                │
+│                                                                  │
+│  Key insight: apps/ are deployable. packages/ are shared libs.   │
+│  Changes to packages/ automatically flow to all dependent apps.  │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## The Case AGAINST Monorepos
+
+The second time I tried a monorepo, it was a disaster. Different story: we had a Python ML pipeline, a Go microservice, a React dashboard, and a mobile app. Someone (okay, it was me) said "let's put it all in a monorepo for consistency."
+
+Bad idea. The Python team needed different CI, different linting, different everything. The Go team's build was fast and simple — they didn't need Turborepo. The React and mobile teams could have shared some code, but that was a small benefit compared to the overhead of everyone stepping on each other's toes in the same repo.
+
+We reverted after three months. The lesson: monorepos work when projects are genuinely coupled. When they share code, share types, share deployment concerns. If your projects are independent — different languages, different teams, different deploy cycles — separate repos with good API contracts are simpler.
+
+## Turborepo vs Nx: The Honest Comparison
+
+I've used both in production. Here's my take:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Turborepo vs Nx                                  │
+├──────────────────────────┬──────────────────────────────────────┤
+│     Turborepo             │     Nx                               │
+├──────────────────────────┼──────────────────────────────────────┤
+│ • Fast to set up (5 min) │ • More setup (30+ min)               │
+│ • Zero config to start   │ • Rich config and plugins            │
+│ • Task running + caching │ • Full build system                  │
+│ • Works with any tool    │ • Dependency graph analysis          │
+│ • Lightweight (~2MB)     │ • Code generators (nx generate)      │
+│ • Vercel Remote Cache    │ • Nx Cloud for remote cache          │
+│ • Great for small-medium │ • "Affected" commands built in       │
+│   monorepos (2-15 pkgs)  │ • Great for large monorepos          │
+│ • Less opinionated       │   (15-100+ packages)                 │
+│ • Smaller community      │ • More opinionated                   │
+│                          │ • Larger ecosystem                    │
+├──────────────────────────┼──────────────────────────────────────┤
+│ Pick if: you want to     │ Pick if: you need advanced           │
+│ get started fast with    │ orchestration, code generation,      │
+│ minimal config overhead  │ and dependency-aware builds          │
+└──────────────────────────┴──────────────────────────────────────┘
+```
+
+### Turborepo Setup
+
+```json
+// turbo.json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "dist/**"]
+    },
+    "test": {
+      "dependsOn": ["build"]
+    },
+    "lint": {},
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
+```
+
+```yaml
+# pnpm-workspace.yaml
+packages:
+  - "apps/*"
+  - "packages/*"
+```
+
+That's it. Seriously. Run `turbo build` and it builds everything in the right order, caches the results, and skips anything that hasn't changed. The `^build` syntax means "build my dependencies first." It's elegant.
+
+### Turborepo Remote Caching
+
+This is where Turborepo really shines. With remote caching, build artifacts are shared across your entire team and CI:
+
+```bash
+# Developer A builds the web app (takes 45 seconds)
+turbo build --filter=web
+
+# Developer B pulls the same branch, runs the same build
+# Cache hit! Takes 2 seconds.
+turbo build --filter=web
+
+# CI runs the build
+# Cache hit again! 2 seconds.
+```
+
+The cache key is based on the content hash of all inputs (source files, dependencies, environment variables). If nothing changed, you get the cached output. This alone saved our team about 40 minutes per developer per day in build times.
+
+<Callout type="tip" title="Filtering Is Your Friend">
+Use Turborepo's `--filter` flag to run tasks for specific packages. `turbo build --filter=web` builds only the web app and its dependencies. `turbo test --filter=./packages/*` tests all packages but not apps. `turbo build --filter=web...` builds web and everything it depends on. Learn the filter syntax — it'll save you tons of CI time.
+</Callout>
+
+## Task Orchestration: The Hard Part
+
+The real challenge in monorepos isn't the tooling — it's defining the dependency graph between your tasks. Which things can run in parallel? Which things need to wait for others? Get this wrong and your builds are either slow (too serial) or broken (missing dependencies).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Task Dependency Graph                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  packages/types         packages/ui          packages/config     │
+│       │ build               │ build              │ build         │
+│       │                     │                    │               │
+│       ├─────────────────────┼────────────────────┘               │
+│       │                     │                                    │
+│       ▼                     ▼                                    │
+│  apps/api              apps/web                                  │
+│    │ build               │ build                                 │
+│    │                     │                                       │
+│    ▼                     ▼                                       │
+│  apps/api              apps/web                                  │
+│    │ test                │ test                                  │
+│    │                     │                                       │
+│    ▼                     ▼                                       │
+│  apps/api              apps/web                                  │
+│    └ deploy              └ deploy                                │
+│                                                                  │
+│  Turborepo figures this out from turbo.json                      │
+│  and runs everything in parallel where possible.                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## CI for Monorepos: Where Teams Get Stuck
+
+Here's the thing nobody tells you in the "monorepos are amazing" blog posts: if your CI isn't optimized for monorepos, you'll spend more time waiting for builds than you saved by sharing code. A naive CI config that builds and tests everything on every commit is a recipe for 45-minute PR checks and a very angry team.
+
+```yaml
+# .github/workflows/ci.yml — optimized for monorepo
+name: CI
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need history for change detection
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Only build and test what changed
+      - run: pnpm turbo build test lint --filter='...[HEAD^1]'
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
+```
+
+That `--filter='...[HEAD^1]'` is the magic. It tells Turborepo to only run tasks for packages that changed since the last commit. If you only touched the web app, it only builds and tests the web app (and its dependencies). The API doesn't rebuild. The packages that didn't change don't retest. This takes your CI from 15 minutes to 2 minutes.
+
+<Callout type="warning" title="Don't Forget the Base Branch">
+In PR workflows, you want to compare against the base branch, not just the last commit. Use `--filter='...[origin/main]'` in CI to catch all changes since the branch diverged from main. Using `HEAD^1` only catches the last commit, which misses earlier changes in multi-commit PRs.
+</Callout>
+
+## Shared Packages: The Real Value
+
+The killer feature of a monorepo isn't the build system — it's shared packages with zero publishing overhead. Here are the patterns that have saved me the most time:
+
+```typescript
+// packages/types/src/index.ts
+// Shared types between frontend and backend
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'user' | 'viewer';
+  createdAt: Date;
+}
+
+export interface ApiResponse<T> {
+  data: T;
+  meta: {
+    page: number;
+    totalPages: number;
+    totalItems: number;
+  };
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: Record<string, string[]>;
+}
+```
+
+```typescript
+// packages/validation/src/schemas.ts
+// Shared validation between frontend forms and API endpoints
+import { z } from 'zod';
+
+export const createUserSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  role: z.enum(['admin', 'user', 'viewer']),
+});
+
+export type CreateUserInput = z.infer<typeof createUserSchema>;
+
+// Frontend uses this for form validation
+// API uses this for request validation
+// Both get the same rules, the same error messages
+// Change it once, it updates everywhere
+```
+
+This is the monorepo dream. One schema, two consumers, zero drift. When the product team says "names need to be at least 3 characters now," you change one line and both the frontend validation and the API validation update in the same commit. No versioning, no publishing, no "wait, which version is the frontend using?"
+
+## When to Migrate (And When Not To)
+
+Here's my decision framework:
+
+**Migrate to a monorepo if:**
+- You have 2+ projects sharing TypeScript types, schemas, or utilities
+- Cross-project changes happen frequently (more than once a week)
+- You spend significant time coordinating version bumps across repos
+- You want consistent tooling (linting, testing, formatting) across projects
+
+**Stay with separate repos if:**
+- Your projects are in different languages with different toolchains
+- Teams are fully independent with separate deploy cycles
+- You have fewer than 2-3 things to share
+- Your CI provider doesn't support advanced caching
+
+The monorepo is a tool, not a religion. Use it when the benefits outweigh the costs. For my typical stack — Next.js frontend, Node.js API, shared packages — a Turborepo monorepo is almost always the right call. For a polyglot microservices architecture with independent teams? Separate repos with good contracts are usually better.
+
+Start small. Move two tightly coupled repos into a monorepo. Get the CI right. Then decide if it's worth migrating more. The incremental approach has never failed me. The big-bang "let's merge everything into one repo over the weekend" approach has failed me every single time.

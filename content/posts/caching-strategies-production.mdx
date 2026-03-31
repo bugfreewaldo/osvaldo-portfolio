@@ -1,0 +1,449 @@
+---
+title: "Caching Strategies That Actually Work in Production"
+description: "A no-nonsense guide to caching in real systems. Redis patterns, cache invalidation (the hard part), CDN edge caching, application-layer strategies, and the mistakes I've made so you don't have to."
+date: 2026-03-29
+published: true
+category: "Backend Engineering"
+tags: ["Caching", "Redis", "Performance", "CDN", "Architecture"]
+author: "Osvaldo Restrepo"
+tldr: "Cache close to the user (CDN for static, Redis for dynamic), use cache-aside for most things, write-through when consistency matters. TTLs are your safety net — set them even when you think you don't need them. Cache invalidation IS as hard as the memes say, but event-driven invalidation with a short TTL fallback handles 95% of cases. And please, please monitor your cache hit rates. A cache nobody hits is just a warm database you're paying for."
+faqs:
+  - question: "When should I use Redis vs a CDN for caching?"
+    answer: "CDNs cache static or semi-static content at the edge (HTML pages, images, API responses that don't change per-user). Redis caches dynamic, user-specific data at the application layer (session data, computed results, database query results). Most production systems use both: CDN for the outer layer, Redis for the inner layer."
+  - question: "How do I handle cache invalidation properly?"
+    answer: "The most reliable pattern is event-driven invalidation with a TTL safety net. When data changes, publish an event that invalidates the relevant cache keys. Set a TTL (even a long one like 1 hour) as a fallback in case the invalidation event fails. This gives you freshness when events work and eventual consistency when they don't."
+  - question: "Is it worth caching database queries?"
+    answer: "Yes, if the query is expensive and the data doesn't change frequently. Cache the result keyed by the query parameters. But be careful with cache keys — a query with 10 optional filters can generate thousands of unique cache keys that rarely get hit. Focus on caching the hot path: the 5-10 queries that account for 80% of your database load."
+  - question: "What's the difference between cache-aside and write-through caching?"
+    answer: "Cache-aside (lazy loading): the application checks the cache first, and on a miss, fetches from the database and populates the cache. Write-through: the application writes to both the cache and database simultaneously. Cache-aside is simpler and avoids caching data that's never read. Write-through guarantees the cache is always warm but can waste memory on rarely-accessed data."
+relatedPosts: ["postgres-beyond-basics", "scalable-microservices-architecture"]
+---
+
+I once brought down a production database by removing a cache.
+
+Not a big, important cache. A tiny one. A little Redis key that cached the result of a "get current user" query. The kind of thing you'd look at in a code review and think, "Why is this even cached? It's just a simple SELECT by ID." So during a cleanup sprint, I removed it. Deployed on a Tuesday afternoon. Within four minutes, the database connection pool was exhausted, the API was returning 503s, and my phone was buzzing with alerts that made my Apple Watch think I was having a cardiac event.
+
+Turns out that "simple SELECT by ID" was being called 47 times per page load across various middleware, components, and API resolvers. The cache was absorbing about 12,000 requests per second. Without it, all 12,000 requests hit PostgreSQL directly. PostgreSQL did not appreciate the surprise.
+
+That's the thing about caching: you never appreciate it until it's gone. And removing a cache you don't understand is like removing a load-bearing wall because it's "not doing anything visible." The visible part is that the house stays up.
+
+## The Caching Pyramid
+
+Not all caches are created equal. I think about caching in layers, from closest to the user to closest to the data:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    The Caching Pyramid                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│                    ┌─────────┐                                   │
+│                    │ Browser │  ← HTTP cache headers              │
+│                    │  Cache  │    (Cache-Control, ETag)           │
+│                    └────┬────┘                                   │
+│                         │                                        │
+│                  ┌──────┴──────┐                                  │
+│                  │   CDN Edge  │  ← Cloudflare, Vercel Edge       │
+│                  │    Cache    │    Static + semi-dynamic          │
+│                  └──────┬──────┘                                  │
+│                         │                                        │
+│              ┌──────────┴──────────┐                              │
+│              │  Application Cache  │  ← Redis, Memcached          │
+│              │    (Redis/Memory)   │    Dynamic, per-user          │
+│              └──────────┬──────────┘                              │
+│                         │                                        │
+│          ┌──────────────┴──────────────┐                          │
+│          │      Database Query Cache    │  ← PostgreSQL cache      │
+│          │    (pg_stat, query plans)    │    Internal, automatic    │
+│          └─────────────────────────────┘                          │
+│                                                                  │
+│  Rule: Cache as CLOSE TO THE USER as possible.                   │
+│  The fewer layers a request traverses, the faster it is.         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Each layer has different characteristics. Browser caches are the fastest but hardest to invalidate (you can't reach into someone's browser and clear their cache). CDN caches are global and fast but work best for content that's the same for all users. Application caches (Redis) are the workhorse — flexible, fast, and you control them completely. Database caches are automatic but limited.
+
+The art of caching is knowing which layer to use for which data.
+
+## Cache-Aside: The Pattern You'll Use 90% of the Time
+
+Cache-aside (also called "lazy loading") is the simplest and most common caching pattern. The application checks the cache first. On a hit, return the cached value. On a miss, fetch from the database, store in cache, and return.
+
+```typescript
+// cache/redis.ts
+import Redis from 'ioredis';
+
+const redis = new Redis(process.env.REDIS_URL);
+
+export async function cacheGet<T>(key: string): Promise<T | null> {
+  const cached = await redis.get(key);
+  if (!cached) return null;
+  return JSON.parse(cached) as T;
+}
+
+export async function cacheSet(
+  key: string,
+  value: unknown,
+  ttlSeconds: number = 3600
+): Promise<void> {
+  await redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
+}
+
+export async function cacheDelete(key: string): Promise<void> {
+  await redis.del(key);
+}
+
+// Pattern: cache-aside with type safety
+export async function cacheable<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  // Check cache first
+  const cached = await cacheGet<T>(key);
+  if (cached !== null) return cached;
+
+  // Cache miss — fetch from source
+  const fresh = await fetcher();
+
+  // Store in cache (don't await — fire and forget)
+  cacheSet(key, fresh, ttlSeconds).catch((err) =>
+    console.error('Cache write failed:', err)
+  );
+
+  return fresh;
+}
+```
+
+```typescript
+// Usage in your service layer
+async function getUserProfile(userId: string) {
+  return cacheable(
+    `user:profile:${userId}`,
+    300, // 5 minutes
+    () => db.query('SELECT * FROM users WHERE id = $1', [userId])
+  );
+}
+
+async function getProductCatalog(category: string, page: number) {
+  return cacheable(
+    `catalog:${category}:page:${page}`,
+    600, // 10 minutes — catalog doesn't change often
+    () => db.query(
+      'SELECT * FROM products WHERE category = $1 ORDER BY name LIMIT 20 OFFSET $2',
+      [category, (page - 1) * 20]
+    )
+  );
+}
+```
+
+<Callout type="tip" title="Fire-and-Forget Cache Writes">
+Notice I don't `await` the cache write. If Redis is slow or down, the request still returns from the database. The cache is an optimization, not a dependency. If the write fails, the next request will just be another cache miss. This small detail has saved me from Redis outages cascading into application outages more than once.
+</Callout>
+
+## Cache Invalidation: Yes, It's As Hard As They Say
+
+There are two hard things in computer science: cache invalidation, naming things, and off-by-one errors. The cache invalidation part isn't a joke. It's the reason senior engineers get nervous when someone says "let's just cache it."
+
+The fundamental problem: when the underlying data changes, how do you make sure the cache reflects that change? There are several strategies, and they all have tradeoffs.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Cache Invalidation Strategies                        │
+├───────────────────┬─────────────────────────────────────────────┤
+│ Strategy          │ How it works                                 │
+├───────────────────┼─────────────────────────────────────────────┤
+│ TTL-based         │ Cache expires after N seconds.               │
+│                   │ Simple but stale data during TTL window.     │
+│                   │                                              │
+│ Event-driven      │ Publish event on data change, invalidate     │
+│                   │ cache in subscriber. Fresh but complex.      │
+│                   │                                              │
+│ Write-through     │ Update cache AND database on every write.    │
+│                   │ Always fresh but more write latency.         │
+│                   │                                              │
+│ TTL + Events      │ Event-driven invalidation with TTL as        │
+│ (recommended)     │ safety net. Best of both worlds.             │
+│                   │                                              │
+│ Version-based     │ Include a version in the cache key.          │
+│                   │ Increment version to invalidate all keys.    │
+└───────────────────┴─────────────────────────────────────────────┘
+```
+
+My go-to pattern is **TTL + event-driven invalidation**. Here's why: events give you near-instant invalidation when everything works. TTLs give you eventual consistency when events fail (and they will fail — queues back up, consumers crash, events get lost). The TTL is your safety net.
+
+```typescript
+// Event-driven invalidation with TTL safety net
+import { EventEmitter } from 'events';
+
+const cacheEvents = new EventEmitter();
+
+// When a user updates their profile
+async function updateUserProfile(userId: string, data: UpdateData) {
+  // Update database
+  await db.query('UPDATE users SET name = $1, bio = $2 WHERE id = $3', [
+    data.name, data.bio, userId,
+  ]);
+
+  // Emit event to invalidate cache
+  cacheEvents.emit('user:updated', { userId });
+}
+
+// Cache invalidation listener
+cacheEvents.on('user:updated', async ({ userId }) => {
+  // Delete all cache keys related to this user
+  await Promise.all([
+    cacheDelete(`user:profile:${userId}`),
+    cacheDelete(`user:settings:${userId}`),
+    cacheDelete(`user:permissions:${userId}`),
+  ]);
+});
+
+// The cache-aside function still uses a TTL (safety net)
+async function getUserProfile(userId: string) {
+  return cacheable(
+    `user:profile:${userId}`,
+    300, // 5-minute TTL — even if event fails, max staleness is 5 min
+    () => db.query('SELECT * FROM users WHERE id = $1', [userId])
+  );
+}
+```
+
+<Callout type="warning" title="The Cache Stampede Problem">
+When a popular cache key expires, hundreds of concurrent requests all miss the cache simultaneously and hit the database. This is a "cache stampede" (or thundering herd). Prevent it with a mutex/lock — only one request fetches from the database while others wait for the cache to be repopulated. Redis's `SET ... NX` (set if not exists) works great as a distributed lock for this.
+</Callout>
+
+```typescript
+// Cache stampede protection with Redis lock
+async function cacheableWithLock<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>,
+  lockTimeoutMs: number = 5000
+): Promise<T> {
+  const cached = await cacheGet<T>(key);
+  if (cached !== null) return cached;
+
+  const lockKey = `lock:${key}`;
+  const lockAcquired = await redis.set(lockKey, '1', 'PX', lockTimeoutMs, 'NX');
+
+  if (lockAcquired) {
+    try {
+      // We got the lock — fetch and cache
+      const fresh = await fetcher();
+      await cacheSet(key, fresh, ttlSeconds);
+      return fresh;
+    } finally {
+      await redis.del(lockKey);
+    }
+  } else {
+    // Someone else is fetching — wait and retry
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return cacheableWithLock(key, ttlSeconds, fetcher, lockTimeoutMs);
+  }
+}
+```
+
+## Redis Patterns I Use in Every Project
+
+Redis is more than a key-value store. Here are the patterns I reach for most often:
+
+```typescript
+// Pattern 1: Sorted sets for leaderboards/rankings
+async function updateLeaderboard(userId: string, score: number) {
+  await redis.zadd('leaderboard:weekly', score, userId);
+}
+
+async function getTopPlayers(limit: number = 10) {
+  // Returns top N with scores, highest first
+  return redis.zrevrange('leaderboard:weekly', 0, limit - 1, 'WITHSCORES');
+}
+
+// Pattern 2: Hash maps for structured cached objects
+async function cacheUserSession(sessionId: string, data: SessionData) {
+  await redis.hset(`session:${sessionId}`, {
+    userId: data.userId,
+    role: data.role,
+    expiresAt: data.expiresAt.toISOString(),
+  });
+  await redis.expire(`session:${sessionId}`, 86400); // 24h
+}
+
+// Pattern 3: Sets for tracking unique items
+async function trackUniqueVisitors(pageId: string, userId: string) {
+  await redis.sadd(`visitors:${pageId}:${today()}`, userId);
+}
+
+async function getUniqueVisitorCount(pageId: string): Promise<number> {
+  return redis.scard(`visitors:${pageId}:${today()}`);
+}
+
+// Pattern 4: Pub/Sub for real-time cache invalidation across instances
+const subscriber = redis.duplicate();
+subscriber.subscribe('cache:invalidate');
+
+subscriber.on('message', async (channel, message) => {
+  const { pattern } = JSON.parse(message);
+  // Delete all keys matching the pattern
+  const keys = await redis.keys(pattern);
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
+});
+
+// Publish invalidation from any instance
+async function invalidatePattern(pattern: string) {
+  await redis.publish('cache:invalidate', JSON.stringify({ pattern }));
+}
+```
+
+## CDN and Edge Caching
+
+For content that's the same for all users (or for groups of users), CDN caching is the fastest option. The content is served from a server geographically close to the user — no round trip to your origin.
+
+```typescript
+// Next.js API route with cache headers
+export async function GET(request: Request) {
+  const data = await fetchPublicData();
+
+  return Response.json(data, {
+    headers: {
+      // CDN caches for 60 seconds, browser caches for 10 seconds
+      'Cache-Control': 'public, s-maxage=60, max-age=10',
+      // Serve stale while revalidating in background
+      'CDN-Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+    },
+  });
+}
+
+// For user-specific data: don't cache at the CDN layer
+export async function GET(request: Request) {
+  const user = await getAuthenticatedUser(request);
+  const data = await fetchUserData(user.id);
+
+  return Response.json(data, {
+    headers: {
+      // Private = don't cache in CDN, only in browser
+      'Cache-Control': 'private, max-age=30',
+    },
+  });
+}
+```
+
+<Callout type="info" title="stale-while-revalidate Is Magic">
+The `stale-while-revalidate` directive lets the CDN serve a stale response immediately while fetching a fresh one in the background. Users get instant responses, and the cache stays fresh. It's the best user experience for data that can tolerate a few seconds of staleness.
+</Callout>
+
+## Cache Key Design
+
+Bad cache keys are the silent killer of caching strategies. I've seen caches with 0.1% hit rates because the keys were too specific, and caches serving wrong data because the keys were too generic.
+
+```typescript
+// Bad: Too specific — every combination creates a new key
+const key = `products:${category}:${sort}:${page}:${limit}:${filters}`;
+// With 10 categories, 3 sorts, 100 pages, 3 limits, and
+// 50 filter combos = 450,000 unique keys. Most will be hit once.
+
+// Better: Cache the underlying data, not the presentation
+const key = `products:${category}:page:${page}`;
+// Sort and filter in the application layer after cache hit
+
+// Bad: Too generic — serves stale data to wrong users
+const key = `user:dashboard`;
+// Every user gets the same dashboard? Probably not.
+
+// Better: Include the user ID
+const key = `user:dashboard:${userId}`;
+
+// Key naming convention I follow:
+// {entity}:{qualifier}:{id}:{sub-resource}
+// Examples:
+// user:profile:abc123
+// product:catalog:electronics:page:3
+// org:settings:org_456
+// api:ratelimit:user:abc123:minute
+```
+
+## Monitoring: The Part Everyone Forgets
+
+A cache without monitoring is a cache you'll only think about during an outage. Track these metrics:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                Cache Monitoring Checklist                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Hit Rate                                                        │
+│  ├── Target: > 80% for most caches                               │
+│  ├── Below 50%? Your cache isn't helping. Fix keys or TTLs.      │
+│  └── 99%+? You might be over-caching. Check memory usage.        │
+│                                                                  │
+│  Latency                                                         │
+│  ├── Redis GET: should be < 1ms (p99 < 5ms)                     │
+│  ├── If higher, check network, connection pool, key size         │
+│  └── Compare: cached response vs uncached response time          │
+│                                                                  │
+│  Memory Usage                                                    │
+│  ├── Set maxmemory in Redis config                               │
+│  ├── Use an eviction policy (allkeys-lru for most cases)         │
+│  └── Alert at 80% memory to prevent OOM                          │
+│                                                                  │
+│  Eviction Rate                                                   │
+│  ├── High evictions = cache is too small                         │
+│  ├── Or TTLs are too long (filling up with stale data)           │
+│  └── Or cache keys are too specific (too many unique keys)       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+// Simple cache monitoring wrapper
+async function cacheableWithMetrics<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const start = performance.now();
+  const cached = await cacheGet<T>(key);
+  const cacheLatency = performance.now() - start;
+
+  if (cached !== null) {
+    metrics.increment('cache.hit', { key_prefix: key.split(':')[0] });
+    metrics.histogram('cache.latency', cacheLatency);
+    return cached;
+  }
+
+  metrics.increment('cache.miss', { key_prefix: key.split(':')[0] });
+
+  const fetchStart = performance.now();
+  const fresh = await fetcher();
+  const fetchLatency = performance.now() - fetchStart;
+
+  metrics.histogram('cache.fetch_latency', fetchLatency);
+  metrics.histogram('cache.savings', fetchLatency - cacheLatency);
+
+  await cacheSet(key, fresh, ttlSeconds);
+  return fresh;
+}
+```
+
+## The Rules I Live By
+
+After years of caching in production (and a few memorable incidents), these are the rules I follow:
+
+1. **Always set a TTL.** Even if you have event-driven invalidation. TTLs are your safety net. I've never regretted setting a TTL. I've deeply regretted not setting one.
+
+2. **Cache the hot path first.** Don't cache everything. Find the 5-10 queries that account for most of your load and cache those. The rest can wait.
+
+3. **A cache miss should never be an error.** If Redis is down, your app should still work — just slower. Cache is an optimization, not a dependency.
+
+4. **Monitor hit rates from day one.** A cache nobody hits is just a warm, expensive nothing. If your hit rate is below 50%, something is wrong with your key design or TTLs.
+
+5. **Invalidate explicitly, expire implicitly.** Delete cache keys when you know data changed. Let TTLs handle the cases you didn't think of.
+
+6. **Never cache errors.** If a database query fails, don't cache the error response. I did this once. The cache served errors to users for 10 minutes until the TTL expired. My Slack notifications were... voluminous.
+
+7. **Think about cold starts.** What happens when your cache is empty — after a deploy, after a Redis restart, on a new instance? If 100% of traffic suddenly hits your database, will it survive? If not, you need cache warming.
+
+The best caching strategy is the one you understand completely. A simple cache-aside with reasonable TTLs beats a sophisticated multi-layer caching architecture that nobody on the team can debug at 3 AM. Start simple, measure, and add complexity only when the numbers tell you to.
