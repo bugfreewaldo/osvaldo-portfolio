@@ -14,6 +14,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/process`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.5 },
     { url: `${base}/uses`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
     { url: `${base}/testimonials`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.7 },
+    { url: `${base}/ai-engineer-panama`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.9 },
   ];
 
   // All project detail pages

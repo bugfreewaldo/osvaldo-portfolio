@@ -117,8 +117,8 @@ const jsonLd = {
       },
       worksFor: {
         "@type": "Organization",
-        name: "9Vectors",
-        url: "https://9vectors.ai",
+        name: "TheGreyMatter.ai",
+        url: "https://thegreymatter.ai",
       },
       alumniOf: [
         {

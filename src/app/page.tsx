@@ -377,7 +377,11 @@ export default function Home() {
               variants={heroItem}
             >
               Full-Stack & Applied AI Engineer specializing in LLMs, autonomous agents,
-              and voice systems. Based in Panama, building globally.
+              and voice systems.{" "}
+              <Link href="/ai-engineer-panama" className="underline decoration-indigo-500/30 hover:decoration-indigo-500 transition-colors">
+                Based in Panama
+              </Link>
+              , building globally.
             </motion.p>
 
             <motion.div
