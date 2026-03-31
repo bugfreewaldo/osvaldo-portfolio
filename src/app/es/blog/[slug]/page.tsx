@@ -1,4 +1,4 @@
-import { getPostBySlug, getPostSlugs, getPostTranslation } from "@/lib/blog";
+import { getPostBySlug, getPostSlugs, getPostTranslation, getAllPosts } from "@/lib/blog";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -272,6 +272,47 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           {post.frontmatter.faqs && post.frontmatter.faqs.length > 0 && (
             <FAQSection faqs={post.frontmatter.faqs} />
           )}
+
+          {/* Related Posts */}
+          {post.frontmatter.relatedPosts && post.frontmatter.relatedPosts.length > 0 && (() => {
+            const allPosts = getAllPosts("es");
+            const related = post.frontmatter.relatedPosts!
+              .map((s) => allPosts.find((p) => p.slug === s))
+              .filter(Boolean);
+            if (related.length === 0) return null;
+            return (
+              <div className="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+                  Artículos Relacionados
+                </h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  {related.map((rp) => (
+                    <Link
+                      key={rp!.slug}
+                      href={`/es/blog/${rp!.slug}`}
+                      className="group p-5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all"
+                    >
+                      <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
+                        {rp!.frontmatter.title}
+                      </h3>
+                      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 line-clamp-2">
+                        {rp!.frontmatter.description}
+                      </p>
+                      {rp!.frontmatter.tags && (
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {rp!.frontmatter.tags.slice(0, 3).map((tag) => (
+                            <span key={tag} className="px-2 py-0.5 text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Newsletter Signup */}
           <NewsletterSignup locale="es" />
