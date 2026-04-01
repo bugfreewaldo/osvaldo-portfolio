@@ -1,0 +1,219 @@
+---
+title: "Technical Debt Is Not a Bug: A Strategic Guide to Managing It"
+description: "Technical debt isn't something to eliminate — it's something to manage strategically. When to take on debt intentionally, how to track it, when to pay it down, and how to stop your codebase from becoming a haunted house."
+date: 2026-03-31
+published: true
+category: "Engineering Leadership"
+tags: ["Technical Debt", "Engineering Leadership", "Architecture", "Code Quality", "Strategy"]
+author: "Osvaldo Restrepo"
+tldr: "Technical debt is a tool, not a disease. Take it on intentionally when speed matters (launches, experiments, time-sensitive features) and pay it down before it compounds. Track it like financial debt — know what you owe, the interest rate (velocity cost), and the payment schedule. The 20% rule works: dedicate 20% of sprint capacity to debt reduction, every sprint, non-negotiable. Refactor the code you change most (git log tells you where). And stop calling everything you don't like 'tech debt' — some code is just old, and that's fine."
+faqs:
+  - question: "How do I convince my manager to prioritize technical debt?"
+    answer: "Frame it in business terms, not engineering terms. Don't say 'we need to refactor the auth module.' Say 'the auth module is causing 2 bugs per sprint and slowing feature delivery by 30%. A 2-week investment will eliminate those bugs and restore velocity.' Managers respond to velocity, reliability, and risk — not code aesthetics."
+  - question: "How much time should a team spend on technical debt?"
+    answer: "The 20% rule is a good baseline: dedicate 20% of each sprint to debt reduction. This prevents the codebase from degrading without requiring dedicated 'tech debt sprints' that never get approved. Some teams do 1 day per week, others do a full 'maintenance sprint' every 5th sprint. The key is consistency."
+  - question: "What's the difference between technical debt and bad code?"
+    answer: "Technical debt is a conscious tradeoff — you chose speed over quality with a plan to fix it later. Bad code is accidental — it happened because of lack of skill, review, or time pressure with no plan. Both need fixing, but they require different approaches. Debt needs a payment plan. Bad code needs mentoring and better processes."
+  - question: "Should I rewrite or refactor?"
+    answer: "Almost always refactor. Rewrites are the most dangerous project in software — they take 3x longer than estimated, introduce new bugs, and the old system keeps accumulating features that the rewrite has to catch up with. Refactor incrementally: strangler fig pattern, extract modules one at a time, improve test coverage first. Only rewrite if the current system literally cannot be modified."
+relatedPosts: ["clean-code-principles-practice", "ci-cd-pipeline-design"]
+---
+
+I once joined a project where deploying a one-line CSS change took three days. Not because of process or approvals — because the build was so fragile that any change had a 40% chance of breaking something unrelated. The team had been "moving fast" for two years without paying down any debt, and now they couldn't move at all.
+
+That's the thing about technical debt: the interest payments are invisible until they're not. One day you're shipping features weekly, and then gradually — so gradually nobody notices — it becomes biweekly, then monthly, then "we're doing a Big Refactor™" which is really just admitting you've been ignoring the credit card bill for too long.
+
+I've been on both sides of this. I've taken on debt strategically and shipped products that wouldn't have existed otherwise. I've also inherited codebases where the debt was so crushing that the team spent 80% of their time fighting the code and 20% actually building features. Here's what I've learned about walking that line.
+
+## Technical Debt Is a Tool
+
+Let me be clear: technical debt is not inherently bad. It's a tool. Like financial debt, it's useful when taken on intentionally with a repayment plan.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              The Technical Debt Quadrant                          │
+├─────────────────────────┬───────────────────────────────────────┤
+│                         │  Deliberate          │  Inadvertent    │
+├─────────────────────────┼──────────────────────┼────────────────┤
+│  Reckless               │ "We don't have time  │ "What's a       │
+│                         │  for design"          │  design pattern?"│
+│                         │  ↑ Dangerous          │  ↑ Needs        │
+│                         │                      │    mentoring     │
+├─────────────────────────┼──────────────────────┼────────────────┤
+│  Prudent                │ "Ship now, refactor  │ "Now we know    │
+│                         │  next sprint"        │  how we should  │
+│                         │  ↑ Strategic!         │  have done it"  │
+│                         │                      │  ↑ Natural       │
+└─────────────────────────┴──────────────────────┴────────────────┘
+```
+
+The top-left quadrant is what kills projects. The bottom-left is what makes great engineers great — knowing when to take a shortcut and having the discipline to circle back.
+
+<Callout type="info" title="Debt vs. Rust">
+Not everything old is debt. Code that works, is tested, and doesn't slow you down isn't debt — it's just mature. Don't refactor working code because it uses an older pattern. Refactor code that's actively costing you time, bugs, or velocity. There's a big difference between "this code is ugly" and "this code is expensive."
+</Callout>
+
+## When to Take On Debt (Intentionally)
+
+**Launch deadlines.** You have a conference demo in two weeks. Hardcode the feature flag, skip the abstraction layer, ship it. Just write the TODO and create the ticket.
+
+**Experiments.** Building a feature to test a hypothesis? Don't architect it for scale. Build the simplest version that proves or disproves the idea. If it works, you'll rebuild it properly with the knowledge you gained.
+
+**First customers.** Early-stage products need to ship. Period. Your first ten customers don't care about your database migration strategy. They care about whether the product solves their problem.
+
+**Time-sensitive opportunities.** A partnership requires an integration by Friday. Build it quick, ship it, and refactor it into a proper abstraction when you're not under the gun.
+
+The common thread: in all these cases, you're making a *conscious* decision to trade quality for speed, with a *specific plan* to pay it back. That's strategic debt. The moment you stop tracking it or planning repayment, it becomes reckless debt.
+
+## How to Track Technical Debt
+
+You can't manage what you don't measure. Here's the system I use:
+
+```typescript
+// I literally put debt in the code as structured comments
+// These get picked up by a script that generates a debt report
+
+// DEBT: Hardcoded tenant ID for single-tenant MVP
+// COST: Blocks multi-tenant launch (est. 3 days to fix)
+// TAKEN: 2026-01-15 (launch deadline)
+// OWNER: @osvaldo
+// TICKET: JIRA-1234
+const TENANT_ID = "tenant_acme_001";
+
+// DEBT: N+1 query in dashboard loader
+// COST: ~200ms extra latency per dashboard load
+// TAKEN: 2026-02-01 (shipped fast for demo)
+// OWNER: @osvaldo
+// TICKET: JIRA-1456
+const users = await Promise.all(
+  teamIds.map(id => db.users.findByTeam(id))
+);
+```
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Debt Tracking Dashboard (simplified)                 │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Total Debt Items: 23                                            │
+│  ├── Critical (blocks features):    4                            │
+│  ├── High (slows velocity):         8                            │
+│  ├── Medium (annoyance):           7                             │
+│  └── Low (cleanup):                4                             │
+│                                                                  │
+│  Estimated Paydown:                                              │
+│  ├── Critical: 12 dev-days                                       │
+│  ├── High: 18 dev-days                                           │
+│  ├── Total: ~45 dev-days (9 sprints at 20%)                      │
+│                                                                  │
+│  Oldest Debt: 4 months (auth module - MIGRATE NOW)               │
+│  Newest Debt: 3 days (dashboard N+1 - scheduled next sprint)     │
+│                                                                  │
+│  Velocity Impact: ~30% slower than 6 months ago                  │
+│  Bug Rate from Debt: 2.3 bugs/sprint attributed to debt areas    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## The 20% Rule
+
+The single most effective strategy I've found: dedicate 20% of every sprint to debt reduction. Not "when we have time." Not "next quarter." Every sprint. Non-negotiable.
+
+Here's why it works:
+
+1. **It's small enough to not feel threatening.** Managers rarely push back on 20%. They will push back on "we need a month to refactor."
+2. **It compounds.** 20% per sprint adds up to serious progress over a quarter. You'll be amazed at how much cleaner the codebase gets.
+3. **It prevents accumulation.** Regular small payments prevent debt from reaching the point where you need a Big Rewrite.
+4. **It keeps the team motivated.** Engineers hate working in messy code. Knowing they get to improve it regularly reduces burnout.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Where to Focus Debt Repayment                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Step 1: Run this command                                        │
+│                                                                  │
+│    git log --since="3 months" --name-only --format="" |          │
+│      sort | uniq -c | sort -rn | head -20                        │
+│                                                                  │
+│  Step 2: The files that appear most often are your hot spots     │
+│                                                                  │
+│  Step 3: Refactor THOSE files first                              │
+│                                                                  │
+│  Why: Files that change often are files that matter.             │
+│  Cleaning up a file nobody touches is busywork.                  │
+│  Cleaning up a file that's modified 5x per sprint?               │
+│  That's an investment with immediate returns.                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="tip" title="The Boy Scout Rule + Git Log">
+"Leave the code cleaner than you found it" is good advice, but unfocused. Combine it with git log analysis: leave the *most-changed* code cleaner than you found it. Your git history tells you exactly where the pain is — files with high churn and high bug rates are where debt repayment has the biggest ROI.
+</Callout>
+
+## Refactor, Don't Rewrite
+
+I have a rule: never propose a rewrite. Propose a refactoring plan with milestones.
+
+Rewrites fail for predictable reasons. The team underestimates the scope (always). The old system keeps getting features that the rewrite has to catch up with (always). The rewrite introduces new bugs because you're reimplementing business logic from memory instead of from tests (always). And six months in, you have two broken systems instead of one working one.
+
+The strangler fig pattern is your friend: wrap the old system, replace it piece by piece, and never have a "big bang" migration day.
+
+```typescript
+// Strangler fig: new code wraps old code
+// Phase 1: Route through new system, fall back to old
+async function getUser(id: string): Promise<User> {
+  try {
+    // Try the new service first
+    return await newUserService.getById(id);
+  } catch {
+    // Fall back to legacy
+    return await legacyUserService.getById(id);
+  }
+}
+
+// Phase 2: Once confident, remove the fallback
+async function getUser(id: string): Promise<User> {
+  return await newUserService.getById(id);
+}
+
+// Phase 3: Delete legacyUserService entirely
+```
+
+## Communicating Debt to Non-Technical Stakeholders
+
+The biggest mistake engineers make: describing debt in technical terms to non-technical people. "We need to refactor the authentication module to use OAuth2 instead of our custom JWT implementation" means absolutely nothing to your product manager.
+
+Instead:
+
+- **Before:** "We need to refactor the auth module" (engineer-speak)
+- **After:** "Our login system causes 2 security tickets per month and makes adding new features take 3x longer. A 2-week fix eliminates those tickets and cuts feature delivery time by 40%." (business-speak)
+
+Frame every debt conversation around three things stakeholders care about:
+
+1. **Velocity:** "This debt is making us X% slower"
+2. **Reliability:** "This debt causes Y bugs per month"
+3. **Risk:** "This debt exposes us to Z"
+
+If you can't articulate the business impact, maybe the debt isn't actually that important. And that's fine — not all debt needs to be paid immediately. Some debt is cheap to carry. The expensive debt is what you focus on.
+
+## The Debt Audit
+
+Every quarter, I do a debt audit. It takes about 2 hours and saves weeks of misdirected effort:
+
+1. **Inventory:** What debt do we have? (check code comments, JIRA, team knowledge)
+2. **Cost:** What is each item costing us? (velocity, bugs, risk)
+3. **Priority:** Rank by cost-to-fix vs. cost-to-carry ratio
+4. **Plan:** Schedule the top 5 items into the next quarter's sprints
+5. **Retire:** Remove items that are no longer relevant (code was deleted, feature was killed)
+
+The audit is also a great time to celebrate what you've paid down. The team needs to see that their 20% investment is making a difference. Show the before/after: build times, bug rates, deployment frequency. Make the progress visible.
+
+## The Bottom Line
+
+Technical debt is inevitable. The question isn't whether you'll have it — it's whether you'll manage it or let it manage you. The teams that thrive are the ones that treat debt like a financial tool: take it on strategically, track it rigorously, pay it down consistently, and never let it compound past the point of no return.
+
+And if you're reading this while staring at a codebase that's already past that point: it's not too late. Start with the 20% rule. Start with the hottest file in your git log. Start with one thing that makes your daily work painful. The compound effect of consistent, small improvements is more powerful than any Big Rewrite will ever be.
+
+The best time to start paying down debt was six months ago. The second best time is this sprint.

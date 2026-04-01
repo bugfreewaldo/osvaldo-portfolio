@@ -1,0 +1,142 @@
+---
+title: "La Deuda Técnica No Es un Bug: Una Guía Estratégica para Gestionarla"
+description: "La deuda técnica no es algo para eliminar — es algo para gestionar estratégicamente. Cuándo tomar deuda intencionalmente, cómo rastrearla, cuándo pagarla, y cómo evitar que tu codebase se convierta en una casa embrujada."
+date: 2026-03-31
+published: true
+category: "Liderazgo de Ingeniería"
+tags: ["Deuda Técnica", "Liderazgo de Ingeniería", "Arquitectura", "Calidad de Código", "Estrategia"]
+author: "Osvaldo Restrepo"
+translationOf: "technical-debt-strategic-guide"
+tldr: "La deuda técnica es una herramienta, no una enfermedad. Tómala intencionalmente cuando la velocidad importa (lanzamientos, experimentos, features urgentes) y págala antes de que se acumule. Rastréala como deuda financiera — sabe cuánto debes, la tasa de interés (costo de velocidad), y el plan de pago. La regla del 20% funciona: dedica 20% de la capacidad del sprint a reducir deuda, cada sprint, no negociable. Refactoriza el código que más cambias (git log te dice dónde)."
+faqs:
+  - question: "¿Cómo convenzo a mi jefe de priorizar la deuda técnica?"
+    answer: "Enmárcalo en términos de negocio, no de ingeniería. No digas 'necesitamos refactorizar el módulo de auth.' Di 'el módulo de auth está causando 2 bugs por sprint y ralentizando la entrega de features en un 30%. Una inversión de 2 semanas eliminará esos bugs y restaurará la velocidad.'"
+  - question: "¿Cuánto tiempo debería dedicar un equipo a la deuda técnica?"
+    answer: "La regla del 20% es un buen punto de partida: dedica 20% de cada sprint a reducción de deuda. Esto previene que el codebase se degrade sin requerir 'sprints de deuda técnica' dedicados que nunca se aprueban. La clave es la consistencia."
+  - question: "¿Cuál es la diferencia entre deuda técnica y código malo?"
+    answer: "La deuda técnica es un tradeoff consciente — elegiste velocidad sobre calidad con un plan para arreglarlo después. El código malo es accidental — sucedió por falta de habilidad, revisión o presión de tiempo sin ningún plan. Ambos necesitan arreglo, pero requieren enfoques diferentes."
+  - question: "¿Debería reescribir o refactorizar?"
+    answer: "Casi siempre refactoriza. Las reescrituras son el proyecto más peligroso en software — toman 3x más de lo estimado, introducen nuevos bugs, y el sistema viejo sigue acumulando features que la reescritura tiene que alcanzar. Refactoriza incrementalmente: patrón strangler fig, extrae módulos uno a la vez."
+relatedPosts: ["clean-code-principles-practice", "ci-cd-pipeline-design"]
+---
+
+Una vez me uní a un proyecto donde desplegar un cambio de una línea de CSS tomaba tres días. No por proceso o aprobaciones — porque el build era tan frágil que cualquier cambio tenía un 40% de probabilidad de romper algo no relacionado. El equipo había estado "moviéndose rápido" por dos años sin pagar ninguna deuda, y ahora no podían moverse en absoluto.
+
+Eso es lo que tiene la deuda técnica: los pagos de interés son invisibles hasta que no lo son. Un día estás enviando features semanalmente, y luego gradualmente — tan gradualmente que nadie nota — se convierte en quincenal, luego mensual, luego "estamos haciendo un Gran Refactor™" que es realmente solo admitir que has estado ignorando la factura de la tarjeta de crédito por demasiado tiempo.
+
+He estado en ambos lados de esto. He tomado deuda estratégicamente y enviado productos que no habrían existido de otra forma. También he heredado codebases donde la deuda era tan aplastante que el equipo pasaba 80% de su tiempo peleando con el código y 20% realmente construyendo features.
+
+## La Deuda Técnica Es una Herramienta
+
+Déjame ser claro: la deuda técnica no es inherentemente mala. Es una herramienta. Como la deuda financiera, es útil cuando se toma intencionalmente con un plan de pago.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              El Cuadrante de Deuda Técnica                        │
+├─────────────────────────┬───────────────────────────────────────┤
+│                         │  Deliberada          │  Inadvertida    │
+├─────────────────────────┼──────────────────────┼────────────────┤
+│  Imprudente             │ "No tenemos tiempo   │ "¿Qué es un    │
+│                         │  para diseño"         │  patrón de     │
+│                         │  ↑ Peligroso          │  diseño?"      │
+│                         │                      │  ↑ Necesita     │
+│                         │                      │    mentoría     │
+├─────────────────────────┼──────────────────────┼────────────────┤
+│  Prudente               │ "Envía ahora,        │ "Ahora sabemos │
+│                         │  refactoriza el       │  cómo deberíamos│
+│                         │  próximo sprint"      │  haberlo hecho" │
+│                         │  ↑ ¡Estratégico!      │  ↑ Natural      │
+└─────────────────────────┴──────────────────────┴────────────────┘
+```
+
+El cuadrante superior izquierdo es lo que mata proyectos. El inferior izquierdo es lo que hace grandes a los grandes ingenieros — saber cuándo tomar un atajo y tener la disciplina de volver después.
+
+<Callout type="info" title="Deuda vs. Oxidación">
+No todo lo viejo es deuda. Código que funciona, está testeado, y no te frena no es deuda — es simplemente maduro. No refactorices código funcional porque usa un patrón más viejo. Refactoriza código que activamente te está costando tiempo, bugs o velocidad.
+</Callout>
+
+## Cuándo Tomar Deuda (Intencionalmente)
+
+**Fechas de lanzamiento.** Tienes un demo de conferencia en dos semanas. Hardcodea el feature flag, salta la capa de abstracción, envíalo. Solo escribe el TODO y crea el ticket.
+
+**Experimentos.** ¿Construyendo un feature para probar una hipótesis? No lo arquitectes para escala. Construye la versión más simple que pruebe o refute la idea.
+
+**Primeros clientes.** Los productos early-stage necesitan enviarse. Punto. Tus primeros diez clientes no les importa tu estrategia de migración de base de datos. Les importa si el producto resuelve su problema.
+
+## La Regla del 20%
+
+La estrategia más efectiva que he encontrado: dedica 20% de cada sprint a reducción de deuda. No "cuando tengamos tiempo." No "el próximo trimestre." Cada sprint. No negociable.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              Dónde Enfocar el Pago de Deuda                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Paso 1: Ejecuta este comando                                   │
+│                                                                  │
+│    git log --since="3 months" --name-only --format="" |          │
+│      sort | uniq -c | sort -rn | head -20                        │
+│                                                                  │
+│  Paso 2: Los archivos que aparecen más son tus puntos calientes  │
+│                                                                  │
+│  Paso 3: Refactoriza ESOS archivos primero                       │
+│                                                                  │
+│  Por qué: Archivos que cambian seguido son archivos que importan.│
+│  Limpiar un archivo que nadie toca es trabajo innecesario.       │
+│  Limpiar un archivo que se modifica 5x por sprint?               │
+│  Eso es una inversión con retornos inmediatos.                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+<Callout type="tip" title="La Regla del Boy Scout + Git Log">
+"Deja el código más limpio de lo que lo encontraste" es buen consejo, pero sin enfoque. Combínalo con análisis de git log: deja el código *que más cambia* más limpio de lo que lo encontraste. Tu historial de git te dice exactamente dónde está el dolor.
+</Callout>
+
+## Refactoriza, No Reescribas
+
+Tengo una regla: nunca propongas una reescritura. Propón un plan de refactorización con hitos.
+
+Las reescrituras fallan por razones predecibles. El equipo subestima el alcance (siempre). El sistema viejo sigue recibiendo features que la reescritura tiene que alcanzar (siempre). La reescritura introduce nuevos bugs porque estás reimplementando lógica de negocio de memoria en lugar de tests (siempre).
+
+El patrón strangler fig es tu amigo: envuelve el sistema viejo, reemplázalo pieza por pieza, y nunca tengas un día de migración "big bang."
+
+```typescript
+// Strangler fig: código nuevo envuelve código viejo
+// Fase 1: Rutear por el nuevo sistema, fallback al viejo
+async function getUser(id: string): Promise<User> {
+  try {
+    return await newUserService.getById(id);
+  } catch {
+    return await legacyUserService.getById(id);
+  }
+}
+
+// Fase 2: Una vez confiado, elimina el fallback
+async function getUser(id: string): Promise<User> {
+  return await newUserService.getById(id);
+}
+
+// Fase 3: Elimina legacyUserService completamente
+```
+
+## Comunicando Deuda a Stakeholders No Técnicos
+
+El error más grande que cometen los ingenieros: describir deuda en términos técnicos a personas no técnicas.
+
+En vez de eso:
+
+- **Antes:** "Necesitamos refactorizar el módulo de auth" (habla de ingeniero)
+- **Después:** "Nuestro sistema de login causa 2 tickets de seguridad por mes y hace que agregar nuevas features tome 3x más. Un arreglo de 2 semanas elimina esos tickets y reduce el tiempo de entrega en 40%." (habla de negocio)
+
+Enmarca cada conversación de deuda alrededor de tres cosas que les importan a los stakeholders:
+
+1. **Velocidad:** "Esta deuda nos hace X% más lentos"
+2. **Confiabilidad:** "Esta deuda causa Y bugs por mes"
+3. **Riesgo:** "Esta deuda nos expone a Z"
+
+## La Conclusión
+
+La deuda técnica es inevitable. La pregunta no es si la tendrás — es si la gestionarás o dejarás que te gestione a ti. Los equipos que prosperan son los que tratan la deuda como una herramienta financiera: la toman estratégicamente, la rastrean rigurosamente, la pagan consistentemente, y nunca la dejan acumular más allá del punto de no retorno.
+
+El mejor momento para empezar a pagar deuda fue hace seis meses. El segundo mejor momento es este sprint.

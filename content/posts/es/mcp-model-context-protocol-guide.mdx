@@ -1,0 +1,290 @@
+---
+title: "Model Context Protocol (MCP): Dándole a la IA Herramientas que Realmente Puede Usar"
+description: "Una guía práctica del Model Context Protocol — qué es, por qué importa, cómo construir servidores MCP, y cómo lo uso en producción para darle a los LLMs acceso seguro y en tiempo real a bases de datos, APIs y herramientas de negocio."
+date: 2026-04-01
+published: true
+category: "Ingeniería de IA"
+tags: ["MCP", "Agentes de IA", "Claude", "Tool Use", "LLM"]
+author: "Osvaldo Restrepo"
+translationOf: "mcp-model-context-protocol-guide"
+tldr: "MCP es un protocolo que le permite a los LLMs usar herramientas de forma segura — piénsalo como USB-C para la IA. En lugar de hardcodear llamadas a APIs en los prompts, expones capacidades como servidores MCP que cualquier cliente compatible puede descubrir y usar. Los construyo en TypeScript con auth, rate limiting y logging de auditoría. El patrón killer es darle a Claude acceso a tu base de datos, CRM o APIs internas a través de MCP para que pueda responder preguntas reales con datos reales en lugar de alucinar."
+faqs:
+  - question: "¿Qué es el Model Context Protocol (MCP)?"
+    answer: "MCP es un protocolo abierto que estandariza cómo los modelos de IA se conectan con herramientas externas y fuentes de datos. En lugar de que cada app de IA construya integraciones personalizadas, MCP provee una interfaz universal — los clientes de IA descubren herramientas disponibles, entienden sus parámetros, y las llaman de forma segura."
+  - question: "¿En qué se diferencia MCP del function calling regular?"
+    answer: "Function calling es específico por modelo (el formato de OpenAI difiere del de Claude) y requiere definir herramientas inline con cada request. MCP es un protocolo — las herramientas se definen una vez en un servidor, y cualquier cliente compatible puede descubrirlas y usarlas. Es la diferencia entre hardcodear una llamada API y conectarte a un servicio estandarizado."
+  - question: "¿Es MCP seguro para producción?"
+    answer: "Sí, con los guardrails adecuados. Los servidores MCP deben implementar autenticación, rate limiting, validación de inputs y logging de auditoría. Empieza con herramientas de solo lectura antes de agregar operaciones de escritura. El protocolo en sí está diseñado para seguridad."
+  - question: "¿Puedo usar MCP con modelos que no sean Claude?"
+    answer: "MCP es un protocolo abierto. Aunque Anthropic lo creó y Claude tiene soporte nativo, cualquier modelo o cliente que implemente el protocolo puede usar servidores MCP. El ecosistema está creciendo — VS Code, JetBrains y otras herramientas están agregando soporte MCP."
+relatedPosts: ["building-ai-agents-production", "claude-code-context-limits"]
+---
+
+Hay un momento en cada proyecto de IA donde alguien dice, "¿La IA puede simplemente buscar eso en nuestra base de datos?" Y la respuesta tradicionalmente ha sido: más o menos, si entrecierras los ojos, y además podría alucinar la respuesta de todos modos.
+
+Eso cambió para mí cuando empecé a construir con el Model Context Protocol. MCP es una de esas cosas que suena aburrida en un título de blog pero es genuinamente transformadora en la práctica. Es la diferencia entre una IA que adivina sobre tus datos y una IA que realmente consulta tus datos.
+
+Déjame mostrarte a qué me refiero.
+
+## El Problema que MCP Resuelve
+
+Antes de MCP, darle a un LLM acceso a herramientas externas se veía así:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  La Forma Vieja (Frágil)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Usuario: "¿Cuántos clientes activos tenemos?"                   │
+│                                                                  │
+│  El desarrollador tiene que:                                     │
+│  1. Definir el schema de la herramienta inline con el prompt     │
+│  2. Escribir un handler que parsee la llamada del LLM            │
+│  3. Ejecutar la consulta a la base de datos                      │
+│  4. Formatear el resultado y alimentarlo de vuelta al LLM        │
+│  5. Repetir para CADA herramienta, en CADA app                   │
+│                                                                  │
+│  Problemas:                                                      │
+│  • Las definiciones de herramientas se duplican entre apps        │
+│  • Sin estándar para auth, rate limiting o logging               │
+│  • Cada proveedor de LLM tiene un formato diferente              │
+│  • Agregar una herramienta nueva significa cambiar cada cliente   │
+│  • La IA no puede "descubrir" herramientas disponibles           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+MCP invierte esto. En vez de embeber lógica de herramientas en cada aplicación de IA, construyes un servidor que expone herramientas. Cualquier cliente MCP puede descubrirlas y usarlas:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  La Forma MCP (Limpia)                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────┐     ┌──────────────┐     ┌──────────────┐         │
+│  │  Claude   │────>│ Servidor MCP │────>│  Base de Datos│         │
+│  │  Desktop  │     │  (tu código) │     │  CRM          │         │
+│  └──────────┘     └──────────────┘     │  APIs         │         │
+│                                         └──────────────┘         │
+│  ┌──────────┐     ┌──────────────┐                               │
+│  │  VS Code  │────>│  Mismo       │  ← Mismo servidor,           │
+│  │  + Claude │     │  Servidor    │    diferentes clientes        │
+│  └──────────┘     └──────────────┘                               │
+│                                                                  │
+│  Beneficios:                                                     │
+│  • Define herramientas UNA VEZ, úsalas en todos lados            │
+│  • Auth, logging, rate limiting estandarizado                    │
+│  • Los clientes auto-descubren herramientas disponibles          │
+│  • Agrega herramientas sin cambiar clientes                      │
+│  • Funciona entre proveedores de LLM                             │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Piénsalo como USB-C para la IA. Antes de USB-C, cada dispositivo tenía su propio cable. MCP es el conector universal entre la IA y tus herramientas de negocio.
+
+## Construyendo Tu Primer Servidor MCP
+
+Te muestro un servidor MCP real que construí — uno que le da a Claude acceso a una base de datos de clientes. Esto está simplificado de un sistema de producción, pero los patrones son reales.
+
+```typescript
+// mcp-server/src/index.ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { db } from "./database.js";
+
+const server = new McpServer({
+  name: "customer-database",
+  version: "1.0.0",
+});
+
+// Herramienta: Buscar un cliente por email
+server.tool(
+  "get_customer",
+  "Buscar un cliente por su dirección de email. Retorna perfil, estado de suscripción y actividad reciente.",
+  {
+    email: z.string().email().describe("La dirección de email del cliente"),
+  },
+  async ({ email }) => {
+    const customer = await db.customers.findByEmail(email);
+    if (!customer) {
+      return {
+        content: [{ type: "text", text: `No se encontró cliente con email: ${email}` }],
+      };
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          plan: customer.plan,
+          status: customer.status,
+          mrr: customer.mrr,
+          signupDate: customer.createdAt,
+          lastActive: customer.lastActiveAt,
+        }, null, 2),
+      }],
+    };
+  }
+);
+
+// Herramienta: Obtener métricas de clientes
+server.tool(
+  "get_customer_metrics",
+  "Obtener métricas agregadas: total de clientes, MRR, tasa de churn y tasa de crecimiento.",
+  {
+    period: z.enum(["7d", "30d", "90d", "1y"]).describe("Período de tiempo"),
+  },
+  async ({ period }) => {
+    const metrics = await db.metrics.getCustomerMetrics(period);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(metrics, null, 2),
+      }],
+    };
+  }
+);
+
+// Iniciar el servidor
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+Eso es todo. Tres herramientas, unas 80 líneas de código, y ahora Claude puede responder preguntas como:
+
+- "¿Cuántos clientes enterprise tenemos?"
+- "¿Cuál es el crecimiento de MRR en los últimos 90 días?"
+- "Busca la cuenta de jane@acme.com — ¿siguen en el plan gratuito?"
+
+Sin alucinaciones. Datos reales. Siempre.
+
+<Callout type="tip" title="Empieza con Solo Lectura">
+Mi regla: cada servidor MCP empieza como solo lectura. Deja que el equipo se acostumbre a que Claude consulte datos antes de agregar herramientas que puedan modificarlos. Cuando agregues operaciones de escritura, requiere aprobación humana explícita a través de la UX de confirmación del cliente.
+</Callout>
+
+## Patrones de Producción
+
+Después de construir servidores MCP para múltiples sistemas en producción, estos son los patrones que importan:
+
+### Autenticación y Autorización
+
+```typescript
+server.tool(
+  "get_sensitive_data",
+  "Obtener datos financieros sensibles del cliente (requiere rol admin)",
+  { customerId: z.string() },
+  async ({ customerId }, context) => {
+    const user = await validateAuth(context.meta?.authToken);
+    if (!user.roles.includes("admin")) {
+      return {
+        content: [{ type: "text", text: "No autorizado: se requiere rol admin" }],
+        isError: true,
+      };
+    }
+
+    // Log de auditoría en cada acceso a datos sensibles
+    await auditLog.record({
+      action: "get_sensitive_data",
+      user: user.id,
+      resource: customerId,
+      timestamp: new Date(),
+    });
+
+    const data = await db.customers.getFinancials(customerId);
+    return { content: [{ type: "text", text: JSON.stringify(data) }] };
+  }
+);
+```
+
+### Rate Limiting
+
+```typescript
+import { RateLimiter } from "./rate-limiter.js";
+
+const limiter = new RateLimiter({
+  maxRequests: 100,
+  windowMs: 60_000, // 100 requests por minuto
+});
+
+server.tool(
+  "run_analytics_query",
+  "Ejecutar consulta analítica personalizada (con rate limit)",
+  { query: z.string() },
+  async ({ query }) => {
+    if (!limiter.allow("analytics")) {
+      return {
+        content: [{ type: "text", text: "Límite de rate excedido. Intenta en un minuto." }],
+        isError: true,
+      };
+    }
+
+    const results = await analytics.query(query);
+    return { content: [{ type: "text", text: JSON.stringify(results) }] };
+  }
+);
+```
+
+<Callout type="warning" title="Siempre Valida en el Servidor">
+Nunca confíes en que el LLM enviará inputs válidos. Usualmente lo hace, pero "usualmente" no es suficiente para producción. Valida todo en tu servidor MCP — el LLM podría alucinar un ID de cliente que parece válido pero no lo es, o intentar establecer un valor fuera de los rangos permitidos.
+</Callout>
+
+## Arquitectura: Dónde Encaja MCP
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                MCP en un Stack de Producción                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────┐                 │
+│  │           Clientes MCP                       │                │
+│  │  ┌─────────┐ ┌──────────┐ ┌──────────────┐  │                │
+│  │  │ Claude   │ │ VS Code  │ │ App Interna  │  │                │
+│  │  │ Desktop  │ │ + Copilot│ │ (UI custom)  │  │                │
+│  │  └────┬─────┘ └────┬─────┘ └──────┬───────┘  │                │
+│  └───────┼──────────────┼─────────────┼──────────┘                │
+│          │              │             │                           │
+│          ▼              ▼             ▼                           │
+│  ┌─────────────────────────────────────────────┐                 │
+│  │        Servidores MCP (tu código)            │                │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐ │                │
+│  │  │ BD de    │ │ Motor de │ │ Gestor de    │  │                │
+│  │  │ Clientes │ │ Analytics│ │ Deployments  │  │                │
+│  │  └────┬─────┘ └────┬─────┘ └──────┬───────┘ │                │
+│  └───────┼──────────────┼─────────────┼─────────┘                │
+│          │              │             │                           │
+│          ▼              ▼             ▼                           │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐                   │
+│  │PostgreSQL│  │ClickHouse│  │ GitHub API   │                    │
+│  │  Redis   │  │ Grafana  │  │ Vercel API   │                    │
+│  └──────────┘  └──────────┘  └──────────────┘                    │
+│                                                                  │
+│  Cada servidor MCP es un microservicio enfocado que expone       │
+│  las herramientas de UN dominio. Mantenlos pequeños.             │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Lo Que Estoy Construyendo con MCP Ahora
+
+En TheGreyMatter.ai, estoy construyendo servidores MCP que le dan a nuestro cerebro de IA acceso a todo el ecosistema de productos de forma segura. Claude puede obtener datos de Snapshot9, Measurement13 y 9Vectors a través de MCP — respondiendo preguntas sobre evaluaciones organizacionales, métricas estratégicas y evaluaciones de liderazgo con datos reales.
+
+El patrón: cada producto tiene su propio servidor MCP. Los servidores MCP comparten una capa de auth común (nuestro TGM Auth Service valida tokens JWT). Claude descubre qué herramientas están disponibles y las usa según lo que el usuario pregunte.
+
+El insight clave: MCP no se trata solo de hacer la IA más inteligente. Se trata de hacerla *confiable*. Cuando Claude responde "Tu organización obtuvo 7.2 en alineamiento de liderazgo," no está generando ese número — consultó el score real a través de un servidor MCP validado, loggeado y con rate limit. Esa es la diferencia entre un demo y un sistema de producción.
+
+## Para Empezar
+
+Si quieres empezar a construir con MCP:
+
+1. **Instala el SDK**: `npm install @modelcontextprotocol/sdk`
+2. **Empieza con una herramienta de solo lectura** que consulte tu necesidad de datos más común
+3. **Prueba con Claude Desktop** — tiene soporte nativo de MCP, solo agrega tu servidor a la config
+4. **Agrega auth y logging** antes de exponerlo a tu equipo
+5. **Expande gradualmente** — una herramienta a la vez, cada una revisada y testeada
+
+MCP todavía es temprano, pero es el patrón más prometedor que he visto para cerrar la brecha entre "IA que suena inteligente" e "IA que es realmente útil." Y en producción, útil es lo único que importa.

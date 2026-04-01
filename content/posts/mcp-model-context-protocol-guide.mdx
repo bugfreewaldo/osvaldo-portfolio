@@ -1,0 +1,401 @@
+---
+title: "Model Context Protocol (MCP): Giving AI Tools It Can Actually Use"
+description: "A practical guide to the Model Context Protocol — what it is, why it matters, how to build MCP servers, and how I use it in production to give LLMs safe, real-time access to databases, APIs, and business tools."
+date: 2026-04-01
+published: true
+category: "AI Engineering"
+tags: ["MCP", "AI Agents", "Claude", "Tool Use", "LLM"]
+author: "Osvaldo Restrepo"
+tldr: "MCP is a protocol that lets LLMs use tools safely — think of it as USB-C for AI. Instead of hardcoding API calls into prompts, you expose capabilities as MCP servers that any MCP-compatible client can discover and use. I build them in TypeScript with proper auth, rate limiting, and audit logging. The killer pattern is giving Claude access to your database, CRM, or internal APIs through MCP so it can answer real questions with real data instead of hallucinating. Start with read-only tools, add write operations carefully, and always log everything."
+faqs:
+  - question: "What is the Model Context Protocol (MCP)?"
+    answer: "MCP is an open protocol that standardizes how AI models connect to external tools and data sources. Instead of each AI app building custom integrations, MCP provides a universal interface — AI clients discover available tools, understand their parameters, and call them safely. Think of it as a standard plugin system for LLMs."
+  - question: "How is MCP different from regular function calling?"
+    answer: "Function calling is model-specific (OpenAI's format differs from Claude's) and requires you to define tools inline with every request. MCP is a protocol — tools are defined once on a server, and any MCP-compatible client can discover and use them. It's the difference between hardcoding an API call and connecting to a standardized service."
+  - question: "Is MCP safe for production use?"
+    answer: "Yes, with proper guardrails. MCP servers should implement authentication, rate limiting, input validation, and audit logging. Start with read-only tools before adding write operations. The protocol itself is designed for safety — tools declare their capabilities, and the client (or human) decides whether to approve each call."
+  - question: "Can I use MCP with models other than Claude?"
+    answer: "MCP is an open protocol. While Anthropic created it and Claude has native MCP support, any model or client that implements the protocol can use MCP servers. The ecosystem is growing — VS Code, JetBrains, and other tools are adding MCP support."
+relatedPosts: ["building-ai-agents-production", "claude-code-context-limits"]
+---
+
+There's a moment in every AI project where someone says, "Can the AI just look that up in our database?" And the answer has traditionally been: sort of, if you squint, and also it might hallucinate the answer anyway.
+
+That changed for me when I started building with the Model Context Protocol. MCP is one of those things that sounds boring in a blog post title but is genuinely transformative in practice. It's the difference between an AI that guesses about your data and an AI that actually queries your data.
+
+Let me show you what I mean.
+
+## The Problem MCP Solves
+
+Before MCP, giving an LLM access to external tools looked like this:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  The Old Way (Fragile)                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User: "How many active customers do we have?"                   │
+│                                                                  │
+│  Developer has to:                                               │
+│  1. Define the tool schema inline with the prompt                │
+│  2. Write a handler that parses the LLM's tool call             │
+│  3. Execute the database query                                   │
+│  4. Format the result and feed it back to the LLM               │
+│  5. Repeat for EVERY tool, in EVERY app                          │
+│                                                                  │
+│  Problems:                                                       │
+│  • Tool definitions are duplicated across apps                   │
+│  • No standard for auth, rate limiting, or logging               │
+│  • Each LLM provider has a different tool format                 │
+│  • Adding a new tool means changing every client                 │
+│  • No way for the AI to "discover" available tools               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+MCP flips this. Instead of embedding tool logic into every AI application, you build a server that exposes tools. Any MCP client can discover and use them:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  The MCP Way (Clean)                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────┐     ┌──────────────┐     ┌──────────────┐         │
+│  │  Claude   │────>│  MCP Server  │────>│  Database     │         │
+│  │  Desktop  │     │  (your code) │     │  CRM          │         │
+│  └──────────┘     └──────────────┘     │  APIs         │         │
+│                                         └──────────────┘         │
+│  ┌──────────┐     ┌──────────────┐                               │
+│  │  VS Code  │────>│  Same MCP    │  ← Same server,              │
+│  │  + Claude │     │  Server      │    different clients          │
+│  └──────────┘     └──────────────┘                               │
+│                                                                  │
+│  ┌──────────┐     ┌──────────────┐                               │
+│  │  Your App │────>│  Same MCP    │  ← Your custom app too       │
+│  │  (custom) │     │  Server      │                               │
+│  └──────────┘     └──────────────┘                               │
+│                                                                  │
+│  Benefits:                                                       │
+│  • Define tools ONCE, use everywhere                             │
+│  • Standard auth, logging, rate limiting                         │
+│  • Clients auto-discover available tools                         │
+│  • Add tools without changing clients                            │
+│  • Works across LLM providers                                    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Think of it as USB-C for AI. Before USB-C, every device had its own cable. MCP is the universal connector between AI and your business tools.
+
+## Building Your First MCP Server
+
+Let me walk through a real MCP server I built — one that gives Claude access to a customer database. This is simplified from a production system, but the patterns are real.
+
+```typescript
+// mcp-server/src/index.ts
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { db } from "./database.js";
+
+const server = new McpServer({
+  name: "customer-database",
+  version: "1.0.0",
+});
+
+// Tool: Look up a customer by email
+server.tool(
+  "get_customer",
+  "Look up a customer by their email address. Returns profile, subscription status, and recent activity.",
+  {
+    email: z.string().email().describe("The customer's email address"),
+  },
+  async ({ email }) => {
+    const customer = await db.customers.findByEmail(email);
+    if (!customer) {
+      return {
+        content: [{ type: "text", text: `No customer found with email: ${email}` }],
+      };
+    }
+
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify({
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          plan: customer.plan,
+          status: customer.status,
+          mrr: customer.mrr,
+          signupDate: customer.createdAt,
+          lastActive: customer.lastActiveAt,
+        }, null, 2),
+      }],
+    };
+  }
+);
+
+// Tool: Get customer metrics
+server.tool(
+  "get_customer_metrics",
+  "Get aggregate customer metrics: total customers, MRR, churn rate, and growth rate.",
+  {
+    period: z.enum(["7d", "30d", "90d", "1y"]).describe("Time period for metrics"),
+  },
+  async ({ period }) => {
+    const metrics = await db.metrics.getCustomerMetrics(period);
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(metrics, null, 2),
+      }],
+    };
+  }
+);
+
+// Tool: Search customers
+server.tool(
+  "search_customers",
+  "Search customers by name, plan, or status. Returns up to 20 results.",
+  {
+    query: z.string().optional().describe("Search by name (partial match)"),
+    plan: z.enum(["free", "pro", "enterprise"]).optional().describe("Filter by plan"),
+    status: z.enum(["active", "churned", "trial"]).optional().describe("Filter by status"),
+    limit: z.number().min(1).max(20).default(10).describe("Max results to return"),
+  },
+  async ({ query, plan, status, limit }) => {
+    const customers = await db.customers.search({ query, plan, status, limit });
+    return {
+      content: [{
+        type: "text",
+        text: JSON.stringify(customers.map(c => ({
+          name: c.name,
+          email: c.email,
+          plan: c.plan,
+          status: c.status,
+          mrr: c.mrr,
+        })), null, 2),
+      }],
+    };
+  }
+);
+
+// Start the server
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+That's it. Three tools, about 80 lines of code, and now Claude can answer questions like:
+
+- "How many enterprise customers do we have?"
+- "What's our MRR growth over the last 90 days?"
+- "Look up the account for jane@acme.com — are they still on the free plan?"
+
+No hallucination. Real data. Every time.
+
+<Callout type="tip" title="Start Read-Only">
+My rule: every MCP server starts as read-only. Let the team get comfortable with Claude querying data before you add tools that can modify it. When you do add write operations, require explicit human approval through the client's confirmation UX.
+</Callout>
+
+## MCP Resources: Giving AI Context
+
+Tools are for actions. Resources are for context. MCP resources let you expose data that the AI can read to understand the current state of things.
+
+```typescript
+// Expose a resource: the current system status
+server.resource(
+  "system-status",
+  "system://status",
+  async () => ({
+    contents: [{
+      uri: "system://status",
+      mimeType: "application/json",
+      text: JSON.stringify({
+        database: await healthCheck.database(),
+        api: await healthCheck.api(),
+        queue: await healthCheck.queue(),
+        lastDeployment: await getLastDeployment(),
+        activeIncidents: await getActiveIncidents(),
+      }, null, 2),
+    }],
+  })
+);
+
+// Expose a resource: the company's product documentation
+server.resource(
+  "product-docs",
+  "docs://product/overview",
+  async () => ({
+    contents: [{
+      uri: "docs://product/overview",
+      mimeType: "text/markdown",
+      text: await readFile("./docs/product-overview.md", "utf-8"),
+    }],
+  })
+);
+```
+
+Now when someone asks Claude, "Is anything broken right now?" it can check the system status resource first, then give an informed answer based on real data.
+
+## Production Patterns
+
+After building MCP servers for multiple production systems, here are the patterns that matter:
+
+### Authentication and Authorization
+
+```typescript
+// Wrap your server with auth middleware
+server.tool(
+  "get_sensitive_data",
+  "Retrieve sensitive customer financial data (requires admin role)",
+  { customerId: z.string() },
+  async ({ customerId }, context) => {
+    // Verify the caller has permission
+    const user = await validateAuth(context.meta?.authToken);
+    if (!user.roles.includes("admin")) {
+      return {
+        content: [{ type: "text", text: "Unauthorized: admin role required" }],
+        isError: true,
+      };
+    }
+
+    // Audit log every access to sensitive data
+    await auditLog.record({
+      action: "get_sensitive_data",
+      user: user.id,
+      resource: customerId,
+      timestamp: new Date(),
+    });
+
+    const data = await db.customers.getFinancials(customerId);
+    return { content: [{ type: "text", text: JSON.stringify(data) }] };
+  }
+);
+```
+
+### Rate Limiting
+
+```typescript
+import { RateLimiter } from "./rate-limiter.js";
+
+const limiter = new RateLimiter({
+  maxRequests: 100,
+  windowMs: 60_000, // 100 requests per minute
+});
+
+// Apply to expensive tools
+server.tool(
+  "run_analytics_query",
+  "Run a custom analytics query (rate limited)",
+  { query: z.string() },
+  async ({ query }) => {
+    if (!limiter.allow("analytics")) {
+      return {
+        content: [{ type: "text", text: "Rate limit exceeded. Try again in a minute." }],
+        isError: true,
+      };
+    }
+
+    const results = await analytics.query(query);
+    return { content: [{ type: "text", text: JSON.stringify(results) }] };
+  }
+);
+```
+
+### Input Validation Beyond Zod
+
+Zod handles type validation, but you also need business logic validation:
+
+```typescript
+server.tool(
+  "update_customer_plan",
+  "Change a customer's subscription plan",
+  {
+    customerId: z.string(),
+    newPlan: z.enum(["free", "pro", "enterprise"]),
+    reason: z.string().min(10).describe("Reason for the plan change"),
+  },
+  async ({ customerId, newPlan, reason }) => {
+    const customer = await db.customers.findById(customerId);
+    if (!customer) {
+      return { content: [{ type: "text", text: "Customer not found" }], isError: true };
+    }
+
+    // Business logic validation
+    if (customer.plan === "enterprise" && newPlan === "free") {
+      return {
+        content: [{ type: "text", text: "Cannot downgrade directly from enterprise to free. Use pro as intermediate step." }],
+        isError: true,
+      };
+    }
+
+    await db.customers.updatePlan(customerId, newPlan, reason);
+    await auditLog.record({ action: "plan_change", customerId, from: customer.plan, to: newPlan, reason });
+
+    return {
+      content: [{ type: "text", text: `Updated ${customer.name} from ${customer.plan} to ${newPlan}` }],
+    };
+  }
+);
+```
+
+<Callout type="warning" title="Always Validate on the Server">
+Never trust that the LLM will send valid inputs. It usually does, but "usually" isn't good enough for production. Validate everything in your MCP server — the LLM might hallucinate a customer ID that looks valid but isn't, or try to set a value outside allowed ranges.
+</Callout>
+
+## Architecture: Where MCP Fits
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                MCP in a Production Stack                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌─────────────────────────────────────────────┐                 │
+│  │           MCP Clients                        │                │
+│  │  ┌─────────┐ ┌──────────┐ ┌──────────────┐  │                │
+│  │  │ Claude   │ │ VS Code  │ │ Internal App │  │                │
+│  │  │ Desktop  │ │ + Copilot│ │ (custom UI)  │  │                │
+│  │  └────┬─────┘ └────┬─────┘ └──────┬───────┘  │                │
+│  └───────┼──────────────┼─────────────┼──────────┘                │
+│          │              │             │                           │
+│          ▼              ▼             ▼                           │
+│  ┌─────────────────────────────────────────────┐                 │
+│  │           MCP Servers (your code)            │                │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────────┐ │                │
+│  │  │ Customer │ │ Analytics│ │ Deployment   │  │                │
+│  │  │ DB       │ │ Engine   │ │ Manager      │  │                │
+│  │  └────┬─────┘ └────┬─────┘ └──────┬───────┘ │                │
+│  └───────┼──────────────┼─────────────┼─────────┘                │
+│          │              │             │                           │
+│          ▼              ▼             ▼                           │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐                   │
+│  │PostgreSQL│  │ClickHouse│  │ GitHub API   │                    │
+│  │  Redis   │  │ Grafana  │  │ Vercel API   │                    │
+│  └──────────┘  └──────────┘  └──────────────┘                    │
+│                                                                  │
+│  Each MCP server is a focused microservice that exposes          │
+│  ONE domain's tools. Keep them small and single-purpose.         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## What I'm Building With MCP Right Now
+
+At TheGreyMatter.ai, I'm building MCP servers that let our AI brain access the entire product ecosystem safely. Claude can pull data from Snapshot9, Measurement13, and 9Vectors through MCP — answering questions about organizational assessments, strategic metrics, and leadership evaluations with real data.
+
+The pattern: each product gets its own MCP server. The MCP servers share a common auth layer (our TGM Auth Service validates JWT tokens). Claude discovers what tools are available and uses them based on what the user asks.
+
+The key insight: MCP isn't just about making AI smarter. It's about making AI *trustworthy*. When Claude answers "Your organization scored 7.2 on leadership alignment," it's not generating that number — it queried the real score through a validated, logged, rate-limited MCP server. That's the difference between a demo and a production system.
+
+## Getting Started
+
+If you want to start building with MCP:
+
+1. **Install the SDK**: `npm install @modelcontextprotocol/sdk`
+2. **Start with one read-only tool** that queries your most common data need
+3. **Test with Claude Desktop** — it has native MCP support, just add your server to the config
+4. **Add auth and logging** before exposing to your team
+5. **Gradually expand** — one tool at a time, each reviewed and tested
+
+MCP is still early, but it's the most promising pattern I've seen for bridging the gap between "AI that sounds smart" and "AI that is actually useful." And in production, useful is the only thing that matters.
