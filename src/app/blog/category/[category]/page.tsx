@@ -20,7 +20,7 @@ function getAllCategories(): string[] {
 
 export async function generateStaticParams() {
   return getAllCategories().map((category) => ({
-    category: encodeURIComponent(category),
+    category,
   }));
 }
 
