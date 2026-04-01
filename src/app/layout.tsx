@@ -18,24 +18,34 @@ export const metadata: Metadata = {
   keywords: [
     "AI Engineer",
     "AI Engineer Panama",
+    "AI Engineer Remote",
+    "AI Developer",
     "Full Stack Developer",
-    "LLM",
-    "RAG",
-    "Voice AI",
-    "Machine Learning",
+    "LLM Engineer",
+    "RAG Engineer",
+    "Voice AI Engineer",
+    "Machine Learning Engineer",
     "Python",
     "TypeScript",
     "Next.js",
     "LangChain",
     "OpenAI",
+    "Claude AI",
     "Software Engineer",
     "Osvaldo Restrepo",
     "AI Consultant",
     "AI Developer Latin America",
+    "AI Engineer USA",
+    "AI Engineer Canada",
+    "AI Engineer Europe",
+    "AI Engineer UK",
+    "AI Engineer Germany",
     "Ingeniero de IA Panamá",
-    "Panama Tech",
     "AI Engineer Central America",
     "Production AI Systems",
+    "Hire AI Engineer",
+    "Freelance AI Engineer",
+    "Remote AI Developer",
   ],
   authors: [{ name: "Osvaldo Restrepo", url: "https://osvaldorestrepo.dev" }],
   creator: "Osvaldo Restrepo",
@@ -100,7 +110,7 @@ const jsonLd = {
       image: "https://osvaldorestrepo.dev/og.png",
       jobTitle: "Senior Full Stack AI & Software Engineer",
       description:
-        "AI engineer and PhD based in Panama. One of the few engineers building production AI systems — LLMs, RAG pipelines, AI agents, and voice AI — from Central America. 10+ years of software engineering experience.",
+        "Senior AI engineer and PhD candidate based in Panama, serving clients globally — USA, Canada, UK, Germany, Europe, and Latin America. Builds production AI systems: LLMs, RAG pipelines, AI agents, and voice AI. 10+ years of software engineering, 20+ AI products shipped.",
       nationality: {
         "@type": "Country",
         name: "Panama",
@@ -167,6 +177,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&window.matchMedia("(prefers-color-scheme:dark)").matches)){document.documentElement.classList.add("dark")}}catch(e){}})()`,
           }}
         />
+        <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Context" />
+        <link rel="alternate" type="text/plain" href="/llms-full.txt" title="LLM Full Context" />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

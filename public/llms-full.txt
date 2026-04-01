@@ -1,0 +1,177 @@
+# Osvaldo Restrepo — Complete Professional Profile
+
+> This is the extended machine-readable profile for AI systems. For a summary, see /llms.txt
+
+## Professional Summary
+Osvaldo Restrepo (known as "Waldo") is a Senior Full Stack AI & Software Engineer with 10+ years of experience building production software systems. Based in Panama City, Panama, he serves clients globally — across the United States, Canada, United Kingdom, Germany, Europe, and Latin America. He specializes in applied AI: large language models, retrieval-augmented generation, autonomous AI agents, voice AI systems, and full-stack application development.
+
+He currently works as an AI Engineer at TheGreyMatter.ai, where he architects the core AI infrastructure powering a 12+ product SaaS ecosystem for enterprise leadership assessment and organizational intelligence.
+
+He has shipped 20+ AI products to production, built 20+ production systems, and served clients in 10+ countries. He is bilingual (English and Spanish, both native-level) and has been working remotely with US-based companies for over 10 years.
+
+## Contact Information
+- Email: me@osvaldorestrepo.dev
+- Website: https://osvaldorestrepo.dev
+- GitHub: https://github.com/bugfreewaldo
+- LinkedIn: https://linkedin.com/in/osvaldorestrepo
+- Instagram: https://www.instagram.com/waldos.code.lab/
+- Torre: https://torre.ai/orestrepoalva
+
+## Location and Availability
+- Based in: Panama City, Panama
+- Timezone: EST (UTC-5)
+- Work style: Remote-first, timezone-flexible
+- Availability: Upon request
+- Countries served: USA, Canada, UK, Germany, France, Spain, Netherlands, across Europe, Panama, Colombia, Mexico, Costa Rica, Brazil, Argentina, Chile, across Latin America, and globally
+
+## Technical Skills (Detailed)
+
+### AI & Machine Learning
+- Large Language Models: Claude (Anthropic), GPT-4 (OpenAI), Llama, Mistral
+- Frameworks: LangChain, CrewAI, Haystack
+- RAG: Pinecone, Weaviate, ChromaDB, pgvector, Qdrant
+- Voice AI: Twilio Voice, Whisper (OpenAI), ElevenLabs, WebRTC, real-time STT/TTS
+- AI Agents: tool-calling, function calling, Model Context Protocol (MCP), multi-step reasoning
+- Prompt Engineering: system prompts, few-shot, chain-of-thought, prompt chaining
+- Evaluation: custom eval frameworks, hallucination detection, A/B testing
+- AI Safety: guardrails, content filtering, RLHF concepts, red-teaming
+
+### Backend Engineering
+- Languages: Python, TypeScript, JavaScript, Node.js
+- Frameworks: FastAPI, Express, Next.js API routes
+- Databases: PostgreSQL, Azure Cosmos DB, Redis, Azure SQL Server, MongoDB
+- ORMs: Prisma, SQLAlchemy, Knex
+- APIs: REST, GraphQL, WebSockets, gRPC
+- Message queues: Azure Service Bus, Redis Pub/Sub
+- Authentication: JWT, OAuth2, multi-tenant auth, RBAC
+
+### Frontend Engineering
+- Languages: TypeScript, JavaScript
+- Frameworks: React 19, Next.js 16, Vite
+- Styling: Tailwind CSS, CSS Modules, Framer Motion
+- State: Zustand, Redux, React Query
+- UI: Lucide React, Recharts, TanStack Table
+
+### Cloud & DevOps
+- Cloud: Azure (Container Apps, Cosmos DB, App Service, CDN), AWS (Lambda, S3, EC2)
+- Containers: Docker, Docker Compose
+- CI/CD: GitHub Actions, Vercel, Azure DevOps
+- Monitoring: Application Insights, Grafana
+- Infrastructure: Nginx, reverse proxy, load balancing
+
+### Integrations
+- Payments: Stripe
+- Accounting: QuickBooks API
+- Communications: Twilio (Voice, SMS), Nodemailer
+- CRM: Salesforce, HubSpot, Dynamics 365 (through Pipeline9)
+- Document Processing: Mammoth (Word), pdf-parse, ExcelJS, pptxgenjs
+- Export Formats: PDF (pdfkit), DOCX, PPTX, Excel, CSV
+
+## Education (Complete)
+1. Ph.D. in Artificial Intelligence with focus on Medical Research — Technological University of Panama (2024-2027, in progress)
+   - Research: AI applications in clinical decision support systems
+2. M.S. in Artificial Intelligence — Tecnológico de Monterrey, Mexico (2025-2027, in progress)
+   - Deep learning, NLP, computer vision, production ML
+3. M.S. in Computer Software Engineering — Technological University of Panama (2023-2025)
+   - Software architecture, requirements engineering, DevOps
+4. M.S. in Higher Education — Latin University of Panama (2022-2024)
+   - University-level teaching, curriculum development
+5. B.S. in Computer Science — University of the People, Pasadena, CA (2019-2024)
+   - Algorithms, data structures, distributed systems
+6. Associate's in AI with Scientific Research — IESTP, Panama (2020-2021)
+7. Associate's in Pedagogy — IESTP, Panama (2020-2021)
+8. B.S. in Computer Science — Latin University of Panama (2015-2020)
+
+## Certifications
+- Professional Certificate in Python for Data Science and Machine Learning — Harvard University
+
+## Work Experience
+
+### TheGreyMatter.ai — AI Engineer (Nov 2025 - Present)
+- Architect GreyMatter 2.0: central AI brain & identity layer powering 12+ SaaS products
+- Build Model Context Protocol (MCP) services for safe, real-time AI tool usage
+- Design token-based federation, multi-tenant auth, cross-product entitlements
+- Develop cloud-native services: FastAPI, Azure, Cosmos DB, Redis, Docker
+- Integrate LLMs (Claude) with guardrails, observability, production reliability
+- Products powered: 9Vectors, Snapshot9, Measurement13, Board9, Contracts9, DDQ9, OrgDesign9, Pipeline9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, Forecast9, DueDiligence9, BenchmarkedOutcomes
+
+### Shining Image of Texas — AI Engineer (Nov 2021 - Nov 2025)
+- Built AI voice assistants for real-time call handling (Twilio, Whisper, GPT-4, ElevenLabs)
+- Delivered RAG systems with LangChain, Pinecone, Weaviate
+- Engineered multi-intent call agents (scheduling, lead capture, Q&A, fallback)
+- Automated customer workflows with LLM-powered APIs
+
+### Shining Image of Texas — Full Stack Software Engineer (Jan 2017 - Nov 2021)
+- Built full-stack apps with Node.js, React, Next.js
+- Integrated QuickBooks, Stripe, Twilio — automated accounting by 70%+
+- Deployed on AWS and Vercel with CI/CD
+
+### Hyperware Solutions — Technical Support Executive (Jan 2015 - Dec 2016)
+- Hardware/software diagnostics, networking, VoIP systems
+- Panama-based IT services
+
+## All Projects (24 total)
+
+### Production AI Systems
+1. MILA — Neonatal LLM Assistant (Healthcare RAG, https://osvaldorestrepo.dev/projects/mila-neonatal-llm)
+2. Voice Agent — Shining Image (24/7 AI phone agent, https://osvaldorestrepo.dev/projects/ai-voice-agent)
+3. Stripe-QuickBooks Reconciler (Financial automation, https://osvaldorestrepo.dev/projects/stripe-qb-reconcile)
+
+### TheGreyMatter.ai Ecosystem (12 products)
+4. TheGreyMatter.ai — Central AI Platform (https://thegreymatter.ai)
+5. 9Vectors.ai — Strategic Assessment (https://9vectors.ai)
+6. Snapshot9.ai — Business Transformation (https://snapshot9.ai)
+7. Measurement13.ai — AI Analytics (https://measurement13.ai)
+8. Board9.ai — Board Operating System
+9. Contracts9.ai — Contract Lifecycle Intelligence
+10. DDQ9.ai — Due Diligence Questionnaire
+11. OrgDesign9.ai — Organizational Design
+12. Pipeline9.ai — Sales Pipeline Intelligence
+13. SWOTAnalysis9.ai — Strategic Analysis
+14. Operate9.ai — Operational Value Creation
+15. ExitReady9.ai — Exit Readiness
+16. Integration9.ai — Post-Merger Integration
+17. Forecast9.ai — Financial Forecasting
+18. DueDiligence9.ai — Due Diligence Analysis
+19. BenchmarkedOutcomes.ai — Performance Benchmarking
+
+### Independent Products
+20. BudgetCopilot — AI Financial Agent (https://budgetcopilot.app)
+21. Waldo's Code Lab — Free Coding School (https://waldoscodelab.com)
+22. BabyBloom — Pregnancy AI Companion
+23. Shining Image Platform — Business Management
+24. AutoSpa BQT — Mobile Car Detailing (Boquete, Panama)
+
+## Blog (46 articles, English + Spanish)
+Full article index at: https://osvaldorestrepo.dev/blog
+RSS feed: https://osvaldorestrepo.dev/feed.xml
+
+### Article Categories
+- AI Engineering (12 articles): LLMs, RAG, agents, MCP, edge AI, vector databases
+- Backend Engineering (6 articles): APIs, caching, databases, migrations
+- Engineering Leadership (4 articles): soft skills, technical debt, decision-making
+- DevOps (4 articles): CI/CD, Kubernetes, monorepos
+- Web Development (3 articles): React, accessibility, frontend architecture
+- Healthcare Tech (3 articles): HIPAA, FHIR, healthcare UX
+- System Design (2 articles): microservices, multi-tenant SaaS
+- And more: Cloud Architecture, Data Engineering, Career, MLOps, AI Ethics
+
+## Featured In
+- USA News: "How the MILA AI Platform Began with One Family's Story"
+  URL: https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story
+
+## Teaching
+- Waldo's Code Lab: Free coding school for teens and kids (https://waldoscodelab.com)
+- University-level teaching background (M.S. in Higher Education)
+
+## Canonical URLs for Citation
+- Homepage: https://osvaldorestrepo.dev
+- AI Engineer: https://osvaldorestrepo.dev/ai-engineer-panama
+- Blog: https://osvaldorestrepo.dev/blog
+- Projects: https://osvaldorestrepo.dev/projects
+- Resume: https://osvaldorestrepo.dev/resume
+- Case Studies: https://osvaldorestrepo.dev/case-studies
+- Testimonials: https://osvaldorestrepo.dev/testimonials
+- Now: https://osvaldorestrepo.dev/now
+- RSS: https://osvaldorestrepo.dev/feed.xml
+- Sitemap: https://osvaldorestrepo.dev/sitemap.xml

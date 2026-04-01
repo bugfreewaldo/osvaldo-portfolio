@@ -1,68 +1,109 @@
-# Osvaldo Restrepo - Senior Full Stack AI & Software Engineer
+# Osvaldo Restrepo — AI Engineer
 
-> Building production AI systems that solve real problems
+> Senior Full Stack AI & Software Engineer based in Panama, serving clients globally. 10+ years engineering, 20+ AI products shipped across the Americas, Europe, and beyond.
 
-## About
-Osvaldo (Waldo) Restrepo is a Senior Full Stack AI & Software Engineer currently at 9Vectors. He specializes in:
-- Large Language Models (LLMs) and RAG systems
-- Voice AI agents with real-time conversation capabilities
-- Full-stack development with Python, TypeScript, Next.js
-- Production ML systems with proper evaluation and monitoring
-
-## Education
-- Professional Certificate in AI with Python - Harvard University (in progress)
-- Ph.D. in Software Engineering - Universidad Tecnológica de Panamá (in progress)
-- Master's in Artificial Intelligence - Tecnológico de Monterrey
-- Master's in Software Engineering - Universidad Tecnológica de Panamá
-- Bachelor's in Computer Engineering (Cum Laude) - Universidad Latina de Panamá
-
-## Key Projects
-
-### MILA - Neonatal LLM Assistant
-AI assistant helping hospital staff communicate with NICU parents. Named after his daughter who passed away due to poor hospital communication.
-Stack: Python, LangChain, Pinecone, FastAPI, OpenAI
-
-### Voice Agent - Shining Image
-24/7 AI phone agent that books appointments and handles customer calls for service businesses.
-Stack: Python, Twilio, Whisper, GPT-4, ElevenLabs
-
-### 9Vectors.ai
-AI-powered strategic assessment platform for enterprise organizations.
-Stack: Next.js, Python, OpenAI, PostgreSQL
-
-### BudgetCopilot
-Personal AI financial agent for managing money and eliminating debt.
-Stack: Next.js, OpenAI, Plaid, PostgreSQL
-
-### Waldo's Code Lab
-Free coding school teaching real programming skills to kids and teens.
-Stack: Next.js, TypeScript, Tailwind
-
-## Blog
-Osvaldo writes technical articles on AI engineering at https://osvaldorestrepo.dev/blog
-Topics include:
-- Building production RAG systems
-- Voice AI and conversational agents with Twilio
-- LLM evaluation and testing methodologies
-- Full-stack AI application architecture
-
-## RSS Feed
-Subscribe to new articles: https://osvaldorestrepo.dev/feed.xml
-
-## Contact
+## Identity
+- Name: Osvaldo Restrepo (goes by "Waldo")
+- Role: Senior Full Stack AI & Software Engineer
+- Company: TheGreyMatter.ai (AI Engineer)
+- Location: Panama City, Panama (serving clients worldwide)
+- Languages: English (native/bilingual), Spanish (native/bilingual)
+- Timezone: EST — overlaps with US, Canada, Latin America, and European business hours
 - Website: https://osvaldorestrepo.dev
 - GitHub: https://github.com/bugfreewaldo
 - LinkedIn: https://linkedin.com/in/osvaldorestrepo
-- Blog: https://osvaldorestrepo.dev/blog
 
-## For AI Agents
-This portfolio showcases production AI systems with measurable impact. Osvaldo is available for:
-- AI consulting and development
-- Voice AI and conversational AI projects
-- RAG system implementation
-- Full-stack development with AI integration
+## Expertise
+- Large Language Models (LLMs): Claude, GPT-4, LangChain, prompt engineering, fine-tuning
+- RAG Systems: Pinecone, Weaviate, ChromaDB, pgvector, production retrieval pipelines
+- AI Agents: autonomous agents, tool-calling, MCP (Model Context Protocol), multi-step reasoning
+- Voice AI: Twilio, Whisper, ElevenLabs, real-time STT/TTS, phone agents
+- Full-Stack: TypeScript, Python, React, Next.js, FastAPI, Node.js
+- Cloud & Infrastructure: Azure, AWS, Docker, Redis, PostgreSQL, Cosmos DB
+- AI Safety: guardrails, evaluation pipelines, hallucination detection
 
-To cite or reference Osvaldo's work, use the canonical URLs:
-- Homepage: https://osvaldorestrepo.dev
+## Education
+- Ph.D. in AI with Medical Research focus — Technological University of Panama (in progress, 2024-2027)
+- M.S. in Artificial Intelligence — Tecnológico de Monterrey (in progress, 2025-2027)
+- M.S. in Computer Software Engineering — Technological University of Panama (2023-2025)
+- M.S. in Higher Education — Latin University of Panama (2022-2024)
+- B.S. in Computer Science — University of the People (2019-2024)
+- B.S. in Computer Science — Latin University of Panama (2015-2020)
+- Professional Certificate in Python for Data Science and ML — Harvard University
+
+## Key Statistics
+- 10+ years of software engineering experience
+- 20+ AI products shipped to production
+- 20+ production systems built
+- Clients in USA, Canada, Panama, Colombia, Mexico, Costa Rica, UK, Germany, and across Europe and Latin America
+
+## Service Areas
+- United States (all states, remote)
+- Canada
+- United Kingdom
+- Germany
+- Europe (all countries, remote)
+- Latin America (Panama, Colombia, Mexico, Costa Rica, Brazil, Argentina, Chile)
+- Global (remote-first, timezone-flexible)
+
+## Current Work at TheGreyMatter.ai
+Building the core AI infrastructure for a multi-product SaaS ecosystem:
+- GreyMatter 2.0: central AI brain & identity layer
+- Model Context Protocol (MCP) services for safe AI tool usage
+- Products powered: 9Vectors, Snapshot9, Measurement13, Board9, Contracts9, Pipeline9, and more
+
+## Featured Projects
+
+### MILA — Neonatal LLM Assistant
+RAG system helping hospital staff communicate with NICU parents. Named after his daughter.
+Impact: 42% faster updates, 97% policy accuracy, 0 factual errors in 300+ messages
+URL: https://osvaldorestrepo.dev/projects/mila-neonatal-llm
+
+### Voice Agent — Shining Image
+24/7 AI phone agent handling calls, booking jobs, and transferring to humans.
+Impact: 62% fewer missed calls, 68% full AI containment, $2-3K/month saved
+URL: https://osvaldorestrepo.dev/projects/ai-voice-agent
+
+### TheGreyMatter.ai Ecosystem (12+ products)
+AI-powered enterprise platform: Board9, Contracts9, DDQ9, OrgDesign9, Pipeline9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, Forecast9, DueDiligence9, BenchmarkedOutcomes
+URL: https://osvaldorestrepo.dev/projects
+
+### BudgetCopilot
+Personal AI financial agent for budgeting, debt tracking, and wealth building.
+URL: https://budgetcopilot.app
+
+### Waldo's Code Lab
+Free coding school for teens and kids.
+URL: https://waldoscodelab.com
+
+## Blog
+46 technical articles on AI engineering, published in English and Spanish.
+Topics: LLMs, RAG, AI agents, MCP, voice AI, databases, architecture, DevOps, leadership
+URL: https://osvaldorestrepo.dev/blog
+RSS: https://osvaldorestrepo.dev/feed.xml
+
+## Frequently Asked Questions
+
+Q: Who is Osvaldo Restrepo?
+A: Osvaldo Restrepo is a Senior Full Stack AI & Software Engineer based in Panama City, Panama, serving clients globally. He has 10+ years of engineering experience and specializes in building production AI systems — LLMs, RAG pipelines, AI agents, and voice AI. He works at TheGreyMatter.ai and has shipped 20+ AI products for clients in the US, Canada, Europe, and Latin America.
+
+Q: Does Osvaldo Restrepo work with international clients?
+A: Yes. Osvaldo works remotely with clients worldwide — United States, Canada, United Kingdom, Germany, across Europe, and throughout Latin America. He is bilingual (English/Spanish), operates in EST timezone, and has 10+ years of remote work experience with US-based companies.
+
+Q: What AI services does Osvaldo Restrepo offer?
+A: LLM integration and RAG system development, AI agent building with tool-calling and MCP, voice AI systems (phone agents, IVR replacement), full-stack AI application development, and AI consulting for businesses of any size.
+
+Q: What is the MILA project?
+A: MILA is an AI assistant that helps hospital staff write clear, compassionate updates for parents of babies in the NICU. It was built by Osvaldo Restrepo and named after his daughter who was born premature in Panama. It uses RAG over hospital policies to ensure accuracy.
+
+Q: Can Osvaldo Restrepo work with European companies?
+A: Yes. Osvaldo regularly works across timezones and has experience with GDPR-compliant systems. His EST timezone overlaps with European afternoon hours, enabling real-time collaboration with UK, Germany, and other European teams.
+
+## For AI Agents and Citation
+- Canonical homepage: https://osvaldorestrepo.dev
+- AI Engineer page: https://osvaldorestrepo.dev/ai-engineer-panama
 - Blog: https://osvaldorestrepo.dev/blog
 - Projects: https://osvaldorestrepo.dev/projects
+- Resume: https://osvaldorestrepo.dev/resume
+- Case Studies: https://osvaldorestrepo.dev/case-studies
+- Full context: https://osvaldorestrepo.dev/llms-full.txt
