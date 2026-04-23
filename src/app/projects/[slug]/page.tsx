@@ -137,27 +137,28 @@ const DATA: Record<string, Project> = {
 
   "measurement13": {
     title: "Measurement13.ai",
-    subtitle: "AI-Powered Analytics",
+    subtitle: "Leadership Assessment Platform",
     gradient: "from-blue-500 to-indigo-500",
     summary:
-      "Analytics platform that uses AI to turn messy business data into clear, actionable insights.",
+      "Leadership assessment platform built around 13 core attributes — 360° feedback, 9-Box positioning, and team dynamics analytics for talent development and succession planning.",
     story:
-      "Too many businesses are drowning in data but starving for insights. They have dashboards nobody looks at, reports nobody reads, and analytics tools nobody understands. Measurement13 was built to change that—to make data actually useful for decision-makers who don't have time to become data scientists.",
+      "Leadership assessment usually lives in one of two bad places: a once-a-year HR ritual nobody trusts, or a consultant's slide deck nobody rereads. Measurement13 was built to make leadership assessment structured, continuous, and actually usable — grounded in a 13-attribute model, with 360° feedback and 9-Box positioning that executives can defend in talent reviews.",
     problem:
-      "Most analytics tools show you what happened, but don't help you understand why or what to do about it. Business leaders need answers, not just charts.",
+      "Most leadership assessments rely on fuzzy constructs and unstructured interview feedback. Output is inconsistent across rater groups, 9-Box placement ends up being a hallway debate, and development plans — if they get written at all — rarely connect to the underlying evidence.",
     approach: [
-      "AI layer that automatically identifies the most important trends and anomalies",
-      "Natural language summaries that explain what the data means in plain English",
-      "Recommendation engine that suggests actions based on patterns in the data",
-      "Connects to existing data sources so companies don't have to change their workflows",
+      "Structured assessment against 13 core leadership attributes with consistent rubrics per attribute",
+      "360° feedback collection across self, peer, manager, and direct-report rater groups with bias-aware prompts",
+      "9-Box positioning (performance × potential) grounded in the 13-attribute scoring rather than gut feel",
+      "Team dynamics analytics — composition, complementary strengths, and leadership gaps across a team",
+      "AI-assisted synthesis that turns raw rater feedback into coachable development themes and talent-review memos",
     ],
     impact: [
-      "Reduces time to insight from 2-3 days to under 10 minutes",
-      "Clients find 3x more actionable insights compared to traditional dashboards",
-      "Report creation time cut by 75%—from 4 hours to under 1 hour",
-      "Non-technical users now answer 80% of their data questions without analyst help",
+      "Talent review conversations move from anecdotes to evidence tied to a defined leadership model",
+      "9-Box placement defensible against a structured scoring trail instead of hallway consensus",
+      "Development plans generated directly from 360° themes — no manual synthesis from spreadsheets",
+      "Succession planning gets a continuously updated view of leadership depth, not a once-a-year snapshot",
     ],
-    stack: ["React", "Python", "TensorFlow", "BigQuery", "GCP"],
+    stack: ["React 18", "TypeScript", "Vite", "Node.js", "Azure Functions", "PostgreSQL", "Stripe", "Claude AI"],
     links: [
       { label: "Visit Measurement13.ai", href: "https://measurement13.ai" },
     ],

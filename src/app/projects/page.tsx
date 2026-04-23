@@ -182,12 +182,12 @@ const projects = [
   {
     slug: "measurement13",
     title: "Measurement13.ai",
-    subtitle: "AI-Powered Analytics",
+    subtitle: "Leadership Assessment Platform",
     description:
-      "Advanced measurement and analytics platform leveraging AI to transform raw data into actionable business insights. Built for organizations seeking precision in performance tracking.",
+      "Leadership assessment built around 13 core attributes — 360° feedback across rater groups, 9-Box positioning grounded in structured scoring, and team dynamics analytics for talent reviews and succession planning.",
     icon: BarChart3,
     gradient: "from-blue-500 to-indigo-500",
-    stack: ["React", "Python", "TensorFlow", "BigQuery", "GCP"],
+    stack: ["React 18", "TypeScript", "Vite", "Node.js", "Azure Functions", "PostgreSQL", "Claude AI"],
     external: "https://measurement13.ai",
   },
   {

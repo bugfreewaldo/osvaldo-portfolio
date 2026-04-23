@@ -281,9 +281,9 @@ const featuredProjects = [
   {
     slug: "measurement13",
     title: "Measurement13.ai",
-    subtitle: "AI-Powered Analytics",
-    description: "Advanced measurement and analytics platform leveraging AI to transform raw data into actionable insights.",
-    tags: ["Analytics", "AI", "SaaS"],
+    subtitle: "Leadership Assessment",
+    description: "Leadership assessment across 13 core attributes — 360° feedback, 9-Box positioning, and team dynamics analytics for talent reviews and succession planning.",
+    tags: ["Leadership", "360° Feedback", "Talent"],
     metric: "Enterprise",
     external: "https://measurement13.ai",
   },

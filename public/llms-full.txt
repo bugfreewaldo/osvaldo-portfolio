@@ -123,7 +123,7 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 4. TheGreyMatter.ai — Central AI Platform / GreyMatter 3.0 backbone (https://thegreymatter.ai)
 5. 9Vectors.ai — Strategic Assessment (https://9vectors.ai)
 6. Snapshot9.ai — Business Transformation (https://snapshot9.ai)
-7. Measurement13.ai — AI Analytics (https://measurement13.ai)
+7. Measurement13.ai — Leadership Assessment: 13 core attributes, 360° feedback, 9-Box positioning (https://measurement13.ai)
 8. Board9.ai — Board Operating System
 9. Contracts9.ai — Contract Lifecycle Intelligence
 10. DDQ9.ai — Due Diligence Questionnaire
