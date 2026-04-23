@@ -1,0 +1,113 @@
+---
+title: "Por Qué Tu Primera Feature de IA Debe Ser de Solo Lectura"
+description: "La forma más rápida de llevar IA a un producto real sin perder confianza es empezar con algo que la IA no pueda romper. Un argumento corto a favor de solo-lectura como default, con las cuatro preguntas que hago antes de darle a una herramienta acceso de escritura."
+date: 2026-04-15
+published: true
+category: "Ingeniería de IA"
+tags: ["Agentes de IA", "Producto", "Seguridad", "MCP", "Tool Use"]
+author: "Osvaldo Restrepo"
+translationOf: "first-ai-feature-should-be-read-only"
+tldr: "No lances features de IA que puedan modificar estado como tu primera feature de IA. Empieza con una capacidad de solo lectura — buscar, resumir, explicar, consultar — porque el peor modo de falla es 'respuesta incorrecta', nunca 'acción incorrecta'. Una vez que el equipo confíe en la capa de retrieval y tengas buena telemetría, gradúa herramientas a acceso de escritura una a la vez, cada una gateada por una pregunta clara: ¿es reversible, está logueada, está aprobada, tiene rate limit?"
+faqs:
+  - question: "¿No es aburrido solo-lectura para demostrar?"
+    answer: "Una feature de solo-lectura bien alcanzada — 'pregunta lo que sea sobre nuestros clientes, jalado en vivo del CRM' — no es ni aburrida ni fácil. El hecho de que se vea simple desde afuera es el punto. Tus stakeholders deben sentir que la magia está en la respuesta, no en el riesgo."
+  - question: "¿Cuánto debe durar la fase de solo-lectura?"
+    answer: "Lo suficiente para que confíes en tus métricas de retrieval y en tu audit log. Usualmente son de cuatro a ocho semanas de uso real con un grupo pequeño de usuarios. Si no tienes un dashboard de calidad de retrieval para el final de esa ventana, no estás listo para acceso de escritura — punto."
+  - question: "¿Y los flujos agénticos que necesitan tomar acciones?"
+    answer: "Igual empiezan en solo-lectura. Haz que el agente describa la acción que tomaría, la loguee, y deja que un humano haga click en 'ejecutar'. Una vez que tengas una semana de esos logs y sean aburridos, gradúas la herramienta a ejecutar. La etapa de human-in-the-loop no es un desvío; es la fase de recolección de datos."
+relatedPosts: ["building-ai-agents-production", "mcp-model-context-protocol-guide", "responsible-ai-ethical-ml-systems"]
+---
+
+El patrón que veo más seguido en revisiones de producto de IA: un equipo se emociona con lo que puede hacer el modelo, lanza una feature que puede crear, actualizar o borrar algo real, y luego pasa el siguiente trimestre explicándole un edge case raro al equipo de legal.
+
+El patrón que recomiendo en cambio: lanza una feature de solo-lectura primero. Siempre.
+
+## La Asimetría
+
+Los LLMs fallan en dos formas. Producen respuestas incorrectas, y producen acciones incorrectas con confianza. Esas fallas tienen radios de explosión muy diferentes.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│           Asimetría de Modos de Falla                      │
+├───────────────────────────────────────────────────────────┤
+│                                                            │
+│   Feature de solo-lectura falla:                           │
+│     → El usuario ve una respuesta incorrecta              │
+│     → Pregunta otra vez, o lee la fuente, o se encoge     │
+│     → Arreglas el prompt / retrieval                       │
+│     → Radio de explosión: una conversación                 │
+│                                                            │
+│   Feature de escritura falla:                              │
+│     → El agente actualiza el registro incorrecto          │
+│     → Se envía email a la lista equivocada                │
+│     → Se emite reembolso por 10x el monto                 │
+│     → Radio de explosión: todo downstream + compliance    │
+│                                                            │
+└───────────────────────────────────────────────────────────┘
+```
+
+Una respuesta incorrecta es vergonzosa. Una acción incorrecta es un ticket, un rollback, un correo al cliente, a veces un regulador. Puedes absorber respuestas incorrectas durante la fase de "¿esto es útil?" de un producto. No puedes absorber acciones incorrectas.
+
+Empezar solo-lectura te compra los datos de evaluación que necesitas — sin arriesgar lo que a la empresa realmente le importa.
+
+## Qué Significa "Solo Lectura" en Realidad
+
+Solo-lectura no es solamente "la herramienta no tiene un `DELETE` adentro". Es una postura de diseño que aplica en cada capa:
+
+- **Capa de datos**: las credenciales que tiene tu IA no pueden mutar nada. Usa un usuario de DB separado con grants solo de `SELECT`.
+- **Capa de API**: las herramientas que expones devuelven datos, no efectos secundarios. Sin wrappers de `POST`, `PATCH` o `DELETE`.
+- **Capa de infra**: los rate limits son por query, no por mutación, porque no hay mutaciones.
+- **Capa social**: la feature se comercializa como "pregunta" o "busca", no "haz". Las expectativas del usuario definen el radio de explosión.
+
+<Callout type="tip" title="Solo-Lectura ≠ Sin Estado">
+Tu IA puede recordar, loguear y personalizar — esas son todas escrituras, pero a *su propio* estado. Solo-lectura significa que no puede modificar el estado del negocio. El historial de chat es tuyo; el plan de suscripción del cliente no lo es.
+</Callout>
+
+## Las Cuatro Preguntas Antes del Acceso de Escritura
+
+Eventualmente quieres dejar que la IA *haga* cosas. Antes de que cualquier herramienta gradúe de lectura a escritura, hago cuatro preguntas. Si la respuesta a cualquiera es "todavía no", la herramienta se queda en solo-lectura.
+
+### 1. ¿Es reversible?
+
+¿Puede un humano deshacer esta acción en menos de cinco minutos, sin soporte de ingeniería? Agregar una nota a un registro: sí. Enviar un email: no. Procesar un reembolso: depende de cómo funcione tu sistema de finanzas.
+
+Las herramientas irreversibles necesitan un paso de human-in-the-loop *permanentemente*, no solo durante el piloto.
+
+### 2. ¿Está logueada?
+
+Cada escritura necesita un registro de auditoría estructurado antes de ejecutarse, incluyendo el prompt que la disparó, los argumentos del tool call, el usuario en el loop, y el resultado. Si el schema del log no existe, la herramienta no se lanza.
+
+### 3. ¿Está aprobada?
+
+¿Quién, específicamente, hizo click en el botón que causó esta acción? "El agente decidió" no es un aprobador. Durante los primeros meses de acceso de escritura, la respuesta siempre debe ser un humano con nombre — aunque la UI haga la aprobación un solo tap.
+
+### 4. ¿Tiene rate limit?
+
+No solo globalmente, sino por usuario y por herramienta. Los peores incidentes de IA que he visto no fueron una mala acción — fueron una mala acción repetida 8,000 veces en un loop antes de que alguien lo notara. Los rate limits convierten desastres en anomalías.
+
+<Callout type="warning" title="El Problema del Loop">
+Los modelos reintentan. Los agentes encadenan. Un agente que malinterpreta un mensaje de error y decide "intentar de nuevo" puede ejecutar la misma escritura cientos de veces en un minuto. Un rate limit por herramienta es seguro barato. Un circuit breaker que dispara en calls idénticos repetidos es más barato aún.
+</Callout>
+
+## Qué Pierdes Empezando Solo-Lectura
+
+Casi nada. Lanzas un par de semanas después, y le dices a tu stakeholder más ambicioso que el agente aún no puede tomar acciones en el sistema de registro. A cambio, obtienes:
+
+- Datos de uso real que te dicen qué acciones los usuarios *realmente* querían que tomara la IA.
+- Un baseline de calidad de retrieval que puedes señalar cuando algo regrese.
+- Un patrón de audit trail ya cableado, que es la parte difícil de la fase de escritura de todas formas.
+- Un equipo — incluyendo legal y seguridad — que confía en la cadencia del rollout.
+
+Cada uno de esos vale más que las dos semanas.
+
+## El Camino de Graduación
+
+Cuando gradúo una herramienta de lectura a escritura, pasa por tres gates:
+
+1. **Describe-only**: el agente puede describir la acción que tomaría, pero no puede ejecutarla. Un humano hace click para confirmar. Los logs capturan tanto la descripción como la decisión.
+2. **Ejecuta-con-aprobación**: el agente ejecuta después de que un humano con nombre aprueba en la UI. Rate limits y audit logs están en vivo. Corre al menos dos semanas.
+3. **Autónomo dentro de límites**: el agente ejecuta sin aprobación, pero solo para acciones bajo un umbral de riesgo especificado — montos pequeños, registros de bajo impacto, operaciones reversibles. Las acciones de mayor riesgo se quedan en el gate 2 indefinidamente.
+
+La mayoría de las herramientas vive feliz en el gate 2 para siempre. Eso no es un fracaso. Eso es un producto bien diseñado.
+
+La versión aburrida de la IA — la que ayuda sin sorprender a nadie — es la que se lanza, se mantiene en pie, y sigue creciendo. Empieza solo-lectura. Gana el acceso de escritura.

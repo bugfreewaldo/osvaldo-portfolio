@@ -1,0 +1,115 @@
+---
+title: "La Auditoría Diaria de Prompts de 5 Minutos: Mantén los Costos de LLM Bajo Control"
+description: "Un ritual diario ligero que atrapa el inflado de tokens, prompts rotos y regresiones silenciosas antes de que aparezcan en la factura. Qué reviso, en qué orden, y por qué solo toma cinco minutos."
+date: 2026-04-08
+published: true
+category: "Ingeniería de IA"
+tags: ["LLM", "Optimización de Costos", "Observabilidad", "Prompt Engineering", "Operaciones"]
+author: "Osvaldo Restrepo"
+translationOf: "daily-prompt-audit-llm-cost-control"
+tldr: "Trata tu gasto en LLMs como un sistema pequeño y ruidoso que necesita un pulso diario. Cada mañana dedico cinco minutos a cuatro dashboards: tokens por request, tasa de cache hit, tasa de reintentos, y costo por resultado exitoso. Cuando cualquiera de esos se desvía más de 15% respecto a ayer, abro un issue antes del almuerzo. Este hábito me ha salvado de tres sorpresas de seis cifras en el último año — todas causadas por cambios pequeños que parecían inofensivos en el diff."
+faqs:
+  - question: "¿Por qué cinco minutos? ¿Por qué no una revisión semanal?"
+    answer: "Los problemas de costo de LLM se acumulan diariamente. Un prompt que agrega 2,000 tokens extra por request se ve bien en una gráfica durante una semana y después se convierte en un item en la reunión de finanzas. Los chequeos diarios atrapan la desviación antes de que se acumule."
+  - question: "¿Cuál es la métrica más valiosa para trackear?"
+    answer: "Costo por resultado exitoso, no costo por request. Un 'resultado exitoso' es lo que sea que le importe a tu producto — un ticket resuelto, un borrador aprobado, un flujo completado. Las métricas a nivel de token te dicen qué cambió; las métricas de resultado te dicen si importa."
+  - question: "¿Necesito una herramienta de observabilidad sofisticada para esto?"
+    answer: "No. Una hoja de cálculo alimentada por un cron nocturno funciona. La herramienta importa mucho menos que el ritual de mirar los números cada día. Yo empecé con cuatro queries SQL y un mensaje de Slack antes de tocar una plataforma dedicada."
+relatedPosts: ["prompt-engineering-production-llms", "claude-md-token-management", "llm-evaluation-pipelines"]
+---
+
+Cada producto con LLM que he lanzado tiene la misma historia: funciona bien por unas semanas, alguien ajusta un prompt o agrega una herramienta, y tres lunes después el equipo de finanzas hace una pregunta incómoda en Slack. El diff siempre parecía inofensivo. La factura no.
+
+Lo arreglé con un ritual de cinco minutos que hago antes de mi primer café.
+
+## El Ritual
+
+Cuatro números. Comparados contra ayer. Eso es todo.
+
+1. **Tokens por request (input y output, separados)**
+2. **Tasa de cache hit** — para prompt caching o cache semántico
+3. **Tasa de reintentos** — cuántas veces el primer call falló validación o parseo
+4. **Costo por resultado exitoso** — en la unidad que tu producto define
+
+Si cualquiera de estos se desvía más del 15% respecto a ayer, abro un issue antes del almuerzo. Por debajo del 15% es ruido; por encima es una señal.
+
+<Callout type="tip" title="La Regla del 15%">
+Quince por ciento no es un umbral científico — es uno conductual. Es la desviación más pequeña que puedo notar consistentemente sin falsos positivos por variación normal de tráfico. Elige tu propio número después de observar las métricas por dos semanas.
+</Callout>
+
+## Qué Te Dice Cada Número
+
+### Tokens por request
+
+Este es el canario. Un edit al prompt, un nuevo few-shot, un context window más grande — todos aparecen aquí primero. Input tokens subiendo usualmente significa que alguien agregó contexto. Output tokens subiendo usualmente significa que el modelo se volvió más parlanchín, lo que a menudo significa que el prompt dejó de restringirlo bien.
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Tokens por request — qué significa la desviación   │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  Input sube, output igual   → prompts/context       │
+│                               más grandes            │
+│  Input igual, output sube   → modelo explicando     │
+│                               de más                 │
+│  Ambos suben juntos         → alguien "mejoró" el   │
+│                               prompt el fin de      │
+│                               semana                 │
+│  Input baja, output sube    → el contexto se cortó, │
+│                               el modelo llena huecos│
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Tasa de cache hit
+
+Si estás usando prompt caching (y deberías, para cualquier cosa con system prompt estable), tu hit rate te dice si el borde de tu cache está saludable. Una caída usualmente significa que algo dinámico se coló en lo que debería ser un prefijo estático — un timestamp, un user ID, un `Date.now()` en un template.
+
+He visto cache hit rates caer de 94% a 11% porque alguien interpoló la hora actual en un system prompt "para debuggear." Eso costó cerca de $4,000 antes de que alguien lo notara.
+
+### Tasa de reintentos
+
+Parses fallidos, violaciones de schema, rechazos de guardrails. Cada reintento es un request completo que pagaste y tiraste. Una tasa de reintentos subiendo es a menudo la primera señal de que una versión del modelo cambió sin avisar, o que un prompt se desvió del schema de output que solía producir de forma confiable.
+
+<Callout type="warning" title="Los Reintentos Son Invisibles en el Happy Path">
+Tus usuarios pueden no notar los reintentos porque el segundo call usualmente funciona. Tu factura sí los nota. Siempre loguea los reintentos como una métrica de primera clase, no como un detalle de implementación de tu cliente.
+</Callout>
+
+### Costo por resultado exitoso
+
+Esta es la única métrica que le importa al negocio. Todo lo de arriba es un indicador líder; esta es la que realmente tienes que defender.
+
+Define "resultado exitoso" en el borde del producto: un ticket resuelto sin escalación, un borrador aprobado sin ediciones, un flujo que llegó al final. Luego divide el gasto total en LLM entre ese conteo. Si este número está estable o bajando mientras crece el tráfico, estás ganando. Si está subiendo, algo upstream está mal aunque el modelo se esté comportando bien.
+
+## El Setup Mínimo Viable
+
+No necesitas una plataforma. Necesitas una query y un lugar para poner la respuesta.
+
+```sql
+-- Query de auditoría diaria de prompts (simplificada)
+SELECT
+  date_trunc('day', created_at) AS day,
+  endpoint,
+  avg(input_tokens) AS avg_input,
+  avg(output_tokens) AS avg_output,
+  sum(case when cache_hit then 1 else 0 end)::float
+    / count(*) AS cache_hit_rate,
+  sum(case when retry_count > 0 then 1 else 0 end)::float
+    / count(*) AS retry_rate,
+  sum(cost_usd) / sum(case when outcome = 'success' then 1 else 0 end)
+    AS cost_per_success
+FROM llm_requests
+WHERE created_at > now() - interval '2 days'
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
+
+Manda el output a Slack a las 7am. Léelo con tu café. Si algo está raro, abre un issue con el delta en el título para que tu yo futuro pueda encontrarlo.
+
+## Por Qué Funciona
+
+La mayoría de los desastres de costo de LLM que he visto no fueron causados por malas decisiones. Fueron causados por pequeñas decisiones razonables tomadas sin un feedback loop. Alguien agrega un ejemplo útil a un prompt. Alguien interpola un valor de debug en un system message. Alguien apaga el caching mientras prueba y olvida prenderlo de vuelta.
+
+Un ritual diario de cinco minutos es más barato que cualquier plataforma de observabilidad y atrapa el 90% de estos. El 10% restante es para lo que existe la plataforma — y para entonces sabrás exactamente qué necesitas de ella.
+
+La disciplina es la herramienta. El dashboard es solo donde lo escribes.

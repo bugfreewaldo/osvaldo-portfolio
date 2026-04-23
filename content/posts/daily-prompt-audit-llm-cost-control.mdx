@@ -1,0 +1,111 @@
+---
+title: "The 5-Minute Daily Prompt Audit: Keeping LLM Costs Under Control"
+description: "A lightweight daily ritual that catches token bloat, broken prompts, and quiet regressions before they show up on the invoice. What I look at, in what order, and why it only takes five minutes."
+date: 2026-04-08
+published: true
+category: "AI Engineering"
+tags: ["LLM", "Cost Optimization", "Observability", "Prompt Engineering", "Operations"]
+author: "Osvaldo Restrepo"
+tldr: "Treat your LLM spend like a small, noisy system that needs a daily pulse check. Every morning I spend five minutes on four dashboards: tokens per request, cache hit rate, retry rate, and cost per successful outcome. When any of those drift more than 15% from yesterday, I open an issue before lunch. This habit has saved me from three six-figure surprises in the last year — all caused by small changes that looked harmless in the diff."
+faqs:
+  - question: "Why five minutes? Why not a weekly review?"
+    answer: "LLM cost problems compound daily. A prompt that adds 2,000 extra tokens per request looks fine on a sparkline for a week and then becomes a line-item in the finance meeting. Daily pulse checks catch the drift before it compounds."
+  - question: "What's the single most valuable metric to track?"
+    answer: "Cost per successful outcome, not cost per request. A 'successful outcome' is whatever your product cares about — a resolved ticket, an approved draft, a completed workflow. Token-level metrics tell you what changed; outcome metrics tell you if it matters."
+  - question: "Do I need a fancy observability tool for this?"
+    answer: "No. A spreadsheet fed by a nightly cron job works. The tool matters much less than the ritual of looking at the numbers every day. I started with four SQL queries and a Slack message before I ever touched a dedicated platform."
+relatedPosts: ["prompt-engineering-production-llms", "claude-md-token-management", "llm-evaluation-pipelines"]
+---
+
+Every LLM-backed product I've shipped has had the same story: it runs fine for a few weeks, someone tweaks a prompt or adds a tool, and three Mondays later the finance team asks a pointed question in Slack. The diff was always harmless-looking. The invoice was not.
+
+I fixed this with a five-minute ritual I do before my first coffee.
+
+## The Ritual
+
+Four numbers. Compared against yesterday. That's it.
+
+1. **Tokens per request (input and output, separated)**
+2. **Cache hit rate** — for prompt caching or semantic cache
+3. **Retry rate** — how often the first call failed validation or parsing
+4. **Cost per successful outcome** — in whatever unit your product defines
+
+If any of these drifts by more than about 15% from yesterday, I open an issue before lunch. Below 15% is noise; above 15% is a signal.
+
+<Callout type="tip" title="The 15% Rule">
+Fifteen percent is not a scientific threshold — it's a behavioral one. It's the smallest drift I can reliably notice without false positives from normal traffic variance. Pick your own number after watching the metrics for two weeks.
+</Callout>
+
+## What Each Number Tells You
+
+### Tokens per request
+
+This is the canary. A prompt edit, a new few-shot example, a bigger context window — they all show up here first. Input tokens rising usually means someone added context. Output tokens rising usually means the model is being chattier, which often means the prompt stopped constraining it well.
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Tokens per request — what drift means              │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  Input up, output flat    → bigger prompts/context  │
+│  Input flat, output up    → model over-explaining   │
+│  Both up together         → someone "improved" the  │
+│                             prompt over the weekend │
+│  Input down, output up    → context got truncated,  │
+│                             model is filling gaps   │
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Cache hit rate
+
+If you're using prompt caching (and you should be, for anything with a stable system prompt), your hit rate tells you whether your cache boundary is healthy. A drop usually means something dynamic snuck into what should be a static prefix — a timestamp, a user ID, a `Date.now()` in a template.
+
+I've seen cache hit rates drop from 94% to 11% because someone interpolated the current time into a system prompt "for debugging." That one cost about $4,000 before anyone noticed.
+
+### Retry rate
+
+Failed parses, schema violations, guardrail rejections. Every retry is a full request you paid for and threw away. A rising retry rate is often the first sign that a model version changed under you, or that a prompt drifted away from the output schema it used to produce reliably.
+
+<Callout type="warning" title="Retries Are Invisible in the Happy Path">
+Your users might not notice retries because the second call usually works. Your invoice will notice. Always log retries as a first-class metric, not as an implementation detail of your client.
+</Callout>
+
+### Cost per successful outcome
+
+This is the only metric that matters to the business. Everything above is a leading indicator; this is the one you actually have to defend.
+
+Define "successful outcome" at the product boundary: a ticket resolved without escalation, a draft approved without edits, a workflow that made it to the end. Then divide total LLM spend by that count. If this number is flat or falling while traffic grows, you're winning. If it's climbing, something upstream is wrong even if the model is behaving.
+
+## The Minimum Viable Setup
+
+You don't need a platform. You need a query and a place to put the answer.
+
+```sql
+-- Daily prompt audit query (simplified)
+SELECT
+  date_trunc('day', created_at) AS day,
+  endpoint,
+  avg(input_tokens) AS avg_input,
+  avg(output_tokens) AS avg_output,
+  sum(case when cache_hit then 1 else 0 end)::float
+    / count(*) AS cache_hit_rate,
+  sum(case when retry_count > 0 then 1 else 0 end)::float
+    / count(*) AS retry_rate,
+  sum(cost_usd) / sum(case when outcome = 'success' then 1 else 0 end)
+    AS cost_per_success
+FROM llm_requests
+WHERE created_at > now() - interval '2 days'
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+```
+
+Ship the output to Slack at 7am. Read it with your coffee. If something's off, open an issue with the delta in the title so your future self can find it.
+
+## Why This Works
+
+Most LLM cost disasters I've seen were not caused by bad decisions. They were caused by small, reasonable decisions made without a feedback loop. Someone adds a helpful example to a prompt. Someone interpolates a debug value into a system message. Someone turns off caching while testing and forgets to turn it back on.
+
+A five-minute daily ritual is cheaper than any observability platform and catches 90% of these. The remaining 10% is what the platform is for — and by then you'll know exactly what you need from it.
+
+The discipline is the tool. The dashboard is just where you write it down.

@@ -1,0 +1,104 @@
+---
+title: "Small Commits, Deep Reviews: Cutting PR Fatigue Without Slowing Down"
+description: "How I keep code review a useful practice instead of a chore — by shrinking the unit of change, making the review context obvious, and being strict about what the PR is not for."
+date: 2026-04-22
+published: true
+category: "Software Engineering"
+tags: ["Code Review", "Git", "Engineering Practice", "Productivity", "Team"]
+author: "Osvaldo Restrepo"
+tldr: "Most review fatigue is a symptom of PRs that are too big and too vague. I keep mine small by default: one commit per idea, one PR per reviewable unit, and a description that tells the reviewer what not to look at. The payoff isn't faster reviews — it's deeper ones. Small PRs let reviewers focus on correctness and intent instead of scanning for landmines, which is the only reason code review is worth doing at all."
+faqs:
+  - question: "What's the right size for a PR?"
+    answer: "As small as still makes sense on its own. I aim for under 400 lines of real diff — excluding generated files, lockfiles, and snapshot updates. If a change doesn't fit, it's almost always two changes wearing a trench coat."
+  - question: "Doesn't this just move the overhead from review to PR management?"
+    answer: "A little, at first. The overhead of opening a second PR is about 90 seconds once you have the muscle memory. The overhead of a reviewer mentally holding 900 lines in their head while checking for subtle bugs is enormous and silent. The trade is always worth it."
+  - question: "What about refactors? Those touch a lot of files by nature."
+    answer: "Refactors get a stricter rule, not a looser one. A refactor PR should change many files in exactly one way (rename, signature change, extract function). If it changes multiple files in multiple ways, it's a refactor and a feature, and it needs to be two PRs."
+relatedPosts: ["ci-cd-pipeline-design", "technical-debt-strategic-guide", "soft-skills-fast-paced-engineering"]
+---
+
+Code review is the best practice in software engineering that people most want to skip. Every team I've worked with has complained about it at some point: reviews pile up, reviewers skim, authors wait, and the one regression that actually mattered ships anyway.
+
+The root cause is almost never laziness. It's that the unit of review has quietly gotten bigger over time, and the only viable human response to a 1,200-line PR is to skim it.
+
+## What Makes a Review Deep
+
+A deep review is one where the reviewer actually changes their mental model because of what they read. They understand not just *what* the diff does but *why*, and they form an opinion that's worth something. That only happens when three conditions hold:
+
+1. The diff fits in their head.
+2. The change is about one thing.
+3. The description tells them what to focus on.
+
+Break any of those and you're paying for a review process but not getting one. You're getting approvals.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│       PR Size vs. Review Quality (from experience)         │
+├───────────────────────────────────────────────────────────┤
+│                                                            │
+│   < 50 lines      → deep, fast, occasionally nitpicky     │
+│   50–200 lines    → deep, substantive, finds real bugs    │
+│   200–400 lines   → shallow in places, hits the intent    │
+│   400–800 lines   → skimmed; style comments only          │
+│   > 800 lines     → LGTM with a prayer                    │
+│                                                            │
+└───────────────────────────────────────────────────────────┘
+```
+
+Nobody admits to "LGTM with a prayer," but every reviewer has done it. The PR was too big, the week was too busy, and approving felt like the lowest-risk option.
+
+## The Three Rules
+
+I use three rules to keep the unit of review small. None of them are original. All of them are underused.
+
+### Rule 1: One commit per idea
+
+A commit is the smallest unit that makes sense on its own — it has a message, a diff, and a complete thought. If you can't describe a commit without the word "and," split it.
+
+This matters more than it sounds, because the diff you eventually push is the sum of your commits. If every commit is one idea, the PR is naturally a list of ideas, and the reviewer can read them in order. If your commits are a mess of "wip," "fix," and "address review comments," the reviewer has to reconstruct the thinking from the final diff alone, which is much harder.
+
+<Callout type="tip" title="The Rebase Moment">
+Before opening a PR, I interactively rebase to squash fix-ups and reorder commits so they tell a story. That five-minute step is the single biggest lever I have on review quality — and it costs me almost nothing.
+</Callout>
+
+### Rule 2: One PR per reviewable unit
+
+A reviewable unit is the smallest change that can ship independently and still make sense. Not the smallest change you can imagine — the smallest change that delivers value or sets up the next one.
+
+Concretely: adding a new endpoint and using it in the UI is two PRs. The endpoint can ship behind a feature flag, be reviewed for correctness, and get merged. The UI change is then a reviewable diff against a stable API. Bundling them forces the reviewer to hold two mental models at once and usually hides bugs in the seam between them.
+
+### Rule 3: The description tells the reviewer what not to look at
+
+The most undervalued section of a PR description is the list of things the reviewer should skip. Generated code, mechanical renames, dependency bumps, copy changes. Call them out explicitly so the reviewer's attention goes to the code that actually needs thought.
+
+A good PR description has three short sections:
+
+```
+## What
+One sentence. No jargon. The reader should know what problem this solves.
+
+## Why this shape
+Two or three sentences on alternatives considered and why this won. Skip if obvious.
+
+## Where to focus
+"The logic change is in `src/billing/refund.ts`. Everything else is a
+rename from `amount` to `amountCents`. Skim the rest."
+```
+
+<Callout type="warning" title="Descriptions Are Not Optional">
+A PR with no description is asking the reviewer to reverse-engineer your intent from the diff. That's expensive, it's error-prone, and it's the single biggest cause of shallow reviews I've seen. If you don't have time to write three sentences, you don't have time for the review cycle.
+</Callout>
+
+## What This Is Not For
+
+Small PRs are not a replacement for design review. If a change has architectural implications, it needs to be discussed before the diff exists, not during the review. The PR is where you check the *execution* of a decision, not where you make it.
+
+Likewise, small PRs don't help if the underlying work is poorly scoped. A feature that should take a week is not easier to review when it's split into twelve PRs that each depend on the next. That's a scoping problem, not a review problem, and the answer is to rethink the feature, not to carve the diff thinner.
+
+## The Payoff
+
+The measurable payoff is boring: PRs get merged faster, reviewers feel less drained, regressions go down. The real payoff is harder to measure and more important: code review becomes something the team values again.
+
+A reviewer on a 50-line PR can say "this is cleaner if you move the check into the validator" and have a real conversation. A reviewer on a 900-line PR can only say "looks good" or "this is too big to review" — and the first one happens way more often than it should.
+
+Shrink the unit. The reviews will take care of themselves.

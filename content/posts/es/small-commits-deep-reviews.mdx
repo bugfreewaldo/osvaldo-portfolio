@@ -1,0 +1,106 @@
+---
+title: "Commits Pequeños, Reviews Profundos: Reducir la Fatiga de PRs Sin Frenar el Equipo"
+description: "Cómo mantengo el code review como una práctica útil en lugar de una carga — reduciendo la unidad de cambio, haciendo el contexto obvio, y siendo estricto con lo que el PR no es."
+date: 2026-04-22
+published: true
+category: "Ingeniería de Software"
+tags: ["Code Review", "Git", "Práctica de Ingeniería", "Productividad", "Equipo"]
+author: "Osvaldo Restrepo"
+translationOf: "small-commits-deep-reviews"
+tldr: "La mayor parte de la fatiga de review es síntoma de PRs demasiado grandes y vagos. Los míos los mantengo pequeños por default: un commit por idea, un PR por unidad revisable, y una descripción que le dice al reviewer qué no mirar. La ganancia no es reviews más rápidos — son más profundos. Los PRs pequeños dejan que los reviewers se enfoquen en corrección e intención en lugar de escanear por minas, que es la única razón por la que el code review vale la pena."
+faqs:
+  - question: "¿Cuál es el tamaño correcto de un PR?"
+    answer: "Tan pequeño como pueda ser y aún tener sentido por sí solo. Apunto a menos de 400 líneas de diff real — excluyendo archivos generados, lockfiles y actualizaciones de snapshots. Si un cambio no cabe, casi siempre son dos cambios disfrazados de uno."
+  - question: "¿Esto no mueve el overhead de revisión a gestión de PRs?"
+    answer: "Un poco, al principio. El overhead de abrir un segundo PR es como 90 segundos una vez que tienes la memoria muscular. El overhead de un reviewer manteniendo 900 líneas en su cabeza mientras busca bugs sutiles es enorme y silencioso. El trade siempre vale la pena."
+  - question: "¿Y los refactors? Esos tocan muchos archivos por naturaleza."
+    answer: "Los refactors tienen una regla más estricta, no más flexible. Un PR de refactor debe cambiar muchos archivos en exactamente una forma (rename, cambio de firma, extract function). Si cambia múltiples archivos en múltiples formas, es un refactor y una feature, y necesita ser dos PRs."
+relatedPosts: ["ci-cd-pipeline-design", "technical-debt-strategic-guide", "soft-skills-fast-paced-engineering"]
+---
+
+El code review es la mejor práctica en ingeniería de software que la gente más quiere saltarse. Cada equipo con el que he trabajado se ha quejado de esto en algún punto: los reviews se acumulan, los reviewers los ojean, los autores esperan, y la única regresión que realmente importaba se lanza de todas formas.
+
+La causa raíz casi nunca es flojera. Es que la unidad de review se fue haciendo más grande con el tiempo, y la única respuesta humana viable a un PR de 1,200 líneas es ojearlo.
+
+## Qué Hace que un Review Sea Profundo
+
+Un review profundo es uno en el que el reviewer realmente cambia su modelo mental por lo que leyó. Entiende no solo *qué* hace el diff sino *por qué*, y forma una opinión que vale algo. Eso solo pasa cuando se cumplen tres condiciones:
+
+1. El diff le cabe en la cabeza.
+2. El cambio trata de una sola cosa.
+3. La descripción le dice en qué enfocarse.
+
+Rompe cualquiera de esas y estás pagando por un proceso de review pero no lo estás obteniendo. Estás obteniendo aprobaciones.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│     Tamaño de PR vs. Calidad de Review (por experiencia)   │
+├───────────────────────────────────────────────────────────┤
+│                                                            │
+│   < 50 líneas     → profundo, rápido, a veces quisquilloso│
+│   50–200 líneas   → profundo, sustantivo, encuentra bugs  │
+│   200–400 líneas  → superficial a ratos, llega a la idea  │
+│   400–800 líneas  → ojeado; solo comentarios de estilo    │
+│   > 800 líneas    → LGTM y una oración                    │
+│                                                            │
+└───────────────────────────────────────────────────────────┘
+```
+
+Nadie admite "LGTM y una oración", pero cada reviewer lo ha hecho. El PR era muy grande, la semana estaba muy ocupada, y aprobar se sentía como la opción de menor riesgo.
+
+## Las Tres Reglas
+
+Uso tres reglas para mantener pequeña la unidad de review. Ninguna es original. Todas están subutilizadas.
+
+### Regla 1: Un commit por idea
+
+Un commit es la unidad más pequeña que tiene sentido por sí sola — tiene un mensaje, un diff, y un pensamiento completo. Si no puedes describir un commit sin la palabra "y", divídelo.
+
+Esto importa más de lo que suena, porque el diff que eventualmente pusheas es la suma de tus commits. Si cada commit es una idea, el PR es naturalmente una lista de ideas, y el reviewer puede leerlas en orden. Si tus commits son un desastre de "wip", "fix", y "address review comments", el reviewer tiene que reconstruir el pensamiento desde el diff final solo, que es mucho más difícil.
+
+<Callout type="tip" title="El Momento del Rebase">
+Antes de abrir un PR, hago un rebase interactivo para hacer squash de los fix-ups y reordenar commits para que cuenten una historia. Esos cinco minutos son la mayor palanca que tengo sobre calidad de review — y casi no me cuestan nada.
+</Callout>
+
+### Regla 2: Un PR por unidad revisable
+
+Una unidad revisable es el cambio más pequeño que puede lanzarse independientemente y aún tener sentido. No el cambio más pequeño que puedas imaginar — el cambio más pequeño que entrega valor o prepara el siguiente.
+
+Concretamente: agregar un endpoint nuevo y usarlo en la UI son dos PRs. El endpoint puede lanzarse detrás de un feature flag, ser revisado por corrección, y mergearse. El cambio de UI es entonces un diff revisable contra un API estable. Juntarlos fuerza al reviewer a sostener dos modelos mentales a la vez y usualmente esconde bugs en la costura entre ellos.
+
+### Regla 3: La descripción le dice al reviewer qué no mirar
+
+La sección más subvalorada de una descripción de PR es la lista de cosas que el reviewer debe saltarse. Código generado, renames mecánicos, bumps de dependencias, cambios de copy. Llámalos explícitamente para que la atención del reviewer vaya al código que realmente necesita pensamiento.
+
+Una buena descripción de PR tiene tres secciones cortas:
+
+```
+## Qué
+Una oración. Sin jerga. El lector debe saber qué problema resuelve esto.
+
+## Por qué esta forma
+Dos o tres oraciones sobre alternativas consideradas y por qué ganó esta.
+Saltar si es obvio.
+
+## Dónde enfocar
+"El cambio de lógica está en `src/billing/refund.ts`. Todo lo demás es
+un rename de `amount` a `amountCents`. Ojea el resto."
+```
+
+<Callout type="warning" title="Las Descripciones No Son Opcionales">
+Un PR sin descripción le pide al reviewer que ingenería inversa tu intención desde el diff. Eso es caro, propenso a errores, y la causa más grande de reviews superficiales que he visto. Si no tienes tiempo para escribir tres oraciones, no tienes tiempo para el ciclo de review.
+</Callout>
+
+## Para Qué Esto No Sirve
+
+Los PRs pequeños no son un reemplazo del design review. Si un cambio tiene implicaciones arquitectónicas, necesita discutirse antes de que el diff exista, no durante el review. El PR es donde revisas la *ejecución* de una decisión, no donde la tomas.
+
+De igual forma, los PRs pequeños no ayudan si el trabajo subyacente está mal alcanzado. Una feature que debería tomar una semana no es más fácil de revisar cuando está dividida en doce PRs que cada uno depende del siguiente. Ese es un problema de scope, no de review, y la respuesta es repensar la feature, no cortar el diff más delgado.
+
+## La Ganancia
+
+La ganancia medible es aburrida: los PRs se mergean más rápido, los reviewers se sienten menos agotados, las regresiones bajan. La ganancia real es más difícil de medir y más importante: el code review vuelve a ser algo que el equipo valora.
+
+Un reviewer en un PR de 50 líneas puede decir "esto queda más limpio si mueves el check al validador" y tener una conversación real. Un reviewer en un PR de 900 líneas solo puede decir "se ve bien" o "esto es muy grande para revisar" — y el primero pasa mucho más seguido de lo que debería.
+
+Reduce la unidad. Los reviews se cuidan solos.

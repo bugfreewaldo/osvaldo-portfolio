@@ -1,0 +1,112 @@
+---
+title: "Why Your First AI Feature Should Be Read-Only"
+description: "The fastest way to ship AI into a real product without losing trust is to start with something the AI cannot break. A short argument for read-only as a default, with the four questions I ask before promoting any tool to write access."
+date: 2026-04-15
+published: true
+category: "AI Engineering"
+tags: ["AI Agents", "Product", "Safety", "MCP", "Tool Use"]
+author: "Osvaldo Restrepo"
+tldr: "Don't ship AI features that can modify state as your first AI feature. Start with a read-only capability — search, summarize, explain, retrieve — because the failure mode is at worst 'wrong answer,' never 'wrong action.' Once the team trusts the retrieval layer and you have good telemetry, graduate tools to write access one at a time, each gated by a clear question: is this reversible, is it logged, is it approved, is it rate-limited?"
+faqs:
+  - question: "Isn't read-only too boring to demo?"
+    answer: "A well-scoped read-only feature — 'ask anything about our customers, pulled live from the CRM' — is neither boring nor easy. The fact that it looks simple from the outside is the point. Your stakeholders should feel like the magic is in the answer, not in the risk."
+  - question: "How long should the read-only phase last?"
+    answer: "Long enough that you trust your retrieval metrics and your audit log. That's usually four to eight weeks of real usage with a small user group. If you don't have a retrieval-quality dashboard by the end of that window, you're not ready for write access — full stop."
+  - question: "What about agentic workflows that need to take actions?"
+    answer: "They still start read-only. Have the agent describe the action it would take, log it, and let a human click 'do it.' Once you have a week of those logs and they're boring, you promote the tool to execute. The human-in-the-loop stage is not a detour; it's the data-collection phase."
+relatedPosts: ["building-ai-agents-production", "mcp-model-context-protocol-guide", "responsible-ai-ethical-ml-systems"]
+---
+
+The pattern I see most often in AI product reviews: a team gets excited about what the model can do, ships a feature that can create, update, or delete something real, and then spends the next quarter explaining a weird edge case to legal.
+
+The pattern I recommend instead: ship a read-only feature first. Always.
+
+## The Asymmetry
+
+LLMs fail in two shapes. They produce wrong answers, and they produce confident wrong actions. Those failures have very different blast radii.
+
+```
+┌───────────────────────────────────────────────────────────┐
+│           Failure Mode Asymmetry                           │
+├───────────────────────────────────────────────────────────┤
+│                                                            │
+│   Read-only feature fails:                                 │
+│     → User sees a wrong answer                             │
+│     → User asks again, or reads the source, or shrugs      │
+│     → You fix the prompt / retrieval                       │
+│     → Blast radius: one conversation                       │
+│                                                            │
+│   Write feature fails:                                     │
+│     → Agent updates the wrong record                       │
+│     → Email sends to the wrong list                        │
+│     → Refund issues for 10x the amount                     │
+│     → Blast radius: everyone downstream, plus compliance   │
+│                                                            │
+└───────────────────────────────────────────────────────────┘
+```
+
+A wrong answer is embarrassing. A wrong action is a ticket, a rollback, a customer email, sometimes a regulator. You can absorb wrong answers during the "is this useful?" phase of a product. You cannot absorb wrong actions.
+
+Starting read-only buys you the evaluation data you need — without risking the thing the company actually cares about.
+
+## What "Read-Only" Actually Means
+
+Read-only is not just "the tool doesn't have a `DELETE` in it." It's a design stance that applies at every layer:
+
+- **Data layer**: the credentials your AI holds cannot mutate anything. Use a separate DB user with `SELECT` grants only.
+- **API layer**: the tools you expose return data, not side effects. No `POST`, `PATCH`, or `DELETE` wrappers.
+- **Infra layer**: rate limits are per-query, not per-mutation, because there are no mutations.
+- **Social layer**: the feature is marketed as "ask" or "look up," not "do." User expectations set the blast radius.
+
+<Callout type="tip" title="Read-Only ≠ Stateless">
+Your AI can remember, log, and personalize — those are all writes, but to *its own* state. Read-only means it can't modify the business state. The chat history is yours; the customer's subscription plan is not.
+</Callout>
+
+## The Four Questions Before Write Access
+
+Eventually you want to let the AI *do* things. Before any tool graduates from read to write, I ask four questions. If the answer to any of them is "not yet," the tool stays read-only.
+
+### 1. Is it reversible?
+
+Can a human undo this action inside of five minutes, without engineering support? Adding a note to a record: yes. Sending an email: no. Processing a refund: depends on how your finance system works.
+
+Irreversible tools need a human-in-the-loop step *permanently*, not just during the pilot.
+
+### 2. Is it logged?
+
+Every write needs a structured audit record before it happens, including the prompt that triggered it, the tool call arguments, the user who was in the loop, and the outcome. If the log schema doesn't exist, the tool doesn't ship.
+
+### 3. Is it approved?
+
+Who, specifically, clicked the button that caused this action? "The agent decided" is not an approver. During the first months of write access, the answer should always be a named human — even if the UI makes approval a single tap.
+
+### 4. Is it rate-limited?
+
+Not just globally, but per-user and per-tool. The worst AI incidents I've seen were not one bad action — they were one bad action repeated 8,000 times in a loop before anyone noticed. Rate limits turn disasters into anomalies.
+
+<Callout type="warning" title="The Loop Problem">
+Models retry. Agents chain. An agent that misreads an error message and decides to "try again" can execute the same write hundreds of times in a minute. A per-tool rate limit is cheap insurance. A circuit breaker that fires on repeated identical calls is cheaper.
+</Callout>
+
+## What You Lose By Starting Read-Only
+
+Almost nothing. You ship later by a couple of weeks, and you tell your most ambitious stakeholder that the agent can't yet take actions in the system of record. In exchange, you get:
+
+- Real usage data that tells you which actions users *actually* wanted the AI to take.
+- A retrieval quality baseline that you can point to when something regresses.
+- An audit trail pattern already wired up, which is the hard part of the write phase anyway.
+- A team — including legal and security — that trusts the rollout cadence.
+
+Every one of those is worth more than the two weeks.
+
+## The Graduation Path
+
+When I graduate a tool from read to write, it goes through three gates:
+
+1. **Describe-only**: the agent can describe the action it would take, but cannot execute it. A human clicks to confirm. Logs capture both the description and the decision.
+2. **Execute-with-approval**: the agent executes after a named human approves in the UI. Rate limits and audit logs are live. Runs for at least two weeks.
+3. **Autonomous within bounds**: the agent executes without approval, but only for actions under a specified risk threshold — small dollar amounts, low-impact records, reversible operations. Higher-risk actions stay in gate 2 indefinitely.
+
+Most tools live happily in gate 2 forever. That is not a failure. That is a well-designed product.
+
+The boring version of AI — the one that helps without surprising anyone — is the one that ships, stays up, and keeps growing. Start read-only. Earn the write access.
