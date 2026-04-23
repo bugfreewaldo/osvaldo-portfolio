@@ -555,6 +555,119 @@ const DATA: Record<string, Project> = {
     ],
   },
 
+  "culture9": {
+    title: "Culture9.ai",
+    subtitle: "Culture Assessment & Transformation",
+    gradient: "from-pink-500 to-rose-500",
+    summary:
+      "AI-powered culture assessment platform — Competing Values Framework mapping, values alignment analysis, change readiness scoring, and M&A culture compatibility.",
+    story:
+      "Culture usually gets discussed in the abstract and measured once a year with a survey nobody reads. In M&A and transformation work, that is nowhere near enough. Culture9 turns culture into something structured and diagnosable — with a framework behind every question and an action plan behind every finding.",
+    problem:
+      "Traditional culture surveys produce heatmaps, not decisions. Leadership ends up with a dashboard nobody acts on, and when two organizations need to integrate, culture compatibility is usually assessed from a handful of interviews and gut feel.",
+    approach: [
+      "Competing Values Framework mapping across clan, adhocracy, market, and hierarchy archetypes",
+      "Values alignment analysis that compares stated values against observed behaviors from survey and free-text data",
+      "Change readiness scoring at team and org level — identifies pockets that will carry or resist a transformation",
+      "M&A culture compatibility scoring with side-by-side archetype deltas and integration risk heatmaps",
+    ],
+    impact: [
+      "Culture assessment output that leadership actually uses — grounded in a framework, not an opinion",
+      "Change initiatives scoped against readiness scores, so transformation plans are phased realistically",
+      "M&A teams get a structured view of cultural integration risk before announcement, not after",
+      "AI theme extraction from free-text feedback surfaces the patterns humans miss at scale",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
+    links: [
+      { label: "Visit Culture9.ai", href: "https://culture9.thegreymatter.ai" },
+    ],
+  },
+
+  "interview9": {
+    title: "Interview9.ai",
+    subtitle: "Structured Interview Assessment",
+    gradient: "from-indigo-500 to-blue-500",
+    summary:
+      "Structured interview platform — rubric-driven evaluation, bias-aware scoring, and AI-assisted synthesis of candidate feedback across panels.",
+    story:
+      "Most interview debriefs are a group of smart people averaging their gut reactions. That's a great way to hire for comfort and a bad way to hire for role fit. Interview9 forces the conversation back to the rubric, keeps it there, and then lets AI synthesize the panel's evidence into a decision memo that survives a hiring manager's scrutiny.",
+    problem:
+      "Unstructured interviews are low-signal, inconsistently calibrated across panelists, and prone to bias. Rubrics exist but usually live in a doc nobody opens mid-interview, and debrief meetings collapse into whoever speaks first.",
+    approach: [
+      "Rubric-driven scoring interface that panelists actually use during the interview, not after",
+      "Bias-aware prompts and scoring patterns designed to surface evidence rather than vibes",
+      "AI-assisted synthesis that turns individual panelist notes into a structured candidate memo",
+      "Calibration views across roles and panelists — highlights drift and outliers for hiring-bar consistency",
+    ],
+    impact: [
+      "Hiring decisions grounded in rubric evidence, not the loudest voice in the debrief",
+      "Faster time-to-decision — synthesis memos ready for hiring committee in minutes",
+      "Calibration feedback loops make panelists measurably more consistent over time",
+      "Audit-friendly trail for every hire, which matters for regulated and enterprise buyers",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
+    links: [
+      { label: "Visit Interview9.ai", href: "https://interview9.thegreymatter.ai" },
+    ],
+  },
+
+  "supplychain9": {
+    title: "SupplyChain9.ai",
+    subtitle: "Supply Chain Assessment",
+    gradient: "from-orange-500 to-red-500",
+    summary:
+      "End-to-end supply chain assessment — network mapping, KPI tracking, bottleneck detection, risk vulnerability mapping, and optimization scenario modeling.",
+    story:
+      "Supply chain resilience stopped being a theoretical exercise in 2020 and it hasn't stopped mattering since. SupplyChain9 gives operators a structured way to see their network, find the fragile links before they fail, and model what happens under disruption — without needing a six-figure consulting engagement every time.",
+    problem:
+      "Most supply chain teams know their network at the node level but not at the dependency level. Risk lives in concentrations and bottlenecks that only show up when something breaks, and scenario modeling is usually a slow, consultant-heavy exercise.",
+    approach: [
+      "Network mapping across suppliers, logistics, and distribution with real-time dependency visualization",
+      "Performance KPI tracking and benchmarking against industry baselines",
+      "Bottleneck detection that surfaces the 2–3 nodes whose failure would cascade the furthest",
+      "Risk vulnerability mapping (geographic, single-source, financial) plus optimization scenario modeling",
+      "Real-time collaboration via Socket.io for cross-functional assessment workshops",
+    ],
+    impact: [
+      "Supply chain risk moves from an annual slide deck to a continuously updated operating view",
+      "Bottleneck identification in days instead of weeks of consultant-led mapping",
+      "Scenario modeling gives operators defensible answers for board risk questions",
+      "AI synthesis across free-text supplier feedback turns noisy signals into structured concerns",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Socket.io", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
+    links: [
+      { label: "Visit SupplyChain9.ai", href: "https://supplychain9.thegreymatter.ai" },
+    ],
+  },
+
+  "nps9": {
+    title: "NPS9.ai",
+    subtitle: "NPS & Customer Sentiment",
+    gradient: "from-emerald-500 to-teal-500",
+    summary:
+      "Net Promoter Score and customer sentiment analysis — survey orchestration, cohort segmentation, AI theme extraction from free-text feedback, and trend tracking.",
+    story:
+      "Most NPS programs die the same way: a number goes up or down each quarter, and nobody can explain why. NPS9 makes NPS usable again by treating the free-text answers as the actual signal — extracting themes, routing them to owners, and tracking whether the things customers complained about three months ago actually got fixed.",
+    problem:
+      "NPS as a single number is directional at best. The real insight lives in thousands of free-text responses nobody has time to read, and most teams never connect what customers said to what the product team actually shipped.",
+    approach: [
+      "Survey orchestration with cohort segmentation by plan, tenure, and product area",
+      "AI theme extraction from free-text feedback — clusters, sentiment, and intensity",
+      "Closed-loop routing: detractor responses flow to the right owner with context and suggested next steps",
+      "Trend tracking that ties sentiment shifts to product releases, pricing changes, and outages",
+    ],
+    impact: [
+      "NPS stops being a vanity metric — leadership sees what customers actually said, not just the score",
+      "Detractor response time drops sharply once closed-loop routing is wired in",
+      "Theme trends make it obvious which product bets moved the needle and which didn't",
+      "Executive reports generated in minutes instead of the quarterly synthesis scramble",
+    ],
+    stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
+    links: [
+      { label: "Visit NPS9.ai", href: "https://nps9.thegreymatter.ai" },
+    ],
+  },
+
   "budgetcopilot": {
     title: "BudgetCopilot",
     subtitle: "AI Financial Agent",
