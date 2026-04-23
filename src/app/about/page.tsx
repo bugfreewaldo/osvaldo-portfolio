@@ -8,22 +8,24 @@ import Testimonials from "../components/Testimonials";
 // ---------- Experience ----------
 const experience = [
   {
-    company: "TheGreyMatterAI",
+    company: "TheGreyMatter.ai",
     role: "Artificial Intelligence Engineer",
     period: "Nov 2025 - Present",
     location: "Orlando, FL (Remote)",
     type: "current",
-    description: "Architect and build core systems across a multi-product AI SaaS ecosystem for leadership assessment, organizational strategy, and decision intelligence.",
+    description: "Architect and build the platform backbone for a multi-product AI SaaS ecosystem — 17+ vertical apps, shared identity and file services, MCP servers, agentic workflows, and native mobile clients, all orchestrated by a central AI brain.",
     highlights: [
-      "Architect and develop GreyMatter 2.0, the central AI brain & identity layer powering Snapshot9, Measurement13, and 9Vectors",
-      "Design and implement token-based federation, multi-tenant auth, and cross-product entitlements",
-      "Build Model Context Protocol (MCP) services enabling safe, real-time AI tool usage",
-      "Develop cloud-native backend services using FastAPI, Azure, Cosmos DB, Redis, Docker, and GitHub Actions",
-      "Integrate LLMs (Claude / AI agents) with guardrails, observability, and production reliability",
-      "Implement background workers, caching, polling/WebSocket strategies, and resilience patterns",
-      "Collaborate with CTO and product leadership on architecture, data models, and scalability",
+      "Architect and develop GreyMatter 3.0 — the core platform backbone with OAuth 2.0 + JWT federation, multi-tier billing (Free / Professional / Enterprise), AES-256-GCM envelope document encryption, and Claude-powered conversation and agent orchestration",
+      "Design and lead delivery of 17+ ecosystem apps on a shared stack (React 18 + TypeScript, Azure Functions v4, Cosmos DB, Claude API): DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, NPS9, DDQ9, Interview9, and more",
+      "Build the shared services layer consumed by every product: OAuth SSO + JWKS auth service with a TypeScript client SDK, centralized file service (envelope encryption + HMAC webhooks), templated communications service, and external connector service (Salesforce, HubSpot, QuickBooks)",
+      "Build Model Context Protocol (MCP) servers exposing Snapshot9, 9Vectors, and Measurement13 APIs directly to Claude agents with auth, rate limiting, observability, and audit logging",
+      "Develop agentic AI systems — The Fixer (compliance audit remediation), Vector_10 (9-vector ontology agent), and TheHacker (automated security and vulnerability scanning)",
+      "Ship native mobile clients: iOS (Swift + SwiftUI) and Android (Kotlin) with OAuth federation against the central identity layer",
+      "Implement deal- and company-level RBAC, audit logging on every mutation, field-level PII encryption via Azure Key Vault, and event-driven ingestion (file upload → extraction → AI analysis → notifications)",
+      "Define the federation and data-ownership model: each ecosystem app owns its Cosmos DB; data sharing happens only through APIs and the shared identity / file layer — never cross-app direct reads",
+      "Collaborate with the CTO and product leadership on architecture, data models, scalability, and the QA harness (Playwright + Vitest) that gates releases across the ecosystem",
     ],
-    skills: ["FastAPI", "Azure", "Cosmos DB", "Redis", "Docker", "Claude", "MCP", "Python"],
+    skills: ["Python", "FastAPI", "TypeScript", "Node.js", "React", "Azure", "Cosmos DB", "Redis", "Docker", "Claude", "MCP", "Swift", "Kotlin"],
   },
   {
     company: "Shining Image Of Texas, Inc.",
@@ -167,10 +169,10 @@ const education: Education[] = [
 ];
 
 const skills = [
-  { icon: Bot, label: "LLM Agents", items: ["Claude", "GPT-4", "LangChain", "MCP", "Guardrails"] },
-  { icon: Code, label: "Full-Stack", items: ["TypeScript", "React", "Next.js", "Python", "FastAPI"] },
-  { icon: Mic, label: "Voice AI", items: ["Whisper", "ElevenLabs", "Twilio", "Real-time STT/TTS"] },
-  { icon: Wrench, label: "Cloud-Native", items: ["Azure", "AWS", "Docker", "Cosmos DB", "Redis"] },
+  { icon: Bot, label: "LLM & Agents", items: ["Claude", "GPT-4", "LangChain", "MCP", "Agentic AI", "Guardrails"] },
+  { icon: Code, label: "Full-Stack", items: ["TypeScript", "React", "Next.js", "Python", "FastAPI", "Node.js / Express"] },
+  { icon: Mic, label: "Voice & Mobile", items: ["Whisper", "ElevenLabs", "Twilio", "Swift / SwiftUI", "Kotlin"] },
+  { icon: Wrench, label: "Cloud-Native", items: ["Azure", "AWS", "Docker", "Cosmos DB", "PostgreSQL", "Redis"] },
 ];
 
 // ---------- Certifications ----------
@@ -201,7 +203,8 @@ const languages = [
 
 // ---------- Highlights ----------
 const highlights = [
-  "Architecting GreyMatter 2.0 AI brain & identity layer powering multiple SaaS products",
+  "Architecting GreyMatter 3.0 — the platform backbone powering 17+ vertical AI apps, shared services, MCP servers, agentic systems, and iOS + Android clients",
+  "Built MCP servers and agentic AI systems (The Fixer, Vector_10, TheHacker) that let Claude safely query, assess, and act on enterprise data",
   "Built AI-powered voice assistants handling real-time calls with Twilio, Whisper, GPT-4, and ElevenLabs",
   "Automated workflows reducing manual accounting work by 70%+ through QuickBooks/Stripe integration",
 ];
@@ -414,9 +417,10 @@ export default function AboutPage() {
               </span>
             </h1>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
-              Full Stack Engineer passionate about merging AI and software engineering to build smarter, faster, and more scalable systems.
-              Specialized in developing full-stack solutions that integrate automation, cloud architecture, and intelligent workflows.
-              Currently engaged as a Full Stack AI Engineer at TheGreyMatter.ai, contributing to AI-assisted application development and modern web systems.
+              Full Stack AI Engineer specializing in production LLM systems, autonomous agents, and cloud-native platforms.
+              Currently AI Engineer at TheGreyMatter.ai, where I architect the backbone of a multi-product SaaS ecosystem — 17+ vertical AI apps,
+              shared identity and file services, MCP servers, agentic workflows, and native mobile clients, all orchestrated by a central AI brain.
+              10+ years shipping software, 4+ focused on applied AI, serving clients across the US, Canada, Europe, and Latin America.
             </p>
           </motion.div>
         </div>

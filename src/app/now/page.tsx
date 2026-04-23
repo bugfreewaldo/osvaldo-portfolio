@@ -17,7 +17,7 @@ export default function NowPage() {
           What I&apos;m Doing Now
         </h1>
         <p className="mt-2 text-slate-500 dark:text-slate-400">
-          Last updated: March 2026 · <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Panama City, Panama</span>
+          Last updated: April 2026 · <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Panama City, Panama</span>
         </p>
         <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
           This is a <a href="https://nownownow.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600 dark:hover:text-slate-300 transition-colors">now page</a>. It&apos;s like an about page, but for what I&apos;m focused on at this point in my life.
@@ -34,7 +34,7 @@ export default function NowPage() {
             </div>
             <div className="space-y-3 text-slate-600 dark:text-slate-400 leading-relaxed">
               <p>
-                AI Engineer at <strong className="text-slate-900 dark:text-white">TheGreyMatter.ai</strong> — building GreyMatter 2.0, the central AI brain powering Snapshot9, Measurement13, and 9Vectors. Working on multi-tenant auth, Model Context Protocol (MCP) services, and LLM integrations with Claude.
+                AI Engineer at <strong className="text-slate-900 dark:text-white">TheGreyMatter.ai</strong> — architecting <strong className="text-slate-900 dark:text-white">GreyMatter 3.0</strong>, the platform backbone behind 17+ vertical AI apps (DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, and more). Building the shared identity, file, and communications services; MCP servers that expose Snapshot9 / 9Vectors / Measurement13 to Claude; agentic systems (The Fixer, Vector_10, TheHacker); and native iOS + Android clients.
               </p>
               <p>
                 On the side, I continue maintaining and evolving <strong className="text-slate-900 dark:text-white">MILA</strong>, an AI assistant for NICU families, and <strong className="text-slate-900 dark:text-white">BudgetCopilot</strong>, a personal AI finance agent.
@@ -71,7 +71,15 @@ export default function NowPage() {
             <ul className="space-y-2 text-slate-600 dark:text-slate-400">
               <li className="flex items-start gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-2 flex-shrink-0" />
-                MCP (Model Context Protocol) services for safe, real-time AI tool usage in production
+                MCP (Model Context Protocol) servers that expose real product APIs to Claude agents — with auth, rate limiting, and audit logging
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-2 flex-shrink-0" />
+                Agentic AI systems for compliance remediation, ontology-driven analysis, and automated security scanning
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-2 flex-shrink-0" />
+                Native iOS (Swift + SwiftUI) and Android (Kotlin) clients with OAuth federation against the platform backbone
               </li>
               <li className="flex items-start gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mt-2 flex-shrink-0" />

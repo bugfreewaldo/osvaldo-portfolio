@@ -47,10 +47,13 @@
 - Global (remote-first, timezone-flexible)
 
 ## Current Work at TheGreyMatter.ai
-Building the core AI infrastructure for a multi-product SaaS ecosystem:
-- GreyMatter 2.0: central AI brain & identity layer
-- Model Context Protocol (MCP) services for safe AI tool usage
-- Products powered: 9Vectors, Snapshot9, Measurement13, Board9, Contracts9, Pipeline9, and more
+Architecting the platform backbone for a multi-product AI SaaS ecosystem:
+- GreyMatter 3.0: core platform (OAuth 2.0 + JWT federation, tiered billing, envelope encryption, Claude-powered conversation & agent orchestration)
+- 17+ vertical AI apps on a shared stack (React + TypeScript, Azure Functions v4, Cosmos DB, Claude API): DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, NPS9, DDQ9, Interview9, 9Vectors, Snapshot9, Measurement13, and more
+- Shared services layer: OAuth SSO auth service + TS client SDK, centralized file service with envelope encryption and HMAC webhooks, templated communications service, external connector service (Salesforce, HubSpot, QuickBooks)
+- MCP servers exposing Snapshot9, 9Vectors, and Measurement13 APIs to Claude agents (auth, rate limiting, observability, audit logging)
+- Agentic AI systems: The Fixer (compliance audit remediation), Vector_10 (9-vector ontology agent), TheHacker (automated security scanning)
+- Native mobile clients: iOS (Swift + SwiftUI) and Android (Kotlin) with OAuth federation against the central identity layer
 
 ## Featured Projects
 
@@ -64,8 +67,8 @@ URL: https://osvaldorestrepo.dev/projects/mila-neonatal-llm
 Impact: 62% fewer missed calls, 68% full AI containment, $2-3K/month saved
 URL: https://osvaldorestrepo.dev/projects/ai-voice-agent
 
-### TheGreyMatter.ai Ecosystem (12+ products)
-AI-powered enterprise platform: Board9, Contracts9, DDQ9, OrgDesign9, Pipeline9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, Forecast9, DueDiligence9, BenchmarkedOutcomes
+### TheGreyMatter.ai Ecosystem (17+ products)
+AI-powered enterprise platform: Board9, Contracts9, DDQ9, OrgDesign9, Pipeline9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, Forecast9, DueDiligence9, Culture9, SupplyChain9, NPS9, Interview9, BenchmarkedOutcomes, and more — all federated through the GreyMatter 3.0 backbone
 URL: https://osvaldorestrepo.dev/projects
 
 ### BudgetCopilot
@@ -77,7 +80,7 @@ Free coding school for teens and kids.
 URL: https://waldoscodelab.com
 
 ## Blog
-46 technical articles on AI engineering, published in English and Spanish.
+49 technical articles on AI engineering, published in English and Spanish.
 Topics: LLMs, RAG, AI agents, MCP, voice AI, databases, architecture, DevOps, leadership
 URL: https://osvaldorestrepo.dev/blog
 RSS: https://osvaldorestrepo.dev/feed.xml

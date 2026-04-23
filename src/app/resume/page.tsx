@@ -31,13 +31,15 @@ const experience = [
     period: "Nov 2025 — Present",
     location: "Orlando, FL (Remote)",
     bullets: [
-      "Architect GreyMatter 2.0 — the central AI brain & identity layer powering Snapshot9, Measurement13, and 9Vectors",
-      "Design token-based federation, multi-tenant auth, and cross-product entitlements",
-      "Build Model Context Protocol (MCP) services enabling safe, real-time AI tool usage",
-      "Develop cloud-native backend services using FastAPI, Azure, Cosmos DB, Redis, Docker",
-      "Integrate LLMs (Claude / AI agents) with guardrails, observability, and production reliability",
+      "Architect GreyMatter 3.0 — the platform backbone (OAuth 2.0 + JWT federation, tiered billing, AES-256-GCM envelope encryption, Claude-powered agent orchestration) for a 17+ app SaaS ecosystem",
+      "Lead delivery of 17+ vertical AI apps on a shared stack (React + TypeScript, Azure Functions v4, Cosmos DB, Claude): DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, NPS9, DDQ9, Interview9, and more",
+      "Build shared services: OAuth SSO + JWKS auth service (plus TS client SDK), centralized file service with envelope encryption and HMAC webhooks, templated communications service, and external connector service (Salesforce, HubSpot, QuickBooks)",
+      "Build MCP servers exposing Snapshot9, 9Vectors, and Measurement13 APIs to Claude agents with auth, rate limiting, observability, and audit logging",
+      "Develop agentic AI systems — The Fixer (compliance audit remediation), Vector_10 (9-vector ontology agent), TheHacker (automated security scanning)",
+      "Ship native mobile clients: iOS (Swift + SwiftUI) and Android (Kotlin) with OAuth federation against the central identity layer",
+      "Enforce RBAC, full audit logging, field-level PII encryption (Azure Key Vault), and event-driven ingestion pipelines across the ecosystem",
     ],
-    skills: ["FastAPI", "Azure", "Cosmos DB", "Redis", "Docker", "Claude", "MCP", "Python"],
+    skills: ["Python", "FastAPI", "TypeScript", "Node.js", "React", "Azure", "Cosmos DB", "Redis", "Docker", "Claude", "MCP", "Swift", "Kotlin"],
   },
   {
     company: "Shining Image Of Texas, Inc.",
@@ -148,7 +150,7 @@ export default function ResumePage() {
           {/* Summary */}
           <section className="mb-10">
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production — not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, and Latin America.
+              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. Currently architecting the backbone of TheGreyMatter.ai — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
             </p>
           </section>
 

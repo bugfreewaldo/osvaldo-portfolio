@@ -5,7 +5,7 @@
 ## Professional Summary
 Osvaldo Restrepo (known as "Waldo") is a Senior Full Stack AI & Software Engineer with 10+ years of experience building production software systems. Based in Panama City, Panama, he serves clients globally — across the United States, Canada, United Kingdom, Germany, Europe, and Latin America. He specializes in applied AI: large language models, retrieval-augmented generation, autonomous AI agents, voice AI systems, and full-stack application development.
 
-He currently works as an AI Engineer at TheGreyMatter.ai, where he architects the core AI infrastructure powering a 12+ product SaaS ecosystem for enterprise leadership assessment and organizational intelligence.
+He currently works as an AI Engineer at TheGreyMatter.ai, where he architects the platform backbone behind a 17+ product AI SaaS ecosystem — including the core identity/billing/encryption platform (GreyMatter 3.0), shared services (auth, file, communications, connectors), MCP servers that expose product APIs to Claude agents, agentic AI systems (The Fixer, Vector_10, TheHacker), and native iOS + Android clients.
 
 He has shipped 20+ AI products to production, built 20+ production systems, and served clients in 10+ countries. He is bilingual (English and Spanish, both native-level) and has been working remotely with US-based companies for over 10 years.
 
@@ -88,12 +88,14 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 ## Work Experience
 
 ### TheGreyMatter.ai — AI Engineer (Nov 2025 - Present)
-- Architect GreyMatter 2.0: central AI brain & identity layer powering 12+ SaaS products
-- Build Model Context Protocol (MCP) services for safe, real-time AI tool usage
-- Design token-based federation, multi-tenant auth, cross-product entitlements
-- Develop cloud-native services: FastAPI, Azure, Cosmos DB, Redis, Docker
-- Integrate LLMs (Claude) with guardrails, observability, production reliability
-- Products powered: 9Vectors, Snapshot9, Measurement13, Board9, Contracts9, DDQ9, OrgDesign9, Pipeline9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, Forecast9, DueDiligence9, BenchmarkedOutcomes
+- Architect GreyMatter 3.0: the core platform backbone with OAuth 2.0 + JWT federation, tiered billing (Free / Professional / Enterprise), AES-256-GCM envelope document encryption, and Claude-powered conversation + agent orchestration
+- Lead delivery of 17+ vertical AI apps on a shared stack (React 18 + TypeScript, Azure Functions v4, Cosmos DB, Claude API): DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, NPS9, DDQ9, Interview9, 9Vectors, Snapshot9, Measurement13, and more
+- Build the shared services layer consumed by every ecosystem product: OAuth SSO + JWKS auth service with a TypeScript client SDK, centralized file service with envelope encryption and HMAC-signed webhooks, templated communications service, and external connector service (Salesforce, HubSpot, QuickBooks)
+- Build Model Context Protocol (MCP) servers exposing Snapshot9, 9Vectors, and Measurement13 APIs directly to Claude agents with auth, rate limiting, observability, and audit logging
+- Develop agentic AI systems: The Fixer (compliance audit remediation), Vector_10 (9-vector ontology agent), TheHacker (automated security and vulnerability scanning)
+- Ship native mobile clients: iOS (Swift + SwiftUI) and Android (Kotlin) with OAuth federation against the central identity layer
+- Enforce deal- and company-level RBAC, full audit logging on mutations, field-level PII encryption via Azure Key Vault, and event-driven ingestion pipelines (file upload → AI extraction → analysis → notifications)
+- Collaborate with the CTO and product leadership on architecture, data models, federation strategy, and the QA harness (Playwright + Vitest) that gates releases across the ecosystem
 
 ### Shining Image of Texas — AI Engineer (Nov 2021 - Nov 2025)
 - Built AI voice assistants for real-time call handling (Twilio, Whisper, GPT-4, ElevenLabs)
@@ -110,15 +112,15 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 - Hardware/software diagnostics, networking, VoIP systems
 - Panama-based IT services
 
-## All Projects (24 total)
+## All Projects (28+ total)
 
 ### Production AI Systems
 1. MILA — Neonatal LLM Assistant (Healthcare RAG, https://osvaldorestrepo.dev/projects/mila-neonatal-llm)
 2. Voice Agent — Shining Image (24/7 AI phone agent, https://osvaldorestrepo.dev/projects/ai-voice-agent)
 3. Stripe-QuickBooks Reconciler (Financial automation, https://osvaldorestrepo.dev/projects/stripe-qb-reconcile)
 
-### TheGreyMatter.ai Ecosystem (12 products)
-4. TheGreyMatter.ai — Central AI Platform (https://thegreymatter.ai)
+### TheGreyMatter.ai Ecosystem (17+ products)
+4. TheGreyMatter.ai — Central AI Platform / GreyMatter 3.0 backbone (https://thegreymatter.ai)
 5. 9Vectors.ai — Strategic Assessment (https://9vectors.ai)
 6. Snapshot9.ai — Business Transformation (https://snapshot9.ai)
 7. Measurement13.ai — AI Analytics (https://measurement13.ai)
@@ -134,15 +136,40 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 17. Forecast9.ai — Financial Forecasting
 18. DueDiligence9.ai — Due Diligence Analysis
 19. BenchmarkedOutcomes.ai — Performance Benchmarking
+20. Culture9.ai — Culture Assessment & Transformation
+21. SupplyChain9.ai — Supply Chain Assessment
+22. NPS9.ai — Net Promoter Score & Customer Sentiment
+23. Interview9.ai — Structured Interview Assessment
+
+### TheGreyMatter.ai Shared Services & Platform Components
+- Auth Service — OAuth 2.0 SSO, JWKS, multi-tenant identity federation
+- Auth Client SDK — TypeScript SDK consumed by every ecosystem app
+- File Service — Centralized document storage with envelope encryption (AES-256 + Azure Key Vault) and HMAC-signed webhooks
+- Communications Service — Templated email delivery, magic links, recipient tracking
+- Connector Service — External integrations (Salesforce, HubSpot, QuickBooks) with normalization
+
+### TheGreyMatter.ai MCP Servers (Model Context Protocol)
+- Snapshot9 MCP — Tools for team dynamics and development plans
+- 9Vectors MCP — Tools for business assessment and vector scoring
+- Measurement13 MCP — Tools for leadership 360 feedback and 9-Box positioning
+
+### TheGreyMatter.ai Agentic AI Systems
+- The Fixer — Compliance audit remediation agent
+- Vector_10 — Multi-dimensional 9-vector ontology agent
+- TheHacker — Automated security and vulnerability scanning agent
+
+### TheGreyMatter.ai Mobile Clients
+- iOS native app — Swift + SwiftUI with OAuth federation
+- Android native app — Kotlin + Gradle KTS with OAuth federation
 
 ### Independent Products
-20. BudgetCopilot — AI Financial Agent (https://budgetcopilot.app)
-21. Waldo's Code Lab — Free Coding School (https://waldoscodelab.com)
-22. BabyBloom — Pregnancy AI Companion
-23. Shining Image Platform — Business Management
-24. AutoSpa BQT — Mobile Car Detailing (Boquete, Panama)
+24. BudgetCopilot — AI Financial Agent (https://budgetcopilot.app)
+25. Waldo's Code Lab — Free Coding School (https://waldoscodelab.com)
+26. BabyBloom — Pregnancy AI Companion
+27. Shining Image Platform — Business Management
+28. AutoSpa BQT — Mobile Car Detailing (Boquete, Panama)
 
-## Blog (46 articles, English + Spanish)
+## Blog (49 articles, English + Spanish)
 Full article index at: https://osvaldorestrepo.dev/blog
 RSS feed: https://osvaldorestrepo.dev/feed.xml
 
