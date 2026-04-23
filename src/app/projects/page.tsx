@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Baby, Car, TrendingUp, Search, Award, Link2, DoorOpen, LayoutGrid, FileText, ClipboardList, Users, PieChart, Shield, Factory } from "lucide-react";
+import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Baby, Car, TrendingUp, Search, Award, Link2, DoorOpen, LayoutGrid, FileText, ClipboardList, Users, PieChart, Shield, Factory, Heart, MessageSquare, Truck, Gauge } from "lucide-react";
 
 export default function ProjectsPage() {
   return (
@@ -343,6 +343,50 @@ const projects = [
     gradient: "from-lime-500 to-green-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
     external: "https://operate9.thegreymatter.ai",
+  },
+  {
+    slug: "culture9",
+    title: "Culture9.ai",
+    subtitle: "Culture Assessment & Transformation",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. AI-driven culture assessment — Competing Values Framework mapping, values alignment analysis, change readiness scoring, and M&A culture compatibility.",
+    icon: Heart,
+    gradient: "from-pink-500 to-rose-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://culture9.thegreymatter.ai",
+  },
+  {
+    slug: "interview9",
+    title: "Interview9.ai",
+    subtitle: "Structured Interview Assessment",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Structured interview platform — rubric-driven evaluation, bias-aware scoring, and AI-assisted synthesis of candidate feedback across panels.",
+    icon: MessageSquare,
+    gradient: "from-indigo-500 to-blue-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://interview9.thegreymatter.ai",
+  },
+  {
+    slug: "supplychain9",
+    title: "SupplyChain9.ai",
+    subtitle: "Supply Chain Assessment",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. End-to-end supply chain assessment — network mapping, KPI tracking, bottleneck detection, risk vulnerability mapping, and optimization scenario modeling.",
+    icon: Truck,
+    gradient: "from-orange-500 to-red-500",
+    stack: ["React", "TypeScript", "Node.js", "Socket.io", "Cosmos DB", "Claude AI"],
+    external: "https://supplychain9.thegreymatter.ai",
+  },
+  {
+    slug: "nps9",
+    title: "NPS9.ai",
+    subtitle: "NPS & Customer Sentiment",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. Net Promoter Score and customer sentiment analysis — survey orchestration, cohort segmentation, AI theme extraction from free-text feedback, and trend tracking.",
+    icon: Gauge,
+    gradient: "from-emerald-500 to-teal-500",
+    stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
+    external: "https://nps9.thegreymatter.ai",
   },
   {
     slug: "budgetcopilot",

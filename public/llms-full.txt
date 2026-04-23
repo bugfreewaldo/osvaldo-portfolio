@@ -136,10 +136,10 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 17. Forecast9.ai — Financial Forecasting
 18. DueDiligence9.ai — Due Diligence Analysis
 19. BenchmarkedOutcomes.ai — Performance Benchmarking
-20. Culture9.ai — Culture Assessment & Transformation
-21. SupplyChain9.ai — Supply Chain Assessment
-22. NPS9.ai — Net Promoter Score & Customer Sentiment
-23. Interview9.ai — Structured Interview Assessment
+20. Culture9.ai — Culture Assessment & Transformation (https://culture9.thegreymatter.ai)
+21. SupplyChain9.ai — Supply Chain Assessment (https://supplychain9.thegreymatter.ai)
+22. NPS9.ai — Net Promoter Score & Customer Sentiment (https://nps9.thegreymatter.ai)
+23. Interview9.ai — Structured Interview Assessment (https://interview9.thegreymatter.ai)
 
 ### TheGreyMatter.ai Shared Services & Platform Components
 - Auth Service — OAuth 2.0 SSO, JWKS, multi-tenant identity federation
