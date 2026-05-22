@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { Briefcase, GraduationCap, ChevronDown, MapPin, Calendar, Bot, Code, Mic, Wrench, Globe, Star, Award, Zap } from "lucide-react";
 import Testimonials from "../components/Testimonials";
+import Reveal from "@/components/motion/Reveal";
 
 // ---------- Experience ----------
 const experience = [
@@ -429,13 +430,10 @@ export default function AboutPage() {
       {/* Skills Overview */}
       <section className="relative py-8 px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {skills.map((skill, i) => (
-              <motion.div
+          <Reveal staggerMs={60} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {skills.map((skill) => (
+              <div
                 key={skill.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
                 className="p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-colors"
               >
                 <div className="flex items-center gap-3 mb-3">
@@ -454,9 +452,9 @@ export default function AboutPage() {
                     </span>
                   ))}
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -516,21 +514,17 @@ export default function AboutPage() {
             </p>
           </motion.div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            {aiTools.map((tool, i) => (
-              <motion.div
+          <Reveal staggerMs={60} className="grid sm:grid-cols-2 gap-3">
+            {aiTools.map((tool) => (
+              <div
                 key={tool.name}
-                initial={{ opacity: 0, y: 10 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.05 }}
                 className="p-4 rounded-xl bg-white/70 dark:bg-slate-800/50 backdrop-blur-sm border border-slate-200 dark:border-slate-700 hover:border-violet-500/30 transition-colors"
               >
                 <h3 className="font-semibold text-slate-900 dark:text-white">{tool.name}</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{tool.description}</p>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -634,21 +628,17 @@ export default function AboutPage() {
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Languages</h2>
           </motion.div>
 
-          <div className="flex flex-wrap gap-4">
-            {languages.map((lang, i) => (
-              <motion.div
+          <Reveal staggerMs={80} className="flex flex-wrap gap-4">
+            {languages.map((lang) => (
+              <div
                 key={lang.name}
-                initial={{ opacity: 0, scale: 0.9 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.4, delay: i * 0.1 }}
                 className="px-5 py-3 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800"
               >
                 <span className="font-semibold text-slate-900 dark:text-white">{lang.name}</span>
                 <span className="text-slate-500 ml-2">— {lang.level}</span>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 

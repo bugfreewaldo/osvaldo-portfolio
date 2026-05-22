@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import { Wrench, Database } from "lucide-react";
 import Image from "next/image";
+import Reveal from "@/components/motion/Reveal";
 
 // Helper to get icon URL - uses jsdelivr CDN which is more reliable
 const getIconUrl = (slug: string) =>
@@ -239,15 +240,12 @@ const toolCategories: ToolCategory[] = [
   },
 ];
 
-function ToolCard({ tool, index }: { tool: Tool; index: number }) {
+function ToolCard({ tool }: { tool: Tool }) {
   return (
-    <motion.a
+    <a
       href={tool.url}
       target="_blank"
       rel="noopener noreferrer"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.05 * index }}
       className="group flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 hover:shadow-lg hover:shadow-[#FF6A3D]/5 transition-all duration-300"
     >
       <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center p-2.5 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
@@ -272,7 +270,7 @@ function ToolCard({ tool, index }: { tool: Tool; index: number }) {
           {tool.description}
         </p>
       </div>
-    </motion.a>
+    </a>
   );
 }
 
@@ -316,14 +314,9 @@ export default function UsesPage() {
 
       {/* Tool Categories */}
       <section className="relative px-4 pb-20">
-        <div className="max-w-4xl mx-auto space-y-12">
-          {toolCategories.map((category, categoryIndex) => (
-            <motion.div
-              key={category.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 * categoryIndex }}
-            >
+        <Reveal staggerMs={80} className="max-w-4xl mx-auto space-y-12">
+          {toolCategories.map((category) => (
+            <div key={category.title}>
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
                   {category.title}
@@ -333,28 +326,19 @@ export default function UsesPage() {
                 </p>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
-                {category.tools.map((tool, toolIndex) => (
-                  <ToolCard
-                    key={tool.name}
-                    tool={tool}
-                    index={categoryIndex * 4 + toolIndex}
-                  />
+                {category.tools.map((tool) => (
+                  <ToolCard key={tool.name} tool={tool} />
                 ))}
               </div>
-            </motion.div>
+            </div>
           ))}
-        </div>
+        </Reveal>
       </section>
 
       {/* Footer note */}
       <section className="relative px-4 pb-16">
-        <div className="max-w-4xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.8 }}
-            className="p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 border border-[#FF6A3D]/20"
-          >
+        <Reveal className="max-w-4xl mx-auto">
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 border border-[#FF6A3D]/20">
             <p className="text-slate-600 dark:text-slate-400 text-center">
               Want to chat about any of these tools?{" "}
               <a
@@ -365,8 +349,8 @@ export default function UsesPage() {
               </a>{" "}
               — I love discussing tech stacks and tooling decisions.
             </p>
-          </motion.div>
-        </div>
+          </div>
+        </Reveal>
       </section>
     </main>
   );

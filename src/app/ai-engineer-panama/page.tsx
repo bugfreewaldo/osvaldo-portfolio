@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Brain, Cpu, MessageSquare, Zap, MapPin, Globe, CheckCircle } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 export const metadata: Metadata = {
   title: "AI Engineer in Panama — Osvaldo Restrepo",
@@ -195,7 +196,7 @@ export default function AIEngineerPanama() {
 
         {/* Stats */}
         <section className="py-12 px-4 bg-slate-50/50 dark:bg-slate-900/30">
-          <div className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6">
+          <Reveal staggerMs={60} className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6">
             {stats.map((stat) => (
               <div key={stat.label} className="text-center p-4">
                 <div className="text-3xl font-bold bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] bg-clip-text text-transparent">
@@ -206,7 +207,7 @@ export default function AIEngineerPanama() {
                 </div>
               </div>
             ))}
-          </div>
+          </Reveal>
         </section>
 
         {/* Services */}
@@ -221,7 +222,7 @@ export default function AIEngineerPanama() {
               </p>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-6">
+            <Reveal staggerMs={60} className="grid sm:grid-cols-2 gap-6">
               {services.map((service) => (
                 <div
                   key={service.title}
@@ -248,7 +249,7 @@ export default function AIEngineerPanama() {
                   </div>
                 </div>
               ))}
-            </div>
+            </Reveal>
           </div>
         </section>
 
@@ -264,7 +265,7 @@ export default function AIEngineerPanama() {
               American cultural understanding and competitive rates.
             </p>
 
-            <div className="mt-12 grid sm:grid-cols-2 gap-6">
+            <Reveal staggerMs={80} className="mt-12 grid sm:grid-cols-2 gap-6">
               <div className="p-6 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
                 <h3 className="font-semibold text-slate-900 dark:text-white mb-3">
                   For US & Canadian Companies
@@ -304,7 +305,7 @@ export default function AIEngineerPanama() {
                   ))}
                 </ul>
               </div>
-            </div>
+            </Reveal>
           </div>
         </section>
 
@@ -365,7 +366,7 @@ export default function AIEngineerPanama() {
 
         {/* Final CTA */}
         <section className="py-20 px-4">
-          <div className="max-w-3xl mx-auto text-center">
+          <Reveal className="max-w-3xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
               Let&apos;s Build Something Together
             </h2>
@@ -382,7 +383,7 @@ export default function AIEngineerPanama() {
                 <ArrowRight className="w-5 h-5" />
               </Link>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
     </>

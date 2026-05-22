@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Quote, Star, ArrowRight } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 export const metadata: Metadata = {
   title: "Testimonials",
@@ -111,7 +112,7 @@ export default function TestimonialsPage() {
 
         {/* Hero */}
         <section className="relative pt-16 pb-8 px-4">
-          <div className="max-w-4xl mx-auto text-center">
+          <Reveal className="max-w-4xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-6">
               <Star className="w-4 h-4" />
               Social Proof
@@ -122,13 +123,13 @@ export default function TestimonialsPage() {
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
               Real feedback from clients, colleagues, and collaborators I&apos;ve worked with on AI systems, full-stack products, and everything in between.
             </p>
-          </div>
+          </Reveal>
         </section>
 
         {/* Testimonials Grid */}
         <section className="relative py-12 px-4">
           <div className="max-w-4xl mx-auto">
-            <div className="grid gap-6 md:grid-cols-2">
+            <Reveal staggerMs={60} className="grid gap-6 md:grid-cols-2">
               {TESTIMONIALS.map((t) => (
                 <figure
                   key={t.name}
@@ -182,13 +183,13 @@ export default function TestimonialsPage() {
                   <ArrowRight className="w-4 h-4" />
                 </Link>
               </figure>
-            </div>
+            </Reveal>
           </div>
         </section>
 
         {/* CTA */}
         <section className="relative py-12 px-4">
-          <div className="max-w-2xl mx-auto text-center">
+          <Reveal className="max-w-2xl mx-auto text-center">
             <div className="p-8 rounded-2xl bg-gradient-to-br from-[#FF6A3D]/10 to-[#2DD4BF]/10 dark:from-[#FF6A3D]/12 dark:to-[#2DD4BF]/10 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">
                 Want to work together?
@@ -204,7 +205,7 @@ export default function TestimonialsPage() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
-          </div>
+          </Reveal>
         </section>
       </main>
     </>

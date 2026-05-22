@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, Download, MapPin, Mail, Github, Linkedin } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 export const metadata: Metadata = {
   title: "Resume — Osvaldo Restrepo",
@@ -109,7 +110,7 @@ export default function ResumePage() {
       <main className="min-h-screen py-12 px-4">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8 pb-8 border-b border-slate-200 dark:border-slate-800">
+          <Reveal className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8 pb-8 border-b border-slate-200 dark:border-slate-800">
             <div>
               <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
                 Osvaldo Restrepo
@@ -145,7 +146,7 @@ export default function ResumePage() {
               <Download className="w-4 h-4" />
               Download PDF
             </a>
-          </div>
+          </Reveal>
 
           {/* Summary */}
           <section className="mb-10">
@@ -178,7 +179,7 @@ export default function ResumePage() {
             <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6">
               Experience
             </h2>
-            <div className="space-y-8">
+            <Reveal staggerMs={80} className="space-y-8">
               {experience.map((exp) => (
                 <div key={exp.company + exp.role} className="relative pl-4 border-l-2 border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-1">
@@ -212,7 +213,7 @@ export default function ResumePage() {
                   </div>
                 </div>
               ))}
-            </div>
+            </Reveal>
           </section>
 
           {/* Education */}
@@ -254,7 +255,7 @@ export default function ResumePage() {
           </section>
 
           {/* CTA */}
-          <section className="pt-8 border-t border-slate-200 dark:border-slate-800 text-center">
+          <Reveal className="pt-8 border-t border-slate-200 dark:border-slate-800 text-center">
             <p className="text-slate-600 dark:text-slate-400 mb-4">
               Interested in working together?
             </p>
@@ -273,7 +274,7 @@ export default function ResumePage() {
                 View Projects
               </Link>
             </div>
-          </section>
+          </Reveal>
         </div>
       </main>
     </>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Script from "next/script";
 import { motion } from "framer-motion";
 import { Mail, Send, User, MessageSquare, Sparkles, CheckCircle, ArrowRight, Github, Linkedin, Instagram } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 // Type window.hcaptcha so we don't need ts-ignore
 declare global {
@@ -206,26 +207,18 @@ export default function ContactPage() {
 
       {/* Contact Methods + Form Grid */}
       <section className="relative px-4 pb-16">
-        <div className="max-w-4xl mx-auto grid lg:grid-cols-5 gap-8">
+        <Reveal staggerMs={120} className="max-w-4xl mx-auto grid lg:grid-cols-5 gap-8">
           {/* Contact Methods Sidebar */}
-          <motion.div
-            className="lg:col-span-2 space-y-4"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
+          <div className="lg:col-span-2 space-y-4">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
               Other ways to connect
             </h2>
-            {contactMethods.map((method, i) => (
-              <motion.a
+            {contactMethods.map((method) => (
+              <a
                 key={method.label}
                 href={method.href}
                 target={method.href.startsWith("mailto") ? undefined : "_blank"}
                 rel={method.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.4 + i * 0.1 }}
                 className="group flex items-center gap-4 p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all duration-300"
               >
                 <div className={`p-2.5 rounded-xl bg-gradient-to-br ${method.gradient}`}>
@@ -237,16 +230,11 @@ export default function ContactPage() {
                     {method.value}
                   </p>
                 </div>
-              </motion.a>
+              </a>
             ))}
 
             {/* Availability Badge */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.8 }}
-              className="mt-6 p-4 rounded-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20"
-            >
+            <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
@@ -259,16 +247,11 @@ export default function ContactPage() {
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
                 Currently busy with ongoing projects. Reach out for availability.
               </p>
-            </motion.div>
-          </motion.div>
+            </div>
+          </div>
 
           {/* Contact Form */}
-          <motion.div
-            className="lg:col-span-3"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
+          <div className="lg:col-span-3">
             <div className="p-6 sm:p-8 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-3 mb-6">
                 <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500">
@@ -381,8 +364,8 @@ export default function ContactPage() {
                 </p>
               </form>
             </div>
-          </motion.div>
-        </div>
+          </div>
+        </Reveal>
       </section>
     </main>
   );

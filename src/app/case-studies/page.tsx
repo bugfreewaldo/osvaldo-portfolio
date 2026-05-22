@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, TrendingUp, Clock, Users, DollarSign, CheckCircle, Zap } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 export const metadata: Metadata = {
   title: "Case Studies — Osvaldo Restrepo",
@@ -99,7 +100,7 @@ export default function CaseStudiesPage() {
   return (
     <main className="min-h-screen py-12 px-4">
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-16">
+        <Reveal className="text-center mb-16">
           <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white">
             Case Studies
           </h1>
@@ -107,9 +108,9 @@ export default function CaseStudiesPage() {
             Detailed breakdowns of real production systems I&apos;ve built. The problem, the approach, the
             architecture decisions, and the measurable results.
           </p>
-        </div>
+        </Reveal>
 
-        <div className="space-y-16">
+        <Reveal staggerMs={80} className="space-y-16">
           {caseStudies.map((cs, idx) => (
             <article
               key={cs.slug}
@@ -216,10 +217,10 @@ export default function CaseStudiesPage() {
               </div>
             </article>
           ))}
-        </div>
+        </Reveal>
 
         {/* CTA */}
-        <div className="mt-20 text-center">
+        <Reveal className="mt-20 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
             Have a Similar Challenge?
           </h2>
@@ -241,7 +242,7 @@ export default function CaseStudiesPage() {
               All Projects
             </Link>
           </div>
-        </div>
+        </Reveal>
       </div>
     </main>
   );

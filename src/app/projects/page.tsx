@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Brain, Phone, CreditCard, ArrowRight, Sparkles, Target, BarChart3, Camera, Lightbulb, Wallet, GraduationCap, Sparkle, Baby, Car, TrendingUp, Search, Award, Link2, DoorOpen, LayoutGrid, FileText, ClipboardList, Users, PieChart, Shield, Factory, Heart, MessageSquare, Truck, Gauge } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 export default function ProjectsPage() {
   return (
@@ -55,15 +56,10 @@ export default function ProjectsPage() {
       {/* Projects Grid */}
       <section className="relative px-4 pb-16">
         <div className="max-w-6xl mx-auto">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project, i) => (
-              <motion.div
-                key={project.slug}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.05 * i }}
-              >
+          <Reveal staggerMs={55} className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((project) => (
                 <Link
+                  key={project.slug}
                   href={`/projects/${project.slug}`}
                   className="group block h-full"
                 >
@@ -99,9 +95,8 @@ export default function ProjectsPage() {
                     </div>
                   </div>
                 </Link>
-              </motion.div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 

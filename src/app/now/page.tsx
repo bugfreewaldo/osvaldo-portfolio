@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, MapPin, Briefcase, BookOpen, Code, Mic, Brain } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
 
 export const metadata: Metadata = {
   title: "Now — Osvaldo Restrepo",
@@ -13,17 +14,19 @@ export default function NowPage() {
   return (
     <main className="min-h-screen py-12 px-4">
       <div className="max-w-3xl mx-auto">
-        <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
-          What I&apos;m Doing Now
-        </h1>
-        <p className="mt-2 text-slate-500 dark:text-slate-400">
-          Last updated: April 2026 · <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Panama City, Panama</span>
-        </p>
-        <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
-          This is a <a href="https://nownownow.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600 dark:hover:text-slate-300 transition-colors">now page</a>. It&apos;s like an about page, but for what I&apos;m focused on at this point in my life.
-        </p>
+        <Reveal>
+          <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+            What I&apos;m Doing Now
+          </h1>
+          <p className="mt-2 text-slate-500 dark:text-slate-400">
+            Last updated: April 2026 · <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Panama City, Panama</span>
+          </p>
+          <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
+            This is a <a href="https://nownownow.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600 dark:hover:text-slate-300 transition-colors">now page</a>. It&apos;s like an about page, but for what I&apos;m focused on at this point in my life.
+          </p>
+        </Reveal>
 
-        <div className="mt-10 space-y-10">
+        <Reveal staggerMs={80} className="mt-10 space-y-10">
           {/* Work */}
           <section>
             <div className="flex items-center gap-3 mb-4">
@@ -135,10 +138,10 @@ export default function NowPage() {
               </a>.
             </p>
           </section>
-        </div>
+        </Reveal>
 
         {/* CTA */}
-        <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800 text-center">
+        <Reveal className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800 text-center">
           <p className="text-slate-500 dark:text-slate-400 mb-4">
             Want to work together or just say hi?
           </p>
@@ -149,7 +152,7 @@ export default function NowPage() {
             Get in Touch
             <ArrowRight className="w-4 h-4" />
           </Link>
-        </div>
+        </Reveal>
       </div>
     </main>
   );

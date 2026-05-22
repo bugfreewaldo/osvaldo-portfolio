@@ -6,6 +6,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-mo
 import { useState, useEffect, useRef } from "react";
 import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper, Database, Globe, Shield, BarChart3, Code2, Workflow } from "lucide-react";
 import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
+import Reveal from "@/components/motion/Reveal";
 
 // Rotating text phrases
 const rotatingPhrases = [
@@ -357,9 +358,7 @@ export default function Home() {
               variants={heroItem}
             >
               <span className="text-foreground">Hey, I&apos;m </span>
-              <span className="inline-block bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent">
-                <AnimatedHeadline text="Waldo" />
-              </span>
+              <AnimatedHeadline text="Waldo" className="text-accent" />
             </motion.h1>
 
             <motion.div
@@ -544,16 +543,11 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {capabilities.map((cap, i) => (
-              <motion.div
+          <Reveal staggerMs={70} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {capabilities.map((cap) => (
+              <div
                 key={cap.title}
-                className="group relative p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all duration-300 overflow-hidden"
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: (i % 4) * 0.1 }}
-                whileHover={{ y: -4 }}
+                className="group relative p-6 rounded-2xl bg-surface/60 backdrop-blur-sm border border-line hover:border-[#FF6A3D]/50 transition-all duration-300 overflow-hidden hover:-translate-y-1"
               >
                 {/* Hover gradient glow */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${cap.gradient} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-300`} />
@@ -577,34 +571,28 @@ export default function Home() {
                     </span>
                   ))}
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </Reveal>
 
           {/* Stats bar */}
-          <motion.div
-            className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-6"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-          >
+          <Reveal staggerMs={90} className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-6">
             {[
               { value: "10+", label: "Years Engineering" },
               { value: "20+", label: "Production Systems" },
               { value: "20+", label: "AI Products Shipped" },
               { value: "10+", label: "Countries Served" },
             ].map((stat) => (
-              <div key={stat.label} className="text-center p-4 rounded-xl bg-white/30 dark:bg-slate-900/30 border border-slate-200/50 dark:border-slate-800/50">
+              <div key={stat.label} className="text-center p-4 rounded-xl bg-surface/40 border border-line">
                 <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] bg-clip-text text-transparent">
                   {stat.value}
                 </div>
-                <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                <div className="mt-1 text-sm text-muted">
                   {stat.label}
                 </div>
               </div>
             ))}
-          </motion.div>
+          </Reveal>
         </div>
       </section>
 

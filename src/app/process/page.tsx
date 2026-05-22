@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import Reveal from "@/components/motion/Reveal";
 import {
   Target, Shield, TrendingUp, ArrowRight,
   CheckCircle, XCircle, Zap, MessageSquare, Clock,
@@ -175,14 +176,10 @@ export default function ProcessPage() {
             What You Get When I&apos;m Your AI Partner
           </motion.h2>
 
-          <div className="grid sm:grid-cols-2 gap-6">
-            {promises.map((promise, i) => (
-              <motion.div
+          <Reveal staggerMs={80} className="grid sm:grid-cols-2 gap-6">
+            {promises.map((promise) => (
+              <div
                 key={promise.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
                 className="p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-all"
               >
                 <div className="flex items-start gap-4">
@@ -198,72 +195,54 @@ export default function ProcessPage() {
                     </p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* No BS Section */}
       <section className="relative py-12 px-4 bg-slate-50/50 dark:bg-slate-900/30">
         <div className="max-w-4xl mx-auto">
-          <div className="grid md:grid-cols-2 gap-8">
+          <Reveal staggerMs={120} className="grid md:grid-cols-2 gap-8">
             {/* What I Don't Do */}
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
+            <div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <XCircle className="w-6 h-6 text-red-500" />
                 What I Don&apos;t Do
               </h3>
               <ul className="space-y-3">
-                {noBs.map((item, i) => (
-                  <motion.li
+                {noBs.map((item) => (
+                  <li
                     key={item}
-                    initial={{ opacity: 0, x: -10 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.1 }}
                     className="flex items-center gap-3 text-slate-600 dark:text-slate-400"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
                     {item}
-                  </motion.li>
+                  </li>
                 ))}
               </ul>
-            </motion.div>
+            </div>
 
             {/* What You Get */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
+            <div>
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                 <CheckCircle className="w-6 h-6 text-green-500" />
                 What You Actually Get
               </h3>
               <ul className="space-y-3">
-                {deliverables.map((item, i) => (
-                  <motion.li
+                {deliverables.map((item) => (
+                  <li
                     key={item}
-                    initial={{ opacity: 0, x: 10 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ delay: i * 0.1 }}
                     className="flex items-center gap-3 text-slate-600 dark:text-slate-400"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-green-500 flex-shrink-0" />
                     {item}
-                  </motion.li>
+                  </li>
                 ))}
               </ul>
-            </motion.div>
-          </div>
+            </div>
+          </Reveal>
         </div>
       </section>
 
@@ -285,16 +264,9 @@ export default function ProcessPage() {
             </p>
           </motion.div>
 
-          <div className="space-y-6">
-            {phases.map((phase, i) => (
-              <motion.div
-                key={phase.step}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="group"
-              >
+          <Reveal staggerMs={80} className="space-y-6">
+            {phases.map((phase) => (
+              <div key={phase.step} className="group">
                 <div className="p-6 sm:p-8 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-all duration-300">
                   <div className="flex flex-col sm:flex-row gap-6">
                     {/* Step Number */}
@@ -331,9 +303,9 @@ export default function ProcessPage() {
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             ))}
-          </div>
+          </Reveal>
         </div>
       </section>
 
