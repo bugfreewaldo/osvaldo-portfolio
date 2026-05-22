@@ -123,7 +123,7 @@ export default function BlogPostsList({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder={locale === "es" ? "Buscar artículos..." : "Search articles..."}
-          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all text-sm"
+          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF6A3D] focus:border-transparent transition-all text-sm"
         />
         {searchQuery && (
           <button

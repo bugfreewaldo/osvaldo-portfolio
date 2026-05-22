@@ -54,7 +54,7 @@ const DATA: Record<string, Project> = {
   "ai-voice-agent": {
     title: "Voice Agent",
     subtitle: "Shining Image",
-    gradient: "from-indigo-500 to-cyan-500",
+    gradient: "from-[#FF6A3D] to-cyan-500",
     summary:
       "An AI phone agent that answers calls 24/7, books appointments, and knows when to transfer to a human.",
     story:
@@ -167,7 +167,7 @@ const DATA: Record<string, Project> = {
   "snapshot9": {
     title: "Snapshot9.ai",
     subtitle: "Business Transformation Platform",
-    gradient: "from-violet-500 to-purple-500",
+    gradient: "from-violet-500 to-[#2DD4BF]",
     summary:
       "Helps companies visualize and optimize how their organization actually operates.",
     story:
@@ -335,7 +335,7 @@ const DATA: Record<string, Project> = {
   "exitready9": {
     title: "ExitReady9.ai",
     subtitle: "Exit Readiness Platform",
-    gradient: "from-indigo-500 to-violet-500",
+    gradient: "from-[#FF6A3D] to-violet-500",
     summary:
       "AI-powered exit readiness platform within TheGreyMatter.ai ecosystem that prepares companies for acquisition or IPO.",
     story:
@@ -447,7 +447,7 @@ const DATA: Record<string, Project> = {
   "orgdesign9": {
     title: "OrgDesign9.ai",
     subtitle: "Organizational Design Platform",
-    gradient: "from-violet-500 to-purple-500",
+    gradient: "from-violet-500 to-[#2DD4BF]",
     summary:
       "AI-powered organizational design platform — workforce structure analysis, structural health benchmarking, scenario modeling with costing, RACI generation, and transition planning.",
     story:
@@ -587,7 +587,7 @@ const DATA: Record<string, Project> = {
   "interview9": {
     title: "Interview9.ai",
     subtitle: "Structured Interview Assessment",
-    gradient: "from-indigo-500 to-blue-500",
+    gradient: "from-[#FF6A3D] to-blue-500",
     summary:
       "Structured interview platform — rubric-driven evaluation, bias-aware scoring, and AI-assisted synthesis of candidate feedback across panels.",
     story:
@@ -835,7 +835,7 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
         >
           <Link
             href="/projects"
-            className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors mb-8"
+            className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Projects
@@ -997,7 +997,7 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
             </p>
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
+              className="inline-flex items-center gap-2 mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
             >
               Get in Touch
             </Link>

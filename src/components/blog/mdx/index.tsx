@@ -116,9 +116,9 @@ function LinkCard({
   return (
     <Link
       href={href}
-      className="block my-6 p-5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 bg-white dark:bg-slate-900/50 hover:shadow-md transition-all duration-200 group no-underline"
+      className="block my-6 p-5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-[#FF8A5B] dark:hover:border-[#FF6A3D] bg-white dark:bg-slate-900/50 hover:shadow-md transition-all duration-200 group no-underline"
     >
-      <p className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors m-0">
+      <p className="font-semibold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors m-0">
         {title}
       </p>
       <p className="text-sm text-slate-600 dark:text-slate-400 mt-1.5 m-0 leading-relaxed">

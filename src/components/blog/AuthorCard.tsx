@@ -5,7 +5,7 @@ export default function AuthorCard() {
   return (
     <div className="mt-12 p-6 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
       <div className="flex items-start gap-4">
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C] flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
           OR
         </div>
         <div className="flex-1">
@@ -35,7 +35,7 @@ export default function AuthorCard() {
             </a>
             <Link
               href="/contact"
-              className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline ml-auto"
+              className="text-sm text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline ml-auto"
             >
               Get in touch
             </Link>

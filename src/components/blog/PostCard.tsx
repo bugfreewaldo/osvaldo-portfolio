@@ -19,28 +19,28 @@ export default function PostCard({ post, index }: PostCardProps) {
       transition={{ duration: 0.4, delay: 0.05 * index }}
     >
       <Link href={post.url} className="group block">
-        <div className={`relative p-6 rounded-2xl bg-white dark:bg-slate-900/50 border transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10 ${
+        <div className={`relative p-6 rounded-2xl bg-white dark:bg-slate-900/50 border transition-all duration-300 hover:shadow-xl hover:shadow-[#FF6A3D]/10 ${
             post.frontmatter.pinned
-              ? "border-indigo-400 dark:border-indigo-600 ring-1 ring-indigo-400/20"
-              : "border-slate-200 dark:border-slate-800 hover:border-indigo-500/50"
+              ? "border-[#FF8A5B] dark:border-[#FF6A3D]/40 ring-1 ring-[#FF8A5B]/20"
+              : "border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50"
           }`}>
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex items-center gap-2">
               {post.frontmatter.pinned && (
-                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-indigo-500 text-white rounded">
+                <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-[#FF6A3D] text-white rounded">
                   <Pin className="w-3 h-3" />
                   Pinned
                 </span>
               )}
               {post.frontmatter.category && (
-                <span className="inline-block px-2 py-1 text-xs font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded">
+                <span className="inline-block px-2 py-1 text-xs font-medium bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] rounded">
                   {post.frontmatter.category}
                 </span>
               )}
             </div>
           </div>
 
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
             {post.frontmatter.title}
           </h2>
 
@@ -72,7 +72,7 @@ export default function PostCard({ post, index }: PostCardProps) {
             </div>
           )}
 
-          <div className="mt-4 flex items-center gap-1 text-sm text-indigo-600 dark:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="mt-4 flex items-center gap-1 text-sm text-[#FF6A3D] dark:text-[#FF8A5B] opacity-0 group-hover:opacity-100 transition-opacity">
             Read article
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>

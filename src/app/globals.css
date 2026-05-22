@@ -1,15 +1,58 @@
 @import "tailwindcss";
 
+/* Class-based dark mode (driven by the <html class="dark"> toggle/inline script) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================
+   Engineer's Terminal — design tokens
+   ============================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Light surface */
+  --background: #f7f8f8;
+  --foreground: #14181d;
+  --surface: #ffffff;
+  --surface-2: #f1f3f4;
+  --line: #e3e6e9;
+  --muted: #5b6470;
+
+  /* Brand */
+  --accent: #ff6a3d;        /* signal orange */
+  --accent-soft: #ff8a5b;
+  --accent-2: #14b8a6;      /* teal (slightly deeper for light-mode contrast) */
+
+  /* Decorative */
+  --grid-line: rgba(20, 24, 29, 0.045);
 
   /* Prose variables */
-  --tw-prose-body: #374151;
-  --tw-prose-headings: #111827;
-  --tw-prose-links: #4f46e5;
+  --tw-prose-body: #2f3742;
+  --tw-prose-headings: #14181d;
+  --tw-prose-links: #0f9488;
   --tw-prose-code: #1f2937;
-  --tw-prose-code-bg: #f3f4f6;
+  --tw-prose-code-bg: #f1f3f4;
+  --tw-prose-pre-bg: #0d1117;
+  --tw-prose-pre-code: #e6edf3;
+}
+
+.dark {
+  --background: #0b0f14;
+  --foreground: #e6eaee;
+  --surface: #11161d;
+  --surface-2: #161c24;
+  --line: #1e262f;
+  --muted: #8a95a3;
+
+  --accent: #ff6a3d;
+  --accent-soft: #ff8a5b;
+  --accent-2: #2dd4bf;
+
+  --grid-line: rgba(255, 255, 255, 0.035);
+
+  /* Dark mode prose variables */
+  --tw-prose-body: #c2cbd5;
+  --tw-prose-headings: #f3f6f9;
+  --tw-prose-links: #2dd4bf;
+  --tw-prose-code: #e5e7eb;
+  --tw-prose-code-bg: #161c24;
   --tw-prose-pre-bg: #0d1117;
   --tw-prose-pre-code: #e6edf3;
 }
@@ -17,30 +60,43 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-
-    /* Dark mode prose variables */
-    --tw-prose-body: #d1d5db;
-    --tw-prose-headings: #f9fafb;
-    --tw-prose-links: #818cf8;
-    --tw-prose-code: #e5e7eb;
-    --tw-prose-code-bg: #1e293b;
-    --tw-prose-pre-bg: #0d1117;
-    --tw-prose-pre-code: #e6edf3;
-  }
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-2: var(--accent-2);
+  --font-sans: var(--font-display);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-display), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Respect reduced motion globally */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Mono eyebrow / label helper */
+.mono-label {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.7rem;
 }
 
 /* ============================================
@@ -94,14 +150,14 @@ body {
 }
 
 .prose pre [data-highlighted-line] {
-  background: rgba(99, 102, 241, 0.15);
-  border-left: 3px solid #6366f1;
+  background: rgba(255, 106, 61, 0.14);
+  border-left: 3px solid var(--accent);
   margin-left: -1.25rem;
   padding-left: calc(1.25rem - 3px);
 }
 
 .prose pre [data-highlighted-chars] {
-  background: rgba(99, 102, 241, 0.25);
+  background: rgba(255, 106, 61, 0.24);
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
 }
@@ -155,7 +211,7 @@ body {
   border-bottom: 1px solid #e5e7eb;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose :where(h2):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
     border-bottom-color: #374151;
   }
@@ -200,18 +256,18 @@ body {
 
 /* Blockquotes */
 .prose :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-  border-left: 4px solid #6366f1;
+  border-left: 4px solid var(--accent);
   padding: 0.75rem 1rem;
   margin: 1.5rem 0;
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(255, 106, 61, 0.06);
   border-radius: 0 0.5rem 0.5rem 0;
   font-style: italic;
   color: #6b7280;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose :where(blockquote):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
-    background: rgba(99, 102, 241, 0.1);
+    background: rgba(255, 106, 61, 0.12);
     color: #9ca3af;
   }
 }
@@ -241,7 +297,7 @@ body {
   margin: 2.5rem 0;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose :where(hr):not(:where([class~="not-prose"], [class~="not-prose"] *)) {
     border-color: #374151;
   }
@@ -252,7 +308,7 @@ body {
   opacity: 0;
   transition: opacity 0.2s ease;
   margin-left: 0.5rem;
-  color: #6366f1;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -272,7 +328,7 @@ html {
 
 /* Selection highlighting */
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(255, 106, 61, 0.28);
 }
 
 /* Scrollbar styling for code blocks */
@@ -332,7 +388,7 @@ html {
   overflow: hidden;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose table {
     border-color: #4b5563;
   }
@@ -342,7 +398,7 @@ html {
   background: #f3f4f6;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose thead {
     background: #374151;
   }
@@ -361,7 +417,7 @@ html {
   border-right: none;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose th {
     color: #f9fafb;
     border-bottom-color: #4b5563;
@@ -380,7 +436,7 @@ html {
   border-right: none;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose td {
     color: #d1d5db;
     border-bottom-color: #374151;
@@ -396,7 +452,7 @@ html {
   background: #f9fafb;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose tbody tr:nth-child(even) {
     background: rgba(55, 65, 81, 0.3);
   }
@@ -406,7 +462,7 @@ html {
   background: #f3f4f6;
 }
 
-@media (prefers-color-scheme: dark) {
+.dark {
   .prose tbody tr:hover {
     background: rgba(55, 65, 81, 0.5);
   }

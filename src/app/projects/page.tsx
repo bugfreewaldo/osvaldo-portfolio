@@ -11,7 +11,7 @@ export default function ProjectsPage() {
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
         <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
       </div>
 
       {/* Header */}
@@ -23,10 +23,10 @@ export default function ProjectsPage() {
             transition={{ duration: 0.6 }}
             className="flex items-center gap-3 mb-4"
           >
-            <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
-            <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+            <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">
               Featured Work
             </span>
           </motion.div>
@@ -67,14 +67,14 @@ export default function ProjectsPage() {
                   href={`/projects/${project.slug}`}
                   className="group block h-full"
                 >
-                  <div className="relative h-full p-6 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/10">
+                  <div className="relative h-full p-6 rounded-2xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all duration-300 hover:shadow-xl hover:shadow-[#FF6A3D]/10">
                     {/* Header */}
                     <div className="flex items-start gap-3 mb-4">
                       <div className={`p-2.5 rounded-xl bg-gradient-to-br ${project.gradient} shrink-0`}>
                         <project.icon className="w-5 h-5 text-white" />
                       </div>
                       <div className="min-w-0">
-                        <h2 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors truncate">
+                        <h2 className="text-lg font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors truncate">
                           {project.title}
                         </h2>
                         <p className="text-sm text-slate-500">{project.subtitle}</p>
@@ -123,7 +123,7 @@ export default function ProjectsPage() {
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
             >
               Get in Touch
               <ArrowRight className="w-4 h-4" />
@@ -155,7 +155,7 @@ const projects = [
     description:
       "24/7 AI phone agent handling inbound calls, booking jobs, and handing off to humans when needed. Live on Twilio SIP with real-time transcripts to CRM.",
     icon: Phone,
-    gradient: "from-indigo-500 to-cyan-500",
+    gradient: "from-[#FF6A3D] to-cyan-500",
     stack: ["Python", "Twilio", "Whisper", "GPT-4", "WebSockets"],
   },
   {
@@ -197,7 +197,7 @@ const projects = [
     description:
       "Comprehensive business transformation platform that captures, analyzes, and optimizes organizational processes using AI. Enables companies to visualize and improve their operational efficiency.",
     icon: Camera,
-    gradient: "from-violet-500 to-purple-500",
+    gradient: "from-violet-500 to-[#2DD4BF]",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
     external: "https://snapshot9.ai",
   },
@@ -263,7 +263,7 @@ const projects = [
     description:
       "Part of TheGreyMatter.ai ecosystem. Helps companies prepare for acquisition or IPO by identifying gaps, strengthening value drivers, and building exit narratives.",
     icon: DoorOpen,
-    gradient: "from-indigo-500 to-violet-500",
+    gradient: "from-[#FF6A3D] to-violet-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
     external: "https://exitready9.thegreymatter.ai",
   },
@@ -307,7 +307,7 @@ const projects = [
     description:
       "Part of TheGreyMatter.ai ecosystem. AI-powered org design — workforce structure analysis, structural health benchmarking, scenario modeling with costing, RACI generation, and transition planning.",
     icon: Users,
-    gradient: "from-violet-500 to-purple-500",
+    gradient: "from-violet-500 to-[#2DD4BF]",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
     external: "https://orgdesign9.thegreymatter.ai",
   },
@@ -362,7 +362,7 @@ const projects = [
     description:
       "Part of TheGreyMatter.ai ecosystem. Structured interview platform — rubric-driven evaluation, bias-aware scoring, and AI-assisted synthesis of candidate feedback across panels.",
     icon: MessageSquare,
-    gradient: "from-indigo-500 to-blue-500",
+    gradient: "from-[#FF6A3D] to-blue-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
     external: "https://interview9.thegreymatter.ai",
   },

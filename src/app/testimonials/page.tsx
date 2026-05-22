@@ -70,7 +70,7 @@ function GridBackground() {
     <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
       <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+      <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
     </div>
   );
 }
@@ -112,7 +112,7 @@ export default function TestimonialsPage() {
         {/* Hero */}
         <section className="relative pt-16 pb-8 px-4">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-sm font-medium mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-6">
               <Star className="w-4 h-4" />
               Social Proof
             </div>
@@ -132,14 +132,14 @@ export default function TestimonialsPage() {
               {TESTIMONIALS.map((t) => (
                 <figure
                   key={t.name}
-                  className="relative p-6 rounded-2xl bg-white dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/30 transition-colors group"
+                  className="relative p-6 rounded-2xl bg-white dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-colors group"
                 >
-                  <Quote className="absolute top-4 right-4 w-8 h-8 text-indigo-200 dark:text-indigo-900/50" />
+                  <Quote className="absolute top-4 right-4 w-8 h-8 text-[#FFC79A] dark:text-[#FF6A3D]/50" />
                   <blockquote className="relative text-slate-700 dark:text-slate-200 leading-relaxed">
                     &ldquo;{t.quote}&rdquo;
                   </blockquote>
                   <figcaption className="mt-5 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C] flex items-center justify-center text-white font-bold text-sm">
                       {t.name
                         .split(" ")
                         .map((n) => n[0])
@@ -153,7 +153,7 @@ export default function TestimonialsPage() {
                             href={t.link}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                            className="hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] transition-colors"
                           >
                             {t.name}
                           </a>
@@ -176,7 +176,7 @@ export default function TestimonialsPage() {
                 </p>
                 <Link
                   href="/contact"
-                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 transition-colors"
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B] hover:text-[#FF6A3D] transition-colors"
                 >
                   Worked with me? Let me know
                   <ArrowRight className="w-4 h-4" />
@@ -189,7 +189,7 @@ export default function TestimonialsPage() {
         {/* CTA */}
         <section className="relative py-12 px-4">
           <div className="max-w-2xl mx-auto text-center">
-            <div className="p-8 rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-800">
+            <div className="p-8 rounded-2xl bg-gradient-to-br from-[#FF6A3D]/10 to-[#2DD4BF]/10 dark:from-[#FF6A3D]/12 dark:to-[#2DD4BF]/10 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
               <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">
                 Want to work together?
               </h2>
@@ -198,7 +198,7 @@ export default function TestimonialsPage() {
               </p>
               <Link
                 href="/contact"
-                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-500 hover:to-purple-500 transition-all shadow-md shadow-indigo-500/20"
+                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-md shadow-[#FF6A3D]/20"
               >
                 Get in Touch
                 <ArrowRight className="w-4 h-4" />

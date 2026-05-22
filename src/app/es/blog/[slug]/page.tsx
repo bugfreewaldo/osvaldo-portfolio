@@ -183,7 +183,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           <div className="flex items-center justify-between mb-8">
             <Link
               href="/es/blog"
-              className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+              className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Volver al Blog
@@ -203,7 +203,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           {/* Header */}
           <header className="mb-8">
             {post.frontmatter.category && (
-              <span className="inline-block px-3 py-1 text-sm font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full mb-4">
+              <span className="inline-block px-3 py-1 text-sm font-medium bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] rounded-full mb-4">
                 {post.frontmatter.category}
               </span>
             )}
@@ -213,8 +213,8 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
 
             {/* TL;DR for AI/quick readers */}
             {post.frontmatter.tldr && (
-              <div className="mt-6 p-4 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800">
-                <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400 mb-1">
+              <div className="mt-6 p-4 rounded-xl bg-[#FF6A3D]/8 dark:bg-[#FF6A3D]/12 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
+                <p className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B] mb-1">
                   Resumen
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
@@ -256,7 +256,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           {/* Two-column layout for larger screens */}
           <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8">
             {/* Main content */}
-            <div className="prose prose-slate dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-indigo-600 dark:prose-a:text-indigo-400 max-w-none">
+            <div className="prose prose-slate dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-[#FF6A3D] dark:prose-a:text-[#FF8A5B] max-w-none">
               <PostContent source={post.content} />
             </div>
 
@@ -290,9 +290,9 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
                     <Link
                       key={rp!.slug}
                       href={`/es/blog/${rp!.slug}`}
-                      className="group p-5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all"
+                      className="group p-5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all"
                     >
-                      <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors line-clamp-2">
+                      <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors line-clamp-2">
                         {rp!.frontmatter.title}
                       </h3>
                       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 line-clamp-2">

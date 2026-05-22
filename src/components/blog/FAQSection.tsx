@@ -21,7 +21,7 @@ export default function FAQSection({ faqs }: FAQSectionProps) {
   return (
     <section className="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800">
       <div className="flex items-center gap-2 mb-6">
-        <HelpCircle className="w-5 h-5 text-indigo-500" />
+        <HelpCircle className="w-5 h-5 text-[#FF6A3D]" />
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">
           Frequently Asked Questions
         </h2>

@@ -27,8 +27,8 @@ export default function NowPage() {
           {/* Work */}
           <section>
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-                <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <div className="p-2 rounded-lg bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15">
+                <Briefcase className="w-5 h-5 text-[#FF6A3D] dark:text-[#FF8A5B]" />
               </div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Work</h2>
             </div>
@@ -130,7 +130,7 @@ export default function NowPage() {
             </div>
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
               Running <strong className="text-slate-900 dark:text-white">Waldo&apos;s Code Lab</strong> — a free coding school helping teens and kids learn programming step by step. If you know a kid who&apos;s curious about code, send them to{" "}
-              <a href="https://waldoscodelab.com" target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 underline hover:no-underline">
+              <a href="https://waldoscodelab.com" target="_blank" rel="noopener noreferrer" className="text-[#FF6A3D] dark:text-[#FF8A5B] underline hover:no-underline">
                 waldoscodelab.com
               </a>.
             </p>
@@ -144,7 +144,7 @@ export default function NowPage() {
           </p>
           <Link
             href="/contact"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
           >
             Get in Touch
             <ArrowRight className="w-4 h-4" />

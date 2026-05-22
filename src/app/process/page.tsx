@@ -13,7 +13,7 @@ function GridBackground() {
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+      <div className="absolute top-0 right-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
       <div className="absolute bottom-1/3 left-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
     </div>
   );
@@ -75,7 +75,7 @@ const phases = [
       "I'll tell you if AI is even the right solution",
       "Clear scope with success metrics we both agree on",
     ],
-    gradient: "from-indigo-500 to-purple-500",
+    gradient: "from-[#FF6A3D] to-[#FF8A4C]",
   },
   {
     icon: Code,
@@ -129,10 +129,10 @@ export default function ProcessPage() {
             transition={{ duration: 0.6 }}
             className="flex items-center gap-3 mb-4"
           >
-            <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
               <Target className="w-5 h-5 text-white" />
             </div>
-            <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+            <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">
               How I Work
             </span>
           </motion.div>
@@ -144,7 +144,7 @@ export default function ProcessPage() {
             transition={{ duration: 0.6, delay: 0.1 }}
           >
             <span className="text-slate-900 dark:text-white">No Fluff. </span>
-            <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent">
               Just Results.
             </span>
           </motion.h1>
@@ -183,10 +183,10 @@ export default function ProcessPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/30 transition-all"
+                className="p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-all"
               >
                 <div className="flex items-start gap-4">
-                  <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
                     <promise.icon className="w-6 h-6 text-white" />
                   </div>
                   <div>
@@ -295,7 +295,7 @@ export default function ProcessPage() {
                 transition={{ duration: 0.5, delay: i * 0.1 }}
                 className="group"
               >
-                <div className="p-6 sm:p-8 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/30 transition-all duration-300">
+                <div className="p-6 sm:p-8 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-all duration-300">
                   <div className="flex flex-col sm:flex-row gap-6">
                     {/* Step Number */}
                     <div className="flex-shrink-0">
@@ -307,7 +307,7 @@ export default function ProcessPage() {
                     {/* Content */}
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
-                        <span className="text-sm font-mono text-indigo-600 dark:text-indigo-400">
+                        <span className="text-sm font-mono text-[#FF6A3D] dark:text-[#FF8A5B]">
                           {phase.step}
                         </span>
                         <h3 className="text-xl font-bold text-slate-900 dark:text-white">
@@ -323,7 +323,7 @@ export default function ProcessPage() {
                             key={j}
                             className="flex items-start gap-2 text-sm text-slate-500 dark:text-slate-500"
                           >
-                            <CheckCircle className="w-4 h-4 text-indigo-500 mt-0.5 flex-shrink-0" />
+                            <CheckCircle className="w-4 h-4 text-[#FF6A3D] mt-0.5 flex-shrink-0" />
                             {detail}
                           </li>
                         ))}
@@ -338,17 +338,17 @@ export default function ProcessPage() {
       </section>
 
       {/* Timeline Expectation */}
-      <section className="relative py-12 px-4 bg-gradient-to-br from-indigo-500/5 to-purple-500/5">
+      <section className="relative py-12 px-4 bg-gradient-to-br from-[#FF6A3D]/5 to-[#2DD4BF]/5">
         <div className="max-w-4xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="p-8 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-indigo-500/20"
+            className="p-8 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-[#FF6A3D]/20"
           >
             <div className="flex items-start gap-4">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+              <div className="p-3 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
                 <Clock className="w-6 h-6 text-white" />
               </div>
               <div>
@@ -378,7 +378,7 @@ export default function ProcessPage() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
-            className="p-8 rounded-2xl bg-gradient-to-br from-purple-500/10 to-cyan-500/10 border border-purple-500/20"
+            className="p-8 rounded-2xl bg-gradient-to-br from-[#FF6A3D]/10 to-[#2DD4BF]/10 border border-purple-500/20"
           >
             <div className="flex items-start gap-4">
               <div className="p-3 rounded-xl bg-gradient-to-br from-purple-500 to-cyan-500">
@@ -413,7 +413,7 @@ export default function ProcessPage() {
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <Shield className="w-5 h-5 text-indigo-500 mt-0.5 flex-shrink-0" />
+                    <Shield className="w-5 h-5 text-[#FF6A3D] mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="font-medium text-slate-900 dark:text-white text-sm">Responsible Use</p>
                       <p className="text-sm text-slate-500">No sensitive data in prompts. No blind trust in outputs.</p>
@@ -455,7 +455,7 @@ export default function ProcessPage() {
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
             >
               Let&apos;s Talk
               <ArrowRight className="w-4 h-4" />

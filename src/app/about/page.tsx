@@ -214,7 +214,7 @@ function GridBackground() {
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
       <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-0 left-1/3 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
     </div>
@@ -235,7 +235,7 @@ function EducationCard({ edu, index }: { edu: Education; index: number }) {
     >
       <motion.div
         className={`p-5 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 cursor-pointer transition-all duration-300 ${
-          isExpanded ? "border-indigo-500/50 shadow-lg shadow-indigo-500/5" : "hover:border-indigo-500/30"
+          isExpanded ? "border-[#FF6A3D]/50 shadow-lg shadow-[#FF6A3D]/5" : "hover:border-[#FF6A3D]/30"
         }`}
         onClick={() => setIsExpanded(!isExpanded)}
         whileHover={{ scale: 1.01 }}
@@ -244,7 +244,7 @@ function EducationCard({ edu, index }: { edu: Education; index: number }) {
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
                 {edu.degree}
               </h3>
               {edu.highlight && (
@@ -290,7 +290,7 @@ function EducationCard({ edu, index }: { edu: Education; index: number }) {
                   transition={{ delay: i * 0.1 }}
                   className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 flex-shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#FF6A3D] mt-1.5 flex-shrink-0" />
                   {note}
                 </motion.li>
               ))}
@@ -317,9 +317,9 @@ function ExperienceCard({ exp, index }: { exp: typeof experience[0]; index: numb
       <motion.div
         className={`p-6 rounded-2xl backdrop-blur-sm cursor-pointer transition-all duration-300 ${
           "type" in exp && exp.type === "current"
-            ? "bg-gradient-to-br from-indigo-500/5 to-purple-500/5 border border-indigo-500/20"
-            : "bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-indigo-500/30"
-        } ${isExpanded ? "shadow-lg shadow-indigo-500/5" : ""}`}
+            ? "bg-gradient-to-br from-[#FF6A3D]/5 to-[#2DD4BF]/5 border border-[#FF6A3D]/20"
+            : "bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30"
+        } ${isExpanded ? "shadow-lg shadow-[#FF6A3D]/5" : ""}`}
         onClick={() => setIsExpanded(!isExpanded)}
         whileHover={{ scale: 1.005 }}
         whileTap={{ scale: 0.995 }}
@@ -335,7 +335,7 @@ function ExperienceCard({ exp, index }: { exp: typeof experience[0]; index: numb
                 </span>
               )}
             </div>
-            <p className="text-indigo-600 dark:text-indigo-400 font-medium">{exp.company}</p>
+            <p className="text-[#FF6A3D] dark:text-[#FF8A5B] font-medium">{exp.company}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end gap-1 text-sm text-slate-500">
@@ -375,7 +375,7 @@ function ExperienceCard({ exp, index }: { exp: typeof experience[0]; index: numb
                 transition={{ delay: j * 0.05 }}
                 className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#FF6A3D] mt-1.5 flex-shrink-0" />
                 {highlight}
               </motion.li>
             ))}
@@ -385,7 +385,7 @@ function ExperienceCard({ exp, index }: { exp: typeof experience[0]; index: numb
             {exp.skills.map((skill) => (
               <span
                 key={skill}
-                className="px-2.5 py-1 text-xs font-medium bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full"
+                className="px-2.5 py-1 text-xs font-medium bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FFB068] rounded-full"
               >
                 {skill}
               </span>
@@ -412,7 +412,7 @@ export default function AboutPage() {
           >
             <h1 className="text-4xl sm:text-5xl font-bold">
               <span className="text-slate-900 dark:text-white">About </span>
-              <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent">
                 Me
               </span>
             </h1>
@@ -436,10 +436,10 @@ export default function AboutPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: i * 0.1 }}
-                className="p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/30 transition-colors"
+                className="p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-colors"
               >
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
+                  <div className="p-2 rounded-lg bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
                     <skill.icon className="w-4 h-4 text-white" />
                   </div>
                   <h3 className="font-semibold text-slate-900 dark:text-white text-sm">{skill.label}</h3>
@@ -544,7 +544,7 @@ export default function AboutPage() {
             transition={{ duration: 0.6 }}
             className="flex items-center gap-3 mb-6"
           >
-            <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
               <Briefcase className="w-5 h-5 text-white" />
             </div>
             <div>

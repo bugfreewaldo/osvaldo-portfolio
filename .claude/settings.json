@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:baby-tracking-app-silk.vercel.app)",
+      "Bash(grep -h \"^date:\" content/posts/*.mdx)",
+      "Bash(sed 's/date: //')",
+      "Read(//c/Users/orest/OneDrive/Documentos/GitHub/TGM/**)"
+    ]
+  }
+}

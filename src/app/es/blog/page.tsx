@@ -27,7 +27,7 @@ export default function SpanishBlogPage() {
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
         <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
       </div>
 
       {/* Header */}
@@ -35,10 +35,10 @@ export default function SpanishBlogPage() {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
-              <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+              <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">
                 Escritura Técnica
               </span>
             </div>
@@ -77,7 +77,7 @@ export default function SpanishBlogPage() {
               </p>
               <Link
                 href="/blog"
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-[#FF6A3D] text-white hover:bg-[#FF7E54] transition-colors"
               >
                 Ver blog en inglés
               </Link>

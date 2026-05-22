@@ -13,9 +13,34 @@
       "Bash(npm run build:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nfix: escape apostrophes for ESLint react/no-unescaped-entities\n\n- Fix unescaped apostrophes in contact, page, process, projects pages\n- Remove unused Rocket import from process page\n- Remove unused technicalSkills variable from about page\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(npm install:*)",
-      "Bash(git commit -m \"$(cat <<''EOF''\nchore: upgrade Next.js to 16.0.7\n\nFix Vercel deployment blocking due to CVE-2025-66478\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit -m \"$(cat <<''EOF''\nchore: upgrade Next.js to 16.0.7\n\nFix Vercel deployment blocking due to CVE-2025-66478\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(pnpm install)",
+      "Bash(dir \"c:\\\\Users\\\\orest\\\\Documents\\\\GitHub\\\\osvaldo-portfolio\" /B)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm run build:*)",
+      "Bash(pnpm contentlayer build:*)",
+      "Bash(pnpm contentlayer2:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(gh run list:*)",
+      "Bash(where:*)",
+      "Bash(npx next build)",
+      "Bash(npx next build:*)",
+      "Bash(set TURBOPACK=false)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl:*)",
+      "WebFetch(domain:simpleicons.org)",
+      "Bash(findstr:*)",
+      "Bash(git stash:*)",
+      "Bash(set NEXT_BUILD_WORKERS=1)",
+      "Bash(npm run lint:*)",
+      "Bash($env:UV_THREADPOOL_SIZE=1)",
+      "Bash(npm show:*)",
+      "Bash(pnpm:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "c:\\Users\\orest\\Documents\\GitHub\\osvaldo-portfolio"
+    ]
   }
 }

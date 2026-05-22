@@ -5,6 +5,7 @@ import Image from "next/image";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper, Database, Globe, Shield, BarChart3, Code2, Workflow } from "lucide-react";
+import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
 
 // Rotating text phrases
 const rotatingPhrases = [
@@ -36,7 +37,7 @@ function RotatingText() {
           animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
           exit={{ y: -20, opacity: 0, filter: "blur(8px)" }}
           transition={{ duration: 0.4, ease: "easeOut" }}
-          className="absolute inset-0 flex items-center justify-center font-mono bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent"
+          className="absolute inset-0 flex items-center justify-center font-mono bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent"
         >
           {rotatingPhrases[currentIndex]}
         </motion.span>
@@ -51,7 +52,7 @@ function GridBackground() {
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
       <motion.div
-        className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl"
+        className="absolute top-0 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl"
         animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
         transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -101,7 +102,7 @@ function ParticleNetwork() {
             x2={`${particles[b].x}%`}
             y2={`${particles[b].y}%`}
             stroke="currentColor"
-            className="text-indigo-400/10 dark:text-indigo-400/[0.07]"
+            className="text-[#FF8A5B]/10 dark:text-[#FF8A5B]/[0.07]"
             strokeWidth="1"
             initial={{ pathLength: 0, opacity: 0 }}
             animate={{ pathLength: 1, opacity: 1 }}
@@ -113,7 +114,7 @@ function ParticleNetwork() {
       {particles.map((p) => (
         <motion.div
           key={p.id}
-          className="absolute rounded-full bg-indigo-400/30 dark:bg-indigo-400/20"
+          className="absolute rounded-full bg-[#FF8A5B]/30 dark:bg-[#FF6A3D]/20"
           style={{
             left: `${p.x}%`,
             top: `${p.y}%`,
@@ -197,7 +198,7 @@ const capabilities = [
     icon: MessageSquare,
     title: "AI Agents",
     description: "Autonomous agents with tool-calling, memory, multi-step reasoning, and human-in-the-loop handoffs",
-    gradient: "from-indigo-500 to-cyan-500",
+    gradient: "from-[#FF6A3D] to-cyan-500",
     tech: ["Claude", "CrewAI", "Function Calling", "MCP"],
   },
   {
@@ -355,14 +356,10 @@ export default function Home() {
               className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight"
               variants={heroItem}
             >
-              <span className="text-slate-900 dark:text-white">Hey, I&apos;m </span>
-              <motion.span
-                className="inline-block bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent bg-[size:200%_auto]"
-                animate={{ backgroundPosition: ["0% center", "200% center"] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-              >
-                Waldo
-              </motion.span>
+              <span className="text-foreground">Hey, I&apos;m </span>
+              <span className="inline-block bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent">
+                <AnimatedHeadline text="Waldo" />
+              </span>
             </motion.h1>
 
             <motion.div
@@ -378,7 +375,7 @@ export default function Home() {
             >
               Full-Stack & Applied AI Engineer specializing in LLMs, autonomous agents,
               and voice systems.{" "}
-              <Link href="/ai-engineer-panama" className="underline decoration-indigo-500/30 hover:decoration-indigo-500 transition-colors">
+              <Link href="/ai-engineer-panama" className="underline decoration-[#FF6A3D]/30 hover:decoration-[#FF6A3D] transition-colors">
                 Based in Panama
               </Link>
               , building globally.
@@ -390,7 +387,7 @@ export default function Home() {
             >
               <Link
                 href="/projects"
-                className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25 hover:shadow-xl hover:shadow-indigo-500/30 hover:-translate-y-0.5"
+                className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25 hover:shadow-xl hover:shadow-[#FF6A3D]/30 hover:-translate-y-0.5"
               >
                 View Projects
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
@@ -437,23 +434,23 @@ export default function Home() {
               <div className="relative">
                 {/* Animated gradient glow behind image */}
                 <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 rounded-full blur-2xl scale-110"
+                  className="absolute inset-0 bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] rounded-full blur-2xl scale-110"
                   animate={{ opacity: [0.2, 0.4, 0.2] }}
                   transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                 />
 
                 {/* Spinning ring */}
                 <motion.div
-                  className="absolute -inset-3 rounded-full border border-dashed border-indigo-300/20 dark:border-indigo-500/10"
+                  className="absolute -inset-3 rounded-full border border-dashed border-[#FF6A3D]/20 dark:border-[#FF6A3D]/10"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
                 />
 
                 {/* Gradient border */}
-                <div className="relative p-1 rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500">
+                <div className="relative p-1 rounded-full bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF]">
                   <div className="p-1 rounded-full bg-white dark:bg-slate-950">
                     <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 lg:w-72 lg:h-72">
-                      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 opacity-60">
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#1c1410] to-slate-900 opacity-60">
                         <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
                         <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-cyan-500/5 rounded-full blur-xl animate-pulse" />
@@ -481,7 +478,7 @@ export default function Home() {
                     y: { delay: 1.2, duration: 3, repeat: Infinity, ease: "easeInOut" },
                   }}
                 >
-                  <Brain className="w-5 h-5 text-indigo-500" />
+                  <Brain className="w-5 h-5 text-[#FF6A3D]" />
                 </motion.div>
                 <motion.div
                   className="absolute -bottom-2 -left-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
@@ -535,7 +532,7 @@ export default function Home() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-sm font-medium mb-4">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-4">
               <Code2 className="w-4 h-4" />
               Full-Stack AI Engineering
             </div>
@@ -551,7 +548,7 @@ export default function Home() {
             {capabilities.map((cap, i) => (
               <motion.div
                 key={cap.title}
-                className="group relative p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 transition-all duration-300 overflow-hidden"
+                className="group relative p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all duration-300 overflow-hidden"
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -561,7 +558,7 @@ export default function Home() {
                 {/* Hover gradient glow */}
                 <div className={`absolute inset-0 bg-gradient-to-br ${cap.gradient} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-300`} />
 
-                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cap.gradient} mb-4 shadow-lg shadow-indigo-500/10`}>
+                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cap.gradient} mb-4 shadow-lg shadow-[#FF6A3D]/10`}>
                   <cap.icon className="w-6 h-6 text-white" />
                 </div>
                 <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -599,7 +596,7 @@ export default function Home() {
               { value: "10+", label: "Countries Served" },
             ].map((stat) => (
               <div key={stat.label} className="text-center p-4 rounded-xl bg-white/30 dark:bg-slate-900/30 border border-slate-200/50 dark:border-slate-800/50">
-                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-indigo-500 to-purple-500 bg-clip-text text-transparent">
+                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] bg-clip-text text-transparent">
                   {stat.value}
                 </div>
                 <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -630,29 +627,29 @@ export default function Home() {
             href="https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story"
             target="_blank"
             rel="noopener noreferrer"
-            className="group block max-w-3xl mx-auto p-6 rounded-2xl bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border border-indigo-200 dark:border-indigo-800 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300"
+            className="group block max-w-3xl mx-auto p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 dark:from-[#FF6A3D]/14 dark:to-[#2DD4BF]/10 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30 hover:border-[#FF8A5B] dark:hover:border-[#FF6A3D] hover:shadow-xl hover:shadow-[#FF6A3D]/10 transition-all duration-300"
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 p-3 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500">
+              <div className="flex-shrink-0 p-3 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
                 <Newspaper className="w-6 h-6 text-white" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm font-medium text-indigo-600 dark:text-indigo-400">USA News</span>
+                  <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">USA News</span>
                   <span className="text-slate-400">•</span>
                   <span className="text-sm text-slate-500">Feature Article</span>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
                   How the MILA AI Platform Began with One Family&apos;s Story
                 </h3>
                 <p className="mt-2 text-slate-600 dark:text-slate-400">
                   The story behind building an AI assistant for NICU families, turning personal experience into technology that helps parents navigate one of the most challenging times of their lives.
                 </p>
-                <div className="mt-4 flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-sm font-medium">
+                <div className="mt-4 flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium">
                   Read the full article
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </div>
@@ -682,7 +679,7 @@ export default function Home() {
             </div>
             <Link
               href="/projects"
-              className="hidden sm:inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="hidden sm:inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline"
             >
               View all <ArrowRight className="w-4 h-4" />
             </Link>
@@ -706,16 +703,16 @@ export default function Home() {
                 >
                   <CardWrapper
                     {...cardProps}
-                    className="group block h-full p-6 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-indigo-500/50 hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300"
+                    className="group block h-full p-6 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-[#FF6A3D]/50 hover:shadow-xl hover:shadow-[#FF6A3D]/5 transition-all duration-300"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
                           {project.title}
                         </h3>
                         <p className="text-sm text-slate-500">{project.subtitle}</p>
                       </div>
-                      <span className="px-2 py-1 text-xs font-mono bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded whitespace-nowrap">
+                      <span className="px-2 py-1 text-xs font-mono bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] rounded whitespace-nowrap">
                         {project.metric}
                       </span>
                     </div>
@@ -736,7 +733,7 @@ export default function Home() {
                     </div>
 
                     {isExternal && (
-                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400">
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-1 text-xs text-[#FF6A3D] dark:text-[#FF8A5B]">
                         <ArrowRight className="w-3 h-3" />
                         Visit site
                       </div>
@@ -749,7 +746,7 @@ export default function Home() {
 
           <Link
             href="/projects"
-            className="sm:hidden mt-8 inline-flex items-center gap-2 text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="sm:hidden mt-8 inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline"
           >
             View all projects <ArrowRight className="w-4 h-4" />
           </Link>
@@ -774,7 +771,7 @@ export default function Home() {
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-medium hover:from-indigo-500 hover:to-purple-500 transition-all shadow-lg shadow-indigo-500/25"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
             >
               Get in Touch
               <ArrowRight className="w-4 h-4" />
@@ -796,7 +793,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
           <p>© {new Date().getFullYear()} Osvaldo Restrepo</p>
           <p className="flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse" />
+            <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] animate-pulse" />
             Built with AI, obviously. An AI engineer not using AI? That&apos;d be weird.
           </p>
         </div>

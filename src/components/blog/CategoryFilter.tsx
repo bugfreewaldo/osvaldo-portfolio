@@ -54,7 +54,7 @@ export default function CategoryFilter({
             onClick={() => onCategoryChange(null)}
             className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
               selectedCategory === null
-                ? "bg-indigo-600 text-white"
+                ? "bg-[#FF6A3D] text-white"
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
             }`}
           >
@@ -68,7 +68,7 @@ export default function CategoryFilter({
               onClick={() => onCategoryChange(category)}
               className={`px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
                 selectedCategory === category
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-[#FF6A3D] text-white"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
               }`}
             >
