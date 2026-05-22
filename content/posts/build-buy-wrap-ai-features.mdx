@@ -1,0 +1,104 @@
+---
+title: "Build vs. Buy vs. Wrap: The New Calculus for AI Features"
+description: "AI added a third option to the classic build-vs-buy decision: wrap a foundation model API. A practical framework for what to wrap, what to buy, and what to build — and when 'just wrap GPT' is right or dangerously wrong."
+date: 2026-05-22
+published: true
+category: "AI Product"
+tags: ["AI Product", "Architecture", "Build vs Buy", "Foundation Models", "Founders"]
+author: "Osvaldo Restrepo"
+tldr: "The old build-vs-buy decision just got a third option: wrap a foundation model API. Wrapping is right far more often than proud engineers admit — commodity intelligence like classification, extraction, and drafting is a solved problem you should rent, not rebuild. Buy when a vertical is already solved by a specialist. Build only where you have a real moat: proprietary data, a hard evaluation problem, or a differentiating workflow. The mistakes are wrapping where latency, cost-at-scale, lock-in, or differentiation should have pushed you to build, and building where you should have just wrapped. Here's a decision tree I actually use."
+faqs:
+  - question: "What does it mean to 'wrap' a foundation model?"
+    answer: "Wrapping means building your feature on top of a hosted model API — like Claude, GPT, or Gemini — rather than training or hosting your own model. You provide the prompt, context, and product experience; the provider supplies the intelligence. It's the AI-era equivalent of using a managed cloud service instead of running your own servers, and for commodity intelligence it's usually the right call."
+  - question: "When should you build your own AI instead of wrapping an API?"
+    answer: "Build when wrapping can't give you a defensible advantage or can't meet a hard constraint: when you have proprietary data that a general model can't match, when latency or cost at extreme scale make API calls unworkable, when you need offline or on-device inference, or when the model itself is your differentiation rather than the product around it. For most features, none of these apply and you should wrap."
+  - question: "Is 'just wrap GPT' a real business or just a thin wrapper?"
+    answer: "It can be either. A thin wrapper that adds nothing the provider's own app doesn't is fragile. But a wrapper that adds proprietary context, a tailored workflow, integration into systems of record, evaluation, and trust is a real product — the model is a component, not the moat. The moat is everything you build around the model, not the model itself."
+relatedPosts: ["why-ai-pilots-stall", "pricing-ai-features-usage-costs", "building-ai-agents-production"]
+---
+
+For most of my career, the architecture question was binary: build it or buy it. Write the auth system or pay for Auth0. Stand up the payment flow or use Stripe. The whole discipline of being a senior engineer was partly about developing good instincts for that fork — knowing when the thing was core enough to own and when it was a commodity you should rent and forget.
+
+AI added a third path, and it's quietly the most important one. You can now *wrap* a foundation model: build your feature on top of a hosted API — Claude, GPT, Gemini — where someone else supplies the intelligence and you supply the product. It sits between build and buy in a way that genuinely changes the calculus, and a lot of teams are getting the new three-way decision wrong in both directions. They build where they should wrap, burning months reinventing commodity intelligence. And they wrap where they should build, painting themselves into corners on cost, latency, and differentiation.
+
+So here's how I actually think about it.
+
+## The three options, plainly
+
+**Buy** is unchanged. Someone has already solved your exact vertical problem and sells it as a product. You integrate it and move on. AI didn't kill this; it created a wave of new specialist tools worth buying.
+
+**Build** is also unchanged in spirit but rarer in practice. You create the capability yourself — your own model, your own pipeline, your own logic — because owning it is a real advantage. The bar for this got *higher*, because the third option absorbed most of what used to require building.
+
+**Wrap** is the new one. The intelligence is rented from a provider; the product, the context, and the experience are yours. It's the AI-era descendant of "use the managed cloud service instead of racking your own servers." And just like that shift, the engineers most reluctant to wrap are often the ones whose pride is doing the deciding.
+
+<Callout type="tip" title="'Just wrap GPT' is right more often than engineers admit">
+There's a reflexive sneer at 'thin wrappers,' and it makes smart teams waste quarters rebuilding commodity intelligence to feel like real engineers. Wrapping a frontier model for classification, extraction, summarization, or drafting isn't lazy. It's correct. You will not out-engineer a lab that spent hundreds of millions of dollars on a general model, and trying to is the expensive form of ego.
+</Callout>
+
+## A decision tree I actually use
+
+When a new AI feature lands on my plate, I run it through roughly this:
+
+```
+                    New AI feature needed
+                            │
+                            ▼
+          Does a specialist product already
+          solve this exact vertical problem well?
+                    │                │
+                   YES               NO
+                    │                │
+                    ▼                ▼
+                  BUY IT      Is the intelligence a
+                              COMMODITY? (classify,
+                              extract, summarize, draft,
+                              answer from your docs)
+                                  │           │
+                                 YES          NO / NOT SURE
+                                  │           │
+                                  ▼           ▼
+                            Does wrapping     Is the MODEL itself
+                            hit a hard wall?  your differentiation,
+                            (latency, cost    or do you have data
+                            at scale, offline,  no general model has?
+                            lock-in, privacy)   │           │
+                              │        │       NO          YES
+                             NO       YES       │           │
+                              │        │        ▼           ▼
+                              ▼        ▼     WRAP IT      BUILD IT
+                           WRAP IT  BUILD/HYBRID
+```
+
+The tree front-loads the two cheapest answers — buy and wrap — on purpose. Build is the bottom of the tree because it's the most expensive commitment and the one you should back into only when the cheaper paths genuinely fail.
+
+## What to wrap: commodity intelligence
+
+Wrap the things a general-purpose model already does better than you ever will: classifying text, pulling structured fields out of messy documents, summarizing, drafting a first pass, answering questions over your own content with retrieval. This is *commodity intelligence* — broadly useful capability that no longer differentiates anyone because everyone can access the same models.
+
+The mistake here is emotional, not technical. Engineers want the AI part to be *theirs*. So they propose fine-tuning a model to classify support tickets when a well-prompted frontier model does it at 95% accuracy on day one, for pennies, with zero training pipeline to maintain. The wrap isn't the embarrassing option. It's the one that ships this month and frees your team to build the part that actually matters.
+
+The real product work in a wrap isn't the model call. It's everything around it: the proprietary context you feed in, the workflow you wrap it in, the integration into the system of record, the evaluation, the trust-building. That surrounding layer is your moat — not the model, which your competitor can rent just as easily.
+
+## What to buy: solved verticals
+
+Buy when someone has already done the hard, specific work for your exact problem. A specialist who has spent three years and a million labeled examples on, say, medical coding or contract review has built something you can't casually wrap your way past. Their evaluation data alone is a moat you'd need years to match.
+
+The buy-vs-wrap tension is real here. Sometimes the specialist tool is just a wrapper with a markup, and you can do the same thing yourself for a tenth of the cost. Sometimes it embodies genuine domain depth — curated data, hard-won edge-case handling, compliance work — that you'd be foolish to rebuild. The test I use: if I removed their model and kept their data, evals, and domain logic, is what's left still valuable? If yes, buy. If what's left is nothing, it's a wrapper and you should wrap it yourself.
+
+## What to build: your moat
+
+Build only where building creates a defensible advantage. In practice that's a short list:
+
+You have **proprietary data** a general model has never seen and can't infer — the accumulated, structured knowledge of your domain that makes a model trained or tuned on it genuinely better for your users than any general model. You have a **hard evaluation problem** that *is* the product — where knowing whether an answer is correct, in your specific domain, is the differentiating skill, and your eval set is the real asset. Or **the model is the point** — you're an AI company in the literal sense, and the model's behavior is what customers buy, not the app around it.
+
+<Callout type="warning" title="Wrapping has four failure modes — know them before you commit">
+Wrapping is usually right, but it breaks in specific, predictable places. Latency: an API round-trip is too slow for a real-time, in-the-loop experience. Cost at scale: per-call pricing that's trivial at 1,000 calls a day becomes ruinous at 10 million. Lock-in: building so deeply around one provider's quirks that switching means a rewrite. Differentiation: if your entire product is a prompt anyone can copy, you have no moat and the provider may ship your feature for free next quarter. If any of these bind, the wrap should become a build or a hybrid.
+</Callout>
+
+## The hybrid you'll probably end up with
+
+In reality, mature products rarely sit in one box. They wrap for breadth, build for the moat, and buy for the solved edges — all at once. A system might wrap a frontier model for general reasoning, build a small specialized model for the one high-volume, latency-sensitive, cost-sensitive step where API calls don't pencil out, and buy a specialist vendor for a compliance-heavy slice nobody on the team should be reinventing.
+
+That's not indecision. That's maturity. The build-vs-buy-vs-wrap decision isn't made once for the whole product; it's made per capability, and the right answer for the commodity 80% is almost always "wrap," while the defensible 20% earns the build. The discipline is resisting the urge to build the 80% to feel important, and resisting the laziness of wrapping the 20% that's supposed to be your edge.
+
+Start by wrapping. Wrap until something — latency, cost, lock-in, or the cold realization that your product is a copyable prompt — forces you to build. Then build exactly that piece, and not one feature more. The teams that win the AI era aren't the ones who build the most. They're the ones who are honest about which 20% is actually theirs to own, and ruthless about renting the rest.

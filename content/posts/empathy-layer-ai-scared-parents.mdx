@@ -1,0 +1,116 @@
+---
+title: "The Empathy Layer: Writing AI That Talks to Scared People"
+description: "When AI-mediated communication reaches someone at the worst moment of their life, tone is not decoration, it is safety. How I designed MILA's language: reading level, avoiding false hope and false alarm, bilingual and cultural sensitivity, and never automating away the human."
+date: 2026-05-18
+published: true
+category: "Healthcare AI"
+tags: ["Healthcare AI", "Empathy", "NICU", "MILA", "Communication"]
+author: "Osvaldo Restrepo"
+tldr: "When a message reaches a parent in the NICU or a patient hearing bad news, tone is not a finishing touch, it is part of the safety of the communication. A technically accurate update delivered coldly can frighten, mislead, or wound. I designed MILA's empathy layer to write at a reading level a terrified person can absorb, to avoid both false hope and false alarm, to respect language and culture, and to never, ever automate away the human who should be holding that moment. Clear is not the same as kind, and in this work you need both."
+faqs:
+  - question: "Isn't 'empathy' in AI just style, separate from accuracy?"
+    answer: "No. When the recipient is frightened, tone changes what they actually understand and do. The same true fact, delivered coldly or alarmingly, can cause panic, false reassurance, or a misread of urgency. In high-stakes communication, tone is part of whether the message is received correctly, which makes it part of safety, not decoration."
+  - question: "Does an empathy layer mean the AI softens or hides bad news?"
+    answer: "The opposite. Softening into vagueness is its own harm, it creates false hope and erodes trust. The goal is to be honest and clear while being humane: name the hard thing plainly, avoid both minimizing and catastrophizing, and leave room for the human clinician to hold the conversation. Kindness is about how the truth is delivered, not about hiding it."
+  - question: "Why keep a human in the loop if the AI writes good messages?"
+    answer: "Because the moment belongs to a person, not a system. A clinician carries context the model cannot, the family's history, what was said in person an hour ago, the unspoken fear in the room. MILA drafts; a human reads, adjusts, and owns the message. Automating away that judgment would be automating away the care itself."
+relatedPosts: ["why-i-built-mila", "healthcare-software-ux", "when-models-should-say-i-dont-know"]
+---
+
+My wife and I learned to read tone before we learned to read lab values. In the NICU, you become an expert in the small linguistic signals of the people caring for your child. A nurse who says "she had a good night" in a certain way means something different from the same words said another way. You learn to hear the difference between a pause that is routine and a pause that is bracing you. When you are that frightened, language is not information delivery. Language is the thing you survive on.
+
+So when I built MILA's empathy layer, the part of the system that shapes how a message actually reads, I did not think of it as polish. I thought of it as safety. Because I have been the person on the other end, holding a phone or a clipboard, parsing every word for a hint of what is coming. Get the tone wrong and you can frighten someone who did not need to be frightened, or falsely reassure someone who needed to brace, or simply wound a person who was already breaking.
+
+This post is about how you write AI that talks to people at the worst moment of their lives, and why I think tone is one of the most underrated safety problems in healthcare AI.
+
+## Clear Is Not the Same as Kind
+
+The healthcare AI world has, rightly, become obsessed with clarity. Plain language, low reading level, no jargon. I am a believer. But somewhere along the way "clear" started getting treated as the whole job, and it is not.
+
+"Your daughter's bilirubin is 28 and rising. This can cause brain damage. The team is considering an exchange transfusion." Every word is clear. A parent reading that alone, at 3 a.m., on a phone, with no one beside them, may stop breathing. It is accurate. It is clear. It is not kind, and because it is not kind, it may not even be *received* correctly, panic is not a good state for understanding.
+
+Kind is not vague. Kind does not hide the truth. Kind is the difference between handing someone a hard fact and handing it to them in a way they can hold. The same information, shaped with care: "I want to give you an honest update, and I want you to know the team is right here with her. Mila's bilirubin has risen to a level we take seriously because, if it keeps climbing, it can affect the brain. That's why the doctors are preparing a treatment called an exchange transfusion. Dr. Reyes will call you in a few minutes to walk you through it." Same facts. Different survival.
+
+<Callout type="info" title="Tone is part of the payload">
+A frightened person does not receive words neutrally. Tone determines whether they understand the urgency, whether they panic, whether they trust what comes next. That makes tone part of whether the message lands correctly, which makes it part of safety. An empathy layer is not a style filter bolted on at the end. It is load-bearing.
+</Callout>
+
+## The Two Failures: False Hope and False Alarm
+
+Most of the empathy layer's job is steering between two specific dangers, and they pull in opposite directions.
+
+**False hope** is the failure of softening too much. "Everything's looking great, don't worry!" when things are precarious. It feels kind in the moment. It is a betrayal. When the truth arrives, and it will, the family feels lied to, and the trust you needed for the hard road ahead is gone. False hope is cruelty wearing the costume of comfort.
+
+**False alarm** is the opposite failure: language that makes a routine event sound like a crisis. NICU life is full of normal-for-preemies things that sound terrifying to a layperson, a desaturation, a brady, a feeding held. Describe those in clinical-sounding alarm language and you put a family through repeated trauma over events the staff barely registers.
+
+The empathy layer has to calibrate language to actual clinical severity, not to the scariness of the vocabulary. This is genuinely hard, because the model does not feel the stakes. So I encode them: severity is an explicit input, the message template adapts to it, and the system is biased toward honest steadiness rather than either reflex.
+
+```
+   clinical severity ──┐
+   (explicit input)    │
+                       ▼
+        ┌──────────────────────────────┐
+        │   TONE CALIBRATION            │
+        │                              │
+        │   routine ──▶ warm, steady,   │
+        │              normalize w/o    │
+        │              dismissing       │
+        │                              │
+        │   notable ──▶ honest, name    │
+        │              the concern,     │
+        │              say what's next  │
+        │                              │
+        │   serious ──▶ plain truth +   │
+        │              presence + a     │
+        │              human will call  │
+        └──────────────┬───────────────┘
+                       │
+                       ▼
+            never: minimize a real risk
+            never: dramatize a routine one
+                       │
+                       ▼
+              human clinician reviews
+```
+
+The rule underneath the diagram: when uncertain about severity, the system does not guess the tone. It flags for the clinician. Tone calibration is exactly the kind of judgment that should [defer to a human when confidence is low](/blog/when-models-should-say-i-dont-know).
+
+## Reading Level, in the Real Conditions of Fear
+
+I aim MILA's parent-facing messages at roughly a sixth-to-eighth grade reading level. Not because parents are not intelligent, many of the parents I sat near were doctors, lawyers, engineers, but because fear collapses reading comprehension. A terrified, sleep-deprived brain reads several grade levels below its rested capacity. You are not writing for the person's intellect. You are writing for their nervous system at 3 a.m.
+
+That means short sentences. One idea per sentence. Concrete nouns over abstractions. No nesting of clauses that a frightened reader has to hold in working memory. And critically, the most important sentence first, because a scared person may only fully process the opening before their mind races ahead.
+
+This is the same discipline I wrote about in [healthcare UX](/blog/healthcare-software-ux): design for the real conditions of use, not the idealized ones. For clinicians that meant designing for fifteen-second interruptions. For frightened parents it means designing for a mind that is barely holding on.
+
+## Language and Culture Are Not Optional
+
+I am Panamanian. I built MILA bilingual from the start, English and Spanish, and not as a translation afterthought. A message that is warm and natural in English can land as stiff, clinical, or even cold when machine-translated into Spanish, because warmth lives in idiom, in rhythm, in the cultural conventions of how care is expressed. "We're keeping a close eye on her" does not translate word-for-word into something a Spanish-speaking parent hears as caring.
+
+So the empathy layer treats each language as a first-class target with its own tone, not a string to be swapped. And it goes beyond language: how families relate to clinical authority, how directly bad news is customarily delivered, who in a family expects to be informed first, these vary, and a system that ignores them is not neutral, it is just defaulting to one culture's norms and calling it universal.
+
+I cannot encode every culture perfectly. But I can refuse to pretend that a single tone fits everyone, and I can keep the human in the loop precisely so a clinician who knows this family can adjust.
+
+<Callout type="warning" title="Translation is not localization of empathy">
+Machine-translating a warm English message does not produce a warm Spanish one. Tone, idiom, and the cultural shape of compassion do not survive a literal swap. If you serve more than one language, design empathy in each language natively, or you will deliver coldness to exactly the families least equipped to absorb it.
+</Callout>
+
+## Never Automating Away the Human
+
+Here is the line I will not cross, and it is the heart of all of this. MILA never sends a message on its own. A clinician reads every draft, adjusts it, and chooses to send it. Always.
+
+Not because the drafts are bad, they are good, that is the point. It is because the moment does not belong to the system. It belongs to a person. The clinician carries what the model never can: the conversation they had in person an hour ago, the particular fear they saw in this mother's face, the history of this family, the thing that was said at the bedside that is not in any chart. MILA can shape language. It cannot hold a human being through the worst night of their life. Only another human can do that.
+
+This is why I keep coming back to [why I built MILA](/blog/why-i-built-mila) in the first place. The system exists to *improve* the conversation between families and their care team, never to replace it. The empathy layer is in service of a human connection, not a substitute for one. The day an AI sends a frightened parent a message about their child with no human in between is the day we have automated away the very thing that made it care.
+
+## What I Wish Someone Had Sent Us
+
+I think, sometimes, about the messages my family received, and the ones we did not. The cold ones that frightened us needlessly. The vague ones that gave us hope we should not have had. The silences where a few honest, kind words would have meant everything.
+
+I cannot rewrite those. But I can build something that helps the next exhausted parent receive the truth in a way they can survive. Clear, because they deserve to understand. Kind, because they are barely standing. And always carried by a human, because at the worst moment of someone's life, they should never be talking to a machine alone.
+
+That is the empathy layer. It is not the soft part of the system. In this work, it is the part that does the most to keep people whole.
+
+---
+
+*If you build communication tools for people in crisis, or you are a family who has lived this, [reach out](/contact). Tone is safety, and this work is better done together.*

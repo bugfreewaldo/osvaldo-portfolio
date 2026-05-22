@@ -169,7 +169,7 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 27. Shining Image Platform — Business Management
 28. AutoSpa BQT — Mobile Car Detailing (Boquete, Panama)
 
-## Blog (49 articles, English + Spanish)
+## Blog (65 articles, English + Spanish)
 Full article index at: https://osvaldorestrepo.dev/blog
 RSS feed: https://osvaldorestrepo.dev/feed.xml
 

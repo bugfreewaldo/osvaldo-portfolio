@@ -1,0 +1,105 @@
+---
+title: "Sobre Leer Código Que Nunca Escribirás"
+description: "La habilidad más subestimada en software es leer bases de código grandes que no escribiste y no vas a cambiar. Open source, sistemas legacy, el PR de un compañero, un diff generado por IA. Cómo leer código como un detective, y por qué acaba de volverse la habilidad más importante de todas."
+date: 2026-05-05
+published: true
+category: "Ingeniería de Software"
+tags: ["Ingeniería de Software", "Code Review", "Herramientas de IA", "Oficio", "Carrera"]
+author: "Osvaldo Restrepo"
+translationOf: "reading-code-you-wont-write"
+tldr: "Los ingenieros pasan la mayor parte de su carrera leyendo código, no escribiéndolo, y a casi nadie le enseñan cómo. Leer código que no escribiste y no vas a cambiar (sistemas legacy, open source, el PR de un compañero, un diff de IA) es una habilidad distinta: encuentra el punto de entrada, sigue los datos, ubica las partes que cargan peso, ignora el resto. Te enseña cosas que escribir nunca puede. Y ahora que la IA genera código más rápido de lo que cualquier humano puede escribir, leer bien es la habilidad que separa a los ingenieros que envían con seguridad de los que envían pasivos."
+faqs:
+  - question: "¿Por qué leer código es más difícil que escribirlo?"
+    answer: "Cuando escribes código, construyes el modelo mental sobre la marcha; cada variable tiene una razón que recuerdas. Cuando lees código, el modelo falta y tienes que reconstruirlo desde artefactos: nombres, estructura, flujo de datos. Estás haciendo arqueología sobre las decisiones de otra persona, sin el contexto que las produjo. Eso es genuinamente más difícil, y casi ningún plan de estudios lo enseña."
+  - question: "¿Cómo empiezo a leer una base de código grande que nunca he visto?"
+    answer: "No empieces por arriba leyendo todo. Encuentra un punto de entrada —un manejador de ruta, un comando de CLI, una función main— y sigue una petición real hasta el final. Sigue los datos, no los archivos. Identifica los pocos módulos que cargan peso de los que todo depende y léelos de cerca; ojea el resto hasta que lo necesites."
+  - question: "¿Cómo cambió la IA la importancia de leer código?"
+    answer: "Enormemente. La IA puede escribir código mucho más rápido que cualquier humano, lo que significa que el cuello de botella se movió de escribir a revisar. El ingeniero que puede leer un diff generado por IA de forma crítica —detectando el bug que parece plausible, la suposición equivocada, el caso límite que falta— ahora vale mucho más que el que solo puede producir código."
+relatedPosts: ["small-commits-deep-reviews", "vibe-coding-ai-assisted-development", "clean-code-principles-practice"]
+---
+
+Una vez pasé tres semanas con miedo de tocar una función de cuatrocientas líneas.
+
+Era el corazón de un sistema de pagos en una empresa a la que acababa de unirme. No tenía tests, ni comentarios que valiera la pena leer, y un nombre que mentía sobre lo que hacía. Todos en el equipo la trataban como un proyectil sin detonar: la rodeaban, escribían código nuevo que la llamaba sin mirar adentro, hablaban de ella en voz baja. Mi trabajo era cambiarla.
+
+La primera semana no escribí ni una sola línea. Solo leí. Y lo que aprendí en esas tres semanas me enseñó más sobre ingeniería que el año anterior escribiendo mi propio código nuevo.
+
+Porque hay algo que nadie te dice cuando estás aprendiendo a programar: vas a pasar la abrumadora mayoría de tu carrera leyendo código, no escribiéndolo. Leyendo código que no escribiste. Leyendo código que no tienes intención de cambiar. Y a casi nadie le enseñan cómo.
+
+## Entrenamos Autores. Empleamos Lectores.
+
+Cada curso, cada bootcamp, cada tutorial optimiza para lo mismo: que produzcas código que funcione. Archivo en blanco, cursor parpadeando, construye la cosa. Eso es escribir.
+
+Pero mira cómo va realmente una semana de ingeniería de verdad. Lees el pull request de un compañero. Depuras una falla en un servicio que nunca has abierto. Evalúas si alguna librería open source hará lo que necesitas leyendo su código fuente. Heredas un sistema de diez años de alguien que dejó la empresa. Ojeas documentación que está tres versiones desactualizada, así que lees el código en su lugar.
+
+El momento del archivo en blanco —autoría pura— es quizás el diez por ciento del trabajo. El otro noventa por ciento es comprensión. Entrenamos a la gente para ser autores y luego la empleamos como lectores, y luego nos preguntamos por qué tocar código legacy se siente como desactivar una bomba.
+
+<Callout type="info" title="La Habilidad Que Se Esconde a Plena Vista">
+Leer código no es "escribir código, pero pasivo." Es una disciplina aparte con sus propias técnicas. Escribir construye un modelo mental como efecto secundario de la construcción. Leer requiere que reconstruyas ese modelo desde afuera —desde nombres, estructura y flujo de datos— sin el contexto que lo produjo. Esa reconstrucción es la habilidad real.
+</Callout>
+
+## Lee Como un Detective, No Como un Lector
+
+No lees código de la forma en que lees una novela: de izquierda a derecha, de arriba a abajo, de la página uno al final. Ese es el error que hace que las bases de código grandes se sientan imposibles. Un detective no lee una escena del crimen catalogando cada objeto del cuarto. Sigue la evidencia que importa e ignora el resto.
+
+Así es como recorro una base de código desconocida ahora.
+
+**Encuentra el punto de entrada.** Todo sistema tiene puertas: un manejador de ruta HTTP, un comando de CLI, un consumidor de cola de mensajes, un `main`. No empieces con el archivo que suena importante. Empieza con una puerta y crúzala siguiendo una petición real y concreta. "¿Qué pasa cuando un usuario hace clic en pagar?" es una pregunta mucho mejor que "¿qué hace todo este módulo?"
+
+**Sigue los datos, no los archivos.** El código organizado por carpetas te dice cómo alguien lo archivó. El flujo de datos te dice cómo se comporta en realidad. Sigue una pieza de datos —un cuerpo de petición, un registro, un evento— y observa qué la transforma en el camino. La forma de ese viaje es la arquitectura real, sin importar lo que diga el árbol de directorios.
+
+**Encuentra los muros que cargan peso.** En cualquier base de código, un pequeño número de módulos carga la mayor parte del peso: todo los importa, cada camino pasa por ellos. Encuentra esos y léelos de cerca. El resto lo puedes ojear hasta que una tarea te fuerce a profundizar. Tratar de entender todo por igual es como no entiendes nada.
+
+**Lee los tests, luego lee el historial de git.** Los tests son documentación que no puede mentir, porque se ejecutan. Te dicen lo que los autores creían que el código debía hacer. Y un `git blame` sobre una línea confusa, que lleva al mensaje del commit e idealmente al PR, a menudo te entrega el *por qué* que el código mismo nunca puede expresar.
+
+```
+Cómo NO leer                Cómo leer
+────────────                ─────────
+Abrir archivo, línea 1      Encontrar una puerta y cruzarla
+Leer cada carpeta           Seguir una pieza de datos
+Entender todo               Encontrar el 10% que carga peso
+Confiar en los comentarios  Confiar en los tests
+"¿Qué hace esto?"           "¿Por qué existe esto?"
+```
+
+¿Esa función de pagos de cuatrocientas líneas? En cuanto dejé de tratar de leerla de corrido y en su lugar seguí una sola transacción a través de ella, descubrí que en realidad eran tres cosas usando una gabardina: un validador, un convertidor de moneda y un escritor de libro contable, todos enredados juntos. El miedo se evaporó en el momento en que tuve el mapa. El código no había cambiado. Mi forma de leerlo sí.
+
+## Lo Que Leer Enseña Que Escribir No Puede
+
+Cuando solo escribes, solo ves una solución a cada problema: la tuya. Tus hábitos, tus puntos ciegos, tus patrones favoritos, reflejados de vuelta para siempre. Es una cámara de eco de uno.
+
+Leer código que otra gente escribió —especialmente buenos proyectos open source, especialmente código escrito por gente mucho mejor que yo— es la forma más rápida que conozco de crecer. He absorbido más sobre diseño de APIs leyendo cómo una librería que admiro estructura su superficie pública que de cualquier libro. He aprendido más sobre manejo de errores viendo cómo un sistema probado en batalla falla con gracia que de cualquier post sobre el tema.
+
+Y leer código malo enseña igual de mucho, en negativo. Cada horror legacy es una lección sobre cómo se ven las buenas intenciones sin mantenimiento después de cinco años de presión de deadlines. Lo lees y piensas: *yo hago eso. Mejor paro.*
+
+<Callout type="tip" title="Lee Código Mejor Que el Tuyo, a Propósito">
+Elige un proyecto open source que respetes y de verdad uses, y lee su código fuente por treinta minutos sin más meta que entender cómo está construido. No para arreglar nada. No para contribuir. Solo para ver cómo alguien mejor que tú resolvió un problema que tú resolviste peor. Es el entrenamiento de ingeniero senior más barato que existe, y es gratis.
+</Callout>
+
+## Luego Llegó la IA y Volvió Esto el Juego Entero
+
+Durante la mayor parte de mi carrera, leer código fue una habilidad silenciosamente subvalorada: útil, sin glamour, rara vez en una descripción de trabajo. Luego llegó la IA generativa y la convirtió en lo más importante que un ingeniero puede hacer.
+
+Piensa en lo que cambió de verdad. La IA puede escribir código más rápido de lo que cualquier humano puede teclear. En una buena sesión con Claude Code genero más líneas en una hora de las que habría escrito a mano en un día. El cuello de botella se movió. Ya no es *¿puedes escribir esto?* Es *¿puedes saber si lo que se acaba de escribir es correcto, seguro, y realmente lo que querías?*
+
+Esa es una habilidad de lectura. Pura, sin diluir, comprensión de código.
+
+Y el código generado por IA es especialmente peligroso de leer con descuido, porque es *fluido*. Se ve correcto. Tiene nombres de variables ordenados y estructura razonable y comentarios seguros. El código humano malo normalmente se ve malo: te advierte. El código de IA malo se ve como el trabajo de un ingeniero competente que resultó estar equivocado sobre una suposición crítica. El bug viene de traje. No lo vas a atrapar ojeando y sintiéndote tranquilo por lo limpio que se ve.
+
+Así que todo lo que aprendí desactivando esa función de pagos —sigue los datos, encuentra las partes que cargan peso, desconfía de lo meramente plausible, pregunta por qué existe esto— es ahora exactamente como reviso cada diff que un modelo me entrega. ¿De dónde vienen estos datos en realidad? ¿Qué pasa en el límite que no consideró? ¿Es este el problema real o una respuesta segura a un problema distinto?
+
+Los ingenieros que prosperarán en la próxima década no son los que pueden hacer prompts más rápido. Cualquiera puede generar mil líneas ahora. Son los que pueden *leer* mil líneas generadas y saber, con las manos sobre el flujo de datos, cuáles cincuenta son un pasivo silencioso esperando a salir.
+
+## El Superpoder Silencioso
+
+Creo que leer código es lo más cercano que nuestro campo tiene a un superpoder escondido a plena vista. No tiene glamour. No lo puedes presumir en un portafolio. No hay cuadrito verde de GitHub por la tarde que pasaste entendiendo un sistema en lugar de cambiarlo.
+
+Pero es la habilidad que te deja entrar a cualquier base de código desconocida sin entrar en pánico. Es lo que convierte "este módulo legacy aterrador" en "ah, son solo tres funciones en una gabardina." Es lo que te deja adoptar una librería con sabiduría, heredar un sistema con gracia, revisar el trabajo de un compañero con generosidad, y atrapar el error seguro de la IA antes de que lo hagan tus usuarios.
+
+Vamos a seguir generando más código que nunca, más rápido que nunca. Lo que significa que la gente que de verdad puede leerlo —con calma, de forma crítica, como un detective en una escena— está a punto de volverse la gente más valiosa de la sala.
+
+Empieza con treinta minutos en una base de código que admires. Lee algo que nunca escribirás.
+
+---
+
+*¿Heredando una base de código que nadie quiere tocar, o ahogándote en diffs de IA en los que no confías del todo? [Contáctame](/contact). Leer código de otra gente es la mayor parte de lo que hago, y con gusto comparamos notas.*

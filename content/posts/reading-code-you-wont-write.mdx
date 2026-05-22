@@ -1,0 +1,104 @@
+---
+title: "On Reading Code You'll Never Write"
+description: "The most underrated skill in software is reading large codebases you didn't write and won't change. Open source, legacy systems, a teammate's PR, an AI-generated diff. Here's how to read code like a detective — and why it just became the most important skill of all."
+date: 2026-05-05
+published: true
+category: "Software Engineering"
+tags: ["Software Engineering", "Code Review", "AI Tools", "Craft", "Career"]
+author: "Osvaldo Restrepo"
+tldr: "Engineers spend most of their careers reading code, not writing it — and almost nobody is taught how. Reading code you didn't author and won't change (legacy systems, open source, a teammate's PR, an AI diff) is a distinct skill: find the entry point, trace the data, locate the load-bearing parts, ignore the rest. It teaches you things writing never can. And now that AI generates code faster than any human can author it, reading well is the skill that separates engineers who ship safely from engineers who ship liabilities."
+faqs:
+  - question: "Why is reading code harder than writing it?"
+    answer: "When you write code, you build the mental model as you go — every variable has a reason you remember. When you read code, the model is missing and you have to reconstruct it from artifacts: names, structure, data flow. You're doing archaeology on someone else's decisions, without the context that produced them. That's genuinely harder, and almost no curriculum teaches it."
+  - question: "How do I start reading a large codebase I've never seen?"
+    answer: "Don't start at the top and read everything. Find an entry point — a route handler, a CLI command, a main function — and follow one real request all the way through. Trace the data, not the files. Identify the few load-bearing modules everything depends on and read those closely; skim the rest until you need it."
+  - question: "How has AI changed the importance of reading code?"
+    answer: "Enormously. AI can author code far faster than any human can write it, which means the bottleneck has shifted from writing to reviewing. The engineer who can read an AI-generated diff critically — spotting the plausible-looking bug, the wrong assumption, the missing edge case — is now worth far more than the one who can only produce code."
+relatedPosts: ["small-commits-deep-reviews", "vibe-coding-ai-assisted-development", "clean-code-principles-practice"]
+---
+
+I once spent three weeks afraid to touch a four-hundred-line function.
+
+It was the heart of a payments system at a company I'd just joined. It had no tests, no comments worth reading, and a name that lied about what it did. Everyone on the team treated it like an unexploded shell — they routed around it, they wrote new code that called it without looking inside, they spoke about it in lowered voices. My job was to change it.
+
+For the first week I didn't write a single line. I just read. And what I learned in those three weeks taught me more about engineering than the previous year of writing my own greenfield code ever had.
+
+Because here's a thing nobody tells you when you're learning to program: you will spend the overwhelming majority of your career reading code, not writing it. Reading code you didn't write. Reading code you don't intend to change. And almost no one is ever taught how.
+
+## We Train Authors. We Employ Readers.
+
+Every course, every bootcamp, every tutorial optimizes for the same thing: getting you to produce code that works. Blank file, blinking cursor, build the thing. That's writing.
+
+But look at how a real engineering week actually goes. You read a teammate's pull request. You debug a failure in a service you've never opened. You evaluate whether some open-source library will do what you need by reading its source. You inherit a ten-year-old system from someone who left the company. You skim documentation that's three versions out of date so you read the code instead.
+
+The blank-file moment — pure authorship — is maybe ten percent of the job. The other ninety percent is comprehension. We train people to be authors and then employ them as readers, and then we wonder why touching legacy code feels like defusing a bomb.
+
+<Callout type="info" title="The Skill That Hides in Plain Sight">
+Reading code isn't "writing code, but passive." It's a separate discipline with its own techniques. Writing builds a mental model as a side effect of construction. Reading requires you to reconstruct that model from the outside — from names, structure, and data flow — without the context that produced it. That reconstruction is the actual skill.
+</Callout>
+
+## Read Like a Detective, Not Like a Reader
+
+You do not read code the way you read a novel — left to right, top to bottom, page one to the end. That's the mistake that makes large codebases feel impossible. A detective doesn't read a crime scene by cataloging every object in the room. They follow the evidence that matters and ignore the rest.
+
+Here's how I work through an unfamiliar codebase now.
+
+**Find the entry point.** Every system has doors: an HTTP route handler, a CLI command, a message-queue consumer, a `main`. Don't start with the file that sounds important. Start with a door and walk through it following one real, concrete request. "What happens when a user clicks pay?" is a far better question than "what does this whole module do?"
+
+**Trace the data, not the files.** Code organized by folders tells you how someone filed it. Data flow tells you how it actually behaves. Follow one piece of data — a request body, a record, an event — and watch what transforms it on the way through. The shape of that journey is the real architecture, no matter what the directory tree claims.
+
+**Find the load-bearing walls.** In any codebase, a small number of modules carry most of the weight — everything imports them, every path runs through them. Find those and read them closely. The rest you can skim until a task forces you deeper. Trying to understand everything equally is how you understand nothing.
+
+**Read the tests, then read the git history.** Tests are documentation that can't lie, because they're executed. They tell you what the authors believed the code was supposed to do. And `git blame` on a confusing line, leading to the commit message and ideally the PR, often hands you the *why* that the code itself can never express.
+
+```
+How NOT to read              How to read
+─────────────                ───────────
+Open file, line 1, top→down  Find a door, walk through it
+Read every folder            Trace one piece of data
+Understand everything        Find the load-bearing 10%
+Trust the comments           Trust the tests
+Ask "what does this do?"     Ask "why does this exist?"
+```
+
+That four-hundred-line payments function? Once I stopped trying to read it straight through and instead traced a single transaction through it, I found it was really three things wearing a trenchcoat: a validator, a currency converter, and a ledger writer, all tangled together. The fear evaporated the moment I had the map. The code hadn't changed. My way of reading it had.
+
+## What Reading Teaches That Writing Can't
+
+When you only write, you only ever see one solution to each problem: yours. Your habits, your blind spots, your favorite patterns, reflected back at you forever. It's an echo chamber of one.
+
+Reading code other people wrote — especially good open-source projects, especially code written by people far better than me — is the fastest way I know to grow. I've absorbed more about API design from reading how a library I admire structures its public surface than from any book. I've learned more about error handling from seeing how a battle-tested system fails gracefully than from any blog post about it.
+
+And reading bad code teaches just as much, in the negative. Every legacy horror is a lesson in what unmaintained good intentions look like after five years of deadline pressure. You read it and you think: *I do that. I'd better stop.*
+
+<Callout type="tip" title="Read Code Better Than Yours, On Purpose">
+Pick one open-source project you respect and actually use, and read its source for thirty minutes with no goal but to understand how it's built. Not to fix anything. Not to contribute. Just to see how someone better than you solved a problem you've solved worse. It's the cheapest senior-engineer training that exists, and it's free.
+</Callout>
+
+## Then AI Showed Up and Made This the Whole Game
+
+For most of my career, reading code was a quietly undervalued skill — useful, unglamorous, rarely on a job description. Then generative AI arrived and turned it into the single most important thing an engineer can do.
+
+Think about what's actually changed. AI can author code faster than any human can type. In a good session with Claude Code I'll generate more lines in an hour than I'd have hand-written in a day. The bottleneck has moved. It is no longer *can you write this?* It is *can you tell whether what was just written is correct, safe, and actually what you meant?*
+
+That is a reading skill. Pure, undiluted code comprehension.
+
+And AI-generated code is uniquely dangerous to read carelessly, because it is *fluent*. It looks right. It has tidy variable names and reasonable structure and confident comments. Human-written bad code usually looks bad — it warns you. AI-written bad code looks like the work of a competent engineer who happened to be wrong about one critical assumption. The bug is wearing a suit. You will not catch it by skimming and feeling reassured by how clean it looks.
+
+So everything I learned defusing that payments function — trace the data, find the load-bearing parts, distrust what's merely plausible, ask why this exists — is now exactly how I review every diff a model hands me. Where does this data actually come from? What happens at the boundary it didn't consider? Is this the real problem or a confident answer to a different one?
+
+The engineers who'll thrive in the next decade aren't the ones who can prompt the fastest. Anyone can generate a thousand lines now. They're the ones who can *read* a thousand generated lines and know, with their hands on the data flow, which fifty are a quiet liability waiting to ship.
+
+## The Quiet Superpower
+
+I think reading code is the closest thing our field has to a superpower hiding in plain sight. It's unglamorous. You can't show it off in a portfolio. There's no GitHub-green-square for the afternoon you spent understanding a system instead of changing it.
+
+But it's the skill that lets you walk into any unfamiliar codebase and not panic. It's what turns "this scary legacy module" into "oh, it's just three functions in a trenchcoat." It's what lets you adopt a library wisely, inherit a system gracefully, review a teammate's work generously, and catch the AI's confident mistake before your users do.
+
+We will keep generating more code than ever, faster than ever. Which means the people who can actually read it — calmly, critically, like a detective at a scene — are about to become the most valuable people in the room.
+
+Start with thirty minutes in a codebase you admire. Read something you'll never write.
+
+---
+
+*Inheriting a codebase nobody wants to touch, or drowning in AI diffs you can't fully trust? [Get in touch](/contact). Reading other people's code is most of what I do, and I'm happy to compare notes.*

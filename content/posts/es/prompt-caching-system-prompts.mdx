@@ -1,0 +1,121 @@
+---
+title: "El Prompt Caching Cambió Cómo Estructuro Cada System Prompt"
+description: "Una vez que existe el prompt caching, la arquitectura del prompt se vuelve arquitectura de cache. Las reglas de orden que deciden tu hit rate, los valores dinámicos que rompen el cache en silencio, cómo medirlo, y las ganancias de latencia y costo de acertar la división prefijo-estable-versus-sufijo-volátil."
+date: 2026-05-20
+published: true
+category: "Ingeniería de IA"
+tags: ["Prompt Engineering", "Caching", "Optimización de Costos", "LLM", "Ingeniería de IA"]
+author: "Osvaldo Restrepo"
+translationOf: "prompt-caching-system-prompts"
+tldr: "El prompt caching recompensa un prompt cuyo inicio nunca cambia y cuyos cambios viven todos al final. Así que ahora diseño cada prompt como dos zonas: un prefijo estable (instrucciones del sistema, definiciones de herramientas, ejemplos few-shot) que es idéntico entre requests y se cachea, y un sufijo volátil (el turno del usuario, contexto recuperado, timestamps) que varía. La regla es simple e implacable — ordena de más-estable a más-volátil, y nunca dejes que un valor dinámico se filtre al prefijo. Un solo timestamp interpolado arriba puede bajar tu hit rate de 90% a casi cero y multiplicar tu factura en silencio. Mide el hit rate como mides la latencia, porque ahora es latencia y costo."
+faqs:
+  - question: "¿Cuánto puede ahorrar realmente el prompt caching?"
+    answer: "En una feature con un prefijo estable grande — un system prompt largo más definiciones de herramientas más ejemplos few-shot — los tokens de entrada cacheados cuestan una fracción de los frescos y se saltan la mayor parte de la latencia de prefill. Para un chatbot que reenvía un system prompt de 4,000 tokens cada turno, eso es la mayoría de tu costo de entrada volviéndose casi gratis, y un time-to-first-token notablemente más rápido. Mientras más grande y estable el prefijo, más grande la ganancia."
+  - question: "¿Qué es lo más común que rompe el cache en silencio?"
+    answer: "Un valor dinámico sentado en el prefijo: el timestamp actual, un request ID, un saludo por usuario, o 'hoy es {fecha}' arriba del system prompt. El cache empareja con un prefijo exacto, así que un carácter que cambia por request invalida todo lo que viene después. El arreglo es mover ese valor abajo al sufijo volátil donde pertenece."
+  - question: "¿El caching cambia cómo debo escribir las instrucciones?"
+    answer: "Cambia dónde van, no qué dicen. Mantén la redacción que escribirías de todas formas, pero comprométete a un orden: instrucciones invariantes y defs de herramientas primero, luego lo que rota ocasionalmente, luego el contenido por request al final. No escribes para el vocabulario del cache — escribes para su frontera."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "prompt-engineering-production-llms", "caching-strategies-production"]
+---
+
+Por años escribí system prompts como lo hace la mayoría: como un solo bloque de texto, organizado por lo que se sentía lógico de leer. Persona arriba, luego una línea amigable de "la fecha de hoy es...", luego instrucciones, luego ejemplos, luego herramientas. Se leía bien. Costaba una fortuna.
+
+El día que empecé a tomarme el prompt caching en serio, me di cuenta de que mi lindo orden legible estaba peleando activamente contra el cache. Esa línea de fecha cerca de arriba estaba invalidando en silencio todo lo de abajo en cada request. Había construido un prompt optimizado para un lector humano y pesimizado para la máquina que realmente paga la cuenta.
+
+Aquí está el cambio que reorganizó cómo pienso: **una vez que existe el prompt caching, la arquitectura del prompt es arquitectura de cache.** La pregunta deja de ser "¿cuál es el orden más claro para leer esto?" y se vuelve "¿cuál es el tramo más largo del inicio que nunca cambia?". Esas son preguntas muy distintas, y la segunda es la que le importa a tu factura.
+
+## Dos Zonas, Una Frontera
+
+El caching funciona con un match de prefijo exacto. El proveedor hashea el inicio de tu prompt; si ya vio esa secuencia exacta de bytes antes, sirve el estado cacheado y te saltas reprocesarlo. En el instante en que los bytes difieren, el cache falla desde ese punto en adelante.
+
+Así que cada prompt ahora tiene exactamente dos zonas en mi cabeza:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  PREFIJO ESTABLE  (cachea esto — idéntico cada request)       │
+│  ────────────────────────────────────────────────────         │
+│   • Instrucciones del sistema / persona                       │
+│   • Definiciones de herramientas y funciones                  │
+│   • Ejemplos few-shot                                         │
+│   • Políticas estáticas, reglas de formato, schemas           │
+│                                                                │
+│  ─────────────  ← frontera del cache  ─────────────            │
+│                                                                │
+│  SUFIJO VOLÁTIL  (cambia cada request — nunca cacheado)       │
+│  ────────────────────────────────────────────────────         │
+│   • Contexto recuperado (chunks de RAG)                       │
+│   • El turno actual del usuario                               │
+│   • Timestamps, request IDs, datos por usuario                │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Todo lo de arriba de la frontera es idéntico entre miles de requests y se cachea. Todo lo de abajo es único por request y se procesa fresco. Todo el juego es hacer la zona estable lo más larga posible honestamente y mantenerla pura.
+
+## La Regla de Orden
+
+Hay exactamente una regla, y es estricta: **ordena de más-estable a más-volátil, de arriba a abajo.** Cualquier cosa que cambie por request debe venir después de todo lo que no cambia. Sin excepciones, porque un solo token volátil envenena el cache para todo lo que viene después.
+
+Por esto mi viejo prompt estaba sangrando dinero. Mira el antes y después:
+
+```
+ANTES (legible, hit rate terrible)          DESPUÉS (cachea hermoso)
+─────────────────────────────────          ──────────────────────────
+Eres MILA, asistente de UCIN.              Eres MILA, asistente de UCIN.
+Hoy es 2026-05-20 14:32 UTC.   ◄── rompe    [definiciones de herramientas]
+[definiciones de herramientas]              [ejemplos few-shot]
+[ejemplos few-shot]                          [políticas estáticas]
+[políticas estáticas]                        ─── frontera del cache ───
+[contexto del paciente recuperado]           Hoy es 2026-05-20 14:32 UTC.
+Usuario: ¿cuál es la dosis?                  [contexto del paciente]
+                                             Usuario: ¿cuál es la dosis?
+
+hit rate: ~0%                                hit rate: ~90%+
+(el timestamp cambia cada request,           (todo lo dinámico movido
+ invalidando todo el prefijo)                 abajo de la frontera)
+```
+
+Mismas palabras. Mismas instrucciones. El único cambio es *dónde vive la línea dinámica* — y ese cambio es la diferencia entre cachear nada y cachear casi todo.
+
+<Callout type="warning" title="El timestamp es el clásico asesino de cache">
+'Hoy es {now}' arriba de un system prompt se siente inofensivo y útil. No es ninguna de las dos. Muta el prefijo en cada request e invalida todo el cache detrás de él. Si el modelo necesita la hora actual, ponla en el sufijo volátil junto al turno del usuario — nunca en el prefijo. He visto esta sola línea bajar un hit rate de 94% a un solo dígito.
+</Callout>
+
+## Qué Más lo Rompe en Silencio
+
+El timestamp es el famoso, pero tiene primos. Cualquier cosa que varíe por request, por usuario, o por sesión romperá el cache si se cuela arriba de la frontera:
+
+- Un saludo por usuario horneado en el system prompt ("Hola María, ...").
+- Un request ID o trace ID inyectado para debugging.
+- Definiciones de herramientas cuyo orden o espacios se regeneran de forma no determinista.
+- Un bloque de "memoria" o "actividad reciente" que se actualiza entre turnos.
+- Incluso reordenar ejemplos few-shot al azar "por variedad".
+
+Lo insidioso es que todos estos se ven razonables y ninguno lanza un error. La feature funciona perfectamente. Solo cuesta en silencio tres veces más de lo que debería, y no lo verás hasta que mires el hit rate.
+
+<Callout type="tip" title="Congela la serialización de tus herramientas">
+Si construyes definiciones de herramientas desde un dict en runtime, asegúrate de que la serialización sea determinista — claves ordenadas, espacios estables, orden fijo. Un serializador de JSON que no garantiza el orden de las claves puede producir un prefijo diferente en bytes en cada deploy, o incluso cada request, reduciendo a la mitad tus cache hits en silencio sin código que se vea mal.
+</Callout>
+
+## Mide el Hit Rate Como Si Fuera Latencia — Porque lo Es
+
+El cache hit rate solía ser una métrica que estaría bien tener. Con el prompt caching, es de primera clase, sentada justo al lado de la latencia y el costo — porque directamente *es* ambos. Un hit rate alto significa tokens de entrada más baratos y un time-to-first-token más rápido; un hit rate que colapsa significa que estás pagando precio completo y esperando el prefill completo en cada call.
+
+Esto se integra directo en el pulso diario de costos que ya corro. El cache hit rate es uno de los cuatro números que reviso cada mañana, precisamente porque el modo de falla es invisible en el happy path: la feature sigue funcionando cuando el cache se rompe, así que nada alerta. La única señal es el hit rate cayendo en silencio y el costo subiendo en silencio.
+
+```sql
+SELECT
+  date_trunc('day', created_at) AS day,
+  sum(cached_input_tokens)::float
+    / nullif(sum(input_tokens), 0) AS cache_hit_rate
+FROM llm_requests
+WHERE created_at > now() - interval '7 days'
+GROUP BY 1 ORDER BY 1 DESC;
+```
+
+Cuando ese número baja de la noche a la mañana, alguien filtró un valor dinámico a un prefijo. Trato una caída repentina de hit rate igual que trato un pico de latencia: abro un issue antes del almuerzo y voy a buscar la variable que se escapó a la zona estable.
+
+## El Modelo Mental Que Se Queda
+
+El reencuadre que hizo todo esto automático: **deja de escribir system prompts para un lector, empieza a escribirlos para una frontera.** Imagina la línea horizontal que separa lo estable de lo volátil, y pregúntate de cada token, "¿a qué lado pertenece esto?". Las instrucciones invariantes, las definiciones de herramientas y los ejemplos few-shot van arriba y se ganan su cache. El turno del usuario, los chunks recuperados, y cualquier cosa con un reloj van abajo.
+
+Acierta esa frontera y las recompensas llegan sin ninguna astucia en la redacción: menor costo en cada request repetido, respuestas más rápidas que tus usuarios pueden sentir, y un system prompt que escala a miles de calls por hora sin que la factura escale con él. La arquitectura del prompt se volvió arquitectura de cache para mí el día que moví un timestamp — y no he vuelto a escribir prompts de arriba hacia abajo para el lector desde entonces.

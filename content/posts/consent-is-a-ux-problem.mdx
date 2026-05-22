@@ -1,0 +1,114 @@
+---
+title: "Consent Is a UX Problem, Not a Legal Checkbox"
+description: "Real informed consent in health and AI apps is a design challenge, not a wall of legalese behind an 'I Agree' button. What meaningful consent looks like in the flow: progressive disclosure, plain language, revocability, and showing what data goes where and why."
+date: 2026-05-09
+published: true
+category: "Healthcare Tech"
+tags: ["Consent", "UX", "Privacy", "Healthcare AI", "Ethics"]
+author: "Osvaldo Restrepo"
+tldr: "The 'I Agree' button is where consent goes to die. A wall of legalese that nobody reads is not informed consent; it is liability theater. Real consent is a UX problem: progressive disclosure at the moment a decision actually matters, plain language a frightened person can parse, a visible map of what data goes where and why, and the ability to take it back as easily as you gave it. Consent is a state you maintain, not a signature you collect once."
+faqs:
+  - question: "Isn't a signed consent form legally sufficient?"
+    answer: "It may satisfy a legal minimum while completely failing the ethical and human one. Informed consent legally requires that the person actually understood and freely agreed. A wall of legalese behind an 'I Agree' button produces a signature without understanding, which is exactly the gap that erodes trust and, increasingly, fails to hold up. Compliance is the floor, not the goal."
+  - question: "What is progressive disclosure in a consent flow?"
+    answer: "Instead of dumping every term up front, you reveal the right information at the moment each decision actually matters. A short, plain-language summary covers the core choice; details expand on demand; data-specific permissions are requested in context when the feature that needs them is used. The person is informed where it counts, not buried before they start."
+  - question: "Why does revocability matter so much for consent?"
+    answer: "Consent that cannot be withdrawn is not consent; it is a trap. If saying yes is permanent, every yes is coerced by its own irreversibility. Withdrawal should be as easy and findable as granting was, it should take effect promptly, and the person should be told plainly what happens to their data when they revoke. The freedom to leave is what makes the agreement to stay meaningful."
+relatedPosts: ["digital-health-compliance-guide", "web-accessibility-developers-guide", "responsible-ai-ethical-ml-systems"]
+---
+
+There is a moment I think about often. A parent, exhausted, sitting in a plastic chair next to an incubator, handed a clipboard with eight pages of single-spaced text and asked to sign at the bottom. They are not reading it. They cannot read it. They are watching the numbers on a monitor. They sign because saying no feels like refusing care for their child.
+
+That is what we call "informed consent." It is neither informed nor, in any meaningful sense, consent. It is a signature collected to protect an institution, and we have spent decades pretending it is something more.
+
+I build healthcare and AI software, and I have come to a blunt conclusion: consent is a UX problem, not a legal checkbox. The "I Agree" button is where consent goes to die. If we are serious about respecting the people on the other side of our systems, especially in health and AI where the stakes are personal and the data is intimate, then consent has to be designed, not just disclosed.
+
+## Liability Theater vs. Informed Consent
+
+The legal definition of informed consent is demanding. It requires that the person actually understood what they were agreeing to and freely chose it. Notice what that definition does *not* say: it does not say "a document was presented." Understanding and freedom are the bar.
+
+The wall-of-legalese pattern fails both. Nobody understands a contract written to be litigated rather than read. And the framing, agree or you cannot proceed, removes the freedom. What we built instead is liability theater: a ritual whose real purpose is to produce evidence that the user clicked the button, not to ensure they knew what they were doing.
+
+[Digital health compliance](/blog/digital-health-compliance-guide) is real and necessary, and I am not waving it away. But compliance is the floor, not the goal. A system can be perfectly compliant and still treat people with contempt. The interesting work begins where the legal minimum ends.
+
+<Callout type="warning" title="The 'I Agree' button is a smell">
+If your consent experience is a scroll-locked block of text and a single button, you have optimized for the institution's defense, not the person's understanding. That gap, signature without comprehension, is exactly what regulators, courts, and users are increasingly unwilling to accept. Treating consent as a checkbox is a design failure dressed up as a legal safeguard.
+</Callout>
+
+## What Meaningful Consent Looks Like in the Flow
+
+Good consent is not a page. It is a property of the whole experience. A few principles I design around:
+
+**Progressive disclosure.** Do not dump everything up front. Lead with a short, plain summary of the core choice and what it means. Let details expand on demand. Ask for specific permissions in context, at the moment the feature that needs them is actually used, so the person can connect the request to a reason.
+
+**Plain language, written for the worst moment.** Assume the reader is frightened, exhausted, distracted, and possibly reading in their second language. Aim for a low reading level, short sentences, concrete nouns. "We share your baby's lab results with the on-call specialist so they can advise your care team" beats "Protected Health Information may be disclosed to authorized care delivery personnel for treatment purposes."
+
+**Show where the data goes and why.** People consent to specifics, not abstractions. A small, visible map, this data, to this recipient, for this purpose, lets someone actually evaluate the trade. Vague language hides the trade; specifics surface it.
+
+**Revocability that is real.** Withdrawal must be as easy to find and use as the original yes. It must take effect promptly. And it must explain, in plain words, what happens to data already collected. Consent you cannot take back is not consent; it is a trap that coerces every future user by its own irreversibility.
+
+**Granularity without overwhelm.** Let people say yes to the message reminders and no to the analytics, yes to sharing with their care team and no to research use. But do not turn that into a forty-toggle control panel. Sensible defaults plus a clear path to adjust beats a wall of switches that nobody touches.
+
+## Consent Is a State Machine, Not a Signature
+
+The deepest reframe is this: consent is not an event you capture once. It is a state you maintain over time. People grant it, narrow it, expand it, and withdraw it. Your system has to model all of that honestly.
+
+Here is the state machine I sketch when designing a consent flow:
+
+```
+        ┌──────────────┐
+        │  NOT ASKED   │  (no consent state exists yet)
+        └──────┬───────┘
+               │  feature needs permission
+               ▼
+        ┌──────────────┐    declines
+        │   PROMPTED   │──────────────┐
+        │ (plain-lang  │              ▼
+        │  in-context) │       ┌──────────────┐
+        └──────┬───────┘       │   DECLINED    │
+               │ grants        │ (offer limited│
+               ▼               │  experience,  │
+        ┌──────────────┐       │  ask again    │
+   ┌────│   GRANTED    │       │  only on a    │
+   │    │ scope: [...] │       │  real trigger)│
+   │    └──────┬───────┘       └──────────────┘
+   │           │
+   │  expand   │  narrow / withdraw
+   │  scope    ▼
+   │    ┌──────────────┐    confirm + explain
+   │    │  REVOKING    │──────────────┐
+   │    └──────────────┘              ▼
+   │                          ┌──────────────┐
+   └─────────────────────────▶│   REVOKED    │
+        re-grant on request   │ (purge or    │
+                              │  retain per   │
+                              │  stated rule, │
+                              │  shown to user)│
+                              └──────────────┘
+```
+
+Notice the properties this forces you to handle. A declined prompt does not loop forever, it backs off and only re-asks on a genuine trigger. A grant carries an explicit scope. Revocation is its own state with a confirmation and an explanation, not a silent flag flip. And re-granting is always possible, because a person who said no in a panic should be able to say yes later without friction.
+
+When you model consent this way, the design questions become concrete. What is the minimum scope this feature needs? What do we show at the moment of withdrawal? What happens to already-collected data, and do we tell the user the truth about it? Those are UX decisions with ethical weight, not legal afterthoughts.
+
+## Accessibility Is Part of Consent
+
+You cannot consent to what you cannot perceive. A consent flow that fails a screen reader, relies on color alone, or assumes perfect eyesight in a dim NICU at 2 a.m. has not obtained informed consent from the people it excludes, it has obtained a click. Everything in my [web accessibility guide](/blog/web-accessibility-developers-guide) applies here with extra force, because the stakes are someone's health data and the reader is at their most vulnerable.
+
+Plain language is itself an accessibility feature. So is keyboard operability, sufficient contrast, and not hiding the withdrawal option three menus deep. Accessible consent and meaningful consent are the same project.
+
+<Callout type="tip" title="Design the 'no' path as carefully as the 'yes' path">
+Most consent UX lavishes attention on getting to yes and treats no as a dead end or a dark-pattern obstacle course. Flip it. Make declining and withdrawing clean, respectful, and free of guilt-tripping. A system that makes leaving easy is a system people trust enough to stay. The quality of your 'no' path is the truest measure of whether your consent is real.
+</Callout>
+
+## The Honesty Test
+
+Here is the test I hold my own work to. Could the person on the other end, the scared parent, the patient who just got bad news, the user who is not a lawyer, accurately describe what they agreed to, five minutes after they agreed to it? If not, I did not get consent. I got a signature.
+
+This connects to everything I believe about [building AI responsibly](/blog/responsible-ai-ethical-ml-systems). An AI system that quietly trains on someone's intimate health data because they once scrolled past a paragraph has not earned the right to that data. Earning it means making the trade legible: here is what we collect, here is where it goes, here is why, and here is how you take it back. Say that in plain words at the moment it matters, and let people genuinely choose.
+
+Consent done well costs more. It takes design time, content work, accessibility effort, and the discipline to let people say no. But the alternative is a relationship built on a signature nobody understood, and in healthcare, where I have sat in that plastic chair, that is not a relationship at all.
+
+---
+
+*Designing consent for health or AI products and want it to mean something? [Reach out](/contact). The 'I Agree' button deserves better than what we have given it.*

@@ -1,0 +1,140 @@
+---
+title: "Designing the Retry: Making LLM Calls Fail Like Grown-Ups"
+description: "LLM calls fail in stranger ways than HTTP calls — malformed JSON, refusals, timeouts, rate limits, partial streams. A taxonomy of failure types and the correct response to each, plus why a naive retry loop can 10x your bill or spin forever."
+date: 2026-05-02
+published: true
+category: "AI Engineering"
+tags: ["LLM", "Reliability", "Retry", "Error Handling", "AI Engineering"]
+author: "Osvaldo Restrepo"
+tldr: "A try/except with a three-attempt loop is the wrong way to handle LLM failures, because LLM calls don't fail like normal API calls. They fail in at least five distinct shapes — malformed output, refusal, timeout, rate limit, and partial stream — and each one wants a different response: retry-with-repair, fallback model, degrade gracefully, or hard-fail. Retrying a refusal wastes money and loops. Retrying a malformed-JSON error without changing the prompt repeats the same mistake. The fix is a failure taxonomy, the right action per type, idempotency, jittered backoff, and a circuit breaker so a bad minute doesn't become a bankrupt afternoon."
+faqs:
+  - question: "Why not just retry everything three times and move on?"
+    answer: "Because two of the five common failure types should never be retried as-is. A refusal will refuse again — you're paying for the same 'no' three times. A malformed-output error will malform again unless you change the request. Blind retries turn a transient blip into a cost multiplier and, with streaming or agents in the loop, sometimes an infinite loop."
+  - question: "What's the single most expensive retry mistake you've seen?"
+    answer: "An agent that misread a tool error as 'try again,' wrapped in a retry loop with no circuit breaker, on a streaming endpoint. It re-issued the same expensive call hundreds of times in a few minutes before anyone noticed. The fix wasn't a better prompt — it was a circuit breaker that trips on repeated identical failures."
+  - question: "Should retries use the same model or a cheaper one?"
+    answer: "It depends on the failure. For a transient timeout or rate limit, retry the same model — the request was fine. For a capability failure where the model genuinely couldn't do the task, falling back to a stronger model can help; for cost-driven degradation, falling back to a cheaper or smaller response is the move. The failure type tells you which direction to go."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "streaming-llm-responses-guide", "observability-llm-production"]
+---
+
+The first production incident I ever caused with an LLM was not a wrong answer. It was a retry loop.
+
+I had wrapped a model call in the same defensive pattern I'd used for a decade on flaky HTTP services: try, catch, retry three times with backoff. Reasonable. Battle-tested. Completely wrong for LLMs. One afternoon a prompt change started producing JSON the model couldn't quite close, the parser threw, my loop dutifully retried the *identical* request three times, and every retry produced the *identical* broken JSON — because nothing about the request had changed. I paid for four failures where one would have done, multiplied across every request that hour.
+
+That's the core insight: **LLM calls don't fail like API calls, so they can't be retried like API calls.** An HTTP 503 is the same failure every time and a retry is a reasonable bet that the server recovered. An LLM failure might be transient (rate limit), might be permanent until you change something (malformed output), or might be the model correctly refusing (a "no" you'll keep paying to hear).
+
+## The Failure Taxonomy
+
+Before you can retry well, you have to name what broke. There are five shapes I plan for.
+
+| Failure | What it looks like | What it means |
+|---|---|---|
+| **Malformed output** | JSON won't parse, schema violation | Request was delivered, model answered wrong-shaped |
+| **Refusal** | "I can't help with that" | Model worked correctly; the answer is no |
+| **Timeout** | No response in budget | Could be transient, could be a too-hard task |
+| **Rate limit** | 429 from the provider | Purely transient, purely about pacing |
+| **Partial stream** | Stream cuts mid-token | Connection died; you have half an answer |
+
+Lumping these into one `except` block is the original sin. They are five different problems and they want four different responses.
+
+## The Decision Table
+
+This is the table I keep next to any retry code I write. The action depends entirely on the failure type — never on a blanket "retry N times."
+
+```
+┌────────────────┬──────────────────┬───────────────────────────────┐
+│ FAILURE        │ RETRY?           │ CORRECT ACTION                │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Malformed      │ Yes, but REPAIR  │ Re-prompt with the error +    │
+│ output         │ first            │ the bad output. Don't resend  │
+│                │                  │ the same request.             │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Refusal        │ NO               │ Hard-fail or route to human.  │
+│                │                  │ Retrying pays for the same no.│
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Timeout        │ Once, then       │ Retry same model once; if it  │
+│                │ FALLBACK         │ repeats, degrade or fall back.│
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Rate limit     │ Yes, with        │ Backoff + jitter. Respect the │
+│                │ BACKOFF          │ Retry-After header if given.  │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Partial stream │ Yes, but         │ Resume if you can; else retry │
+│                │ carefully        │ fresh. Never show the partial.│
+└────────────────┴──────────────────┴───────────────────────────────┘
+```
+
+### Malformed output → retry with repair
+
+Do not resend the same request. Send a *new* request that includes the broken output and the parse error, and ask the model to fix it. This is the difference between "try the same thing again" and "here's what went wrong, correct it." The first repeats the mistake; the second usually fixes it on the first repair attempt.
+
+```python
+try:
+    result = parse(completion)
+except ParseError as e:
+    repair = call_model([
+        *original_messages,
+        {"role": "assistant", "content": completion},
+        {"role": "user", "content": f"That failed to parse: {e}. "
+                                     f"Return only valid JSON matching the schema."},
+    ])
+    result = parse(repair)  # one repair attempt, then hard-fail
+```
+
+### Refusal → do not retry
+
+A refusal is the model working correctly. Retrying it is paying three times to be told "no" three times — and if your prompt or content tripped a safety boundary, it'll trip again. Route to a human, return a graceful message, or hard-fail. Just don't loop.
+
+<Callout type="warning" title="Refusals masquerade as malformed output">
+A refusal often arrives as text where your code expected JSON, so your parser throws and your malformed-output retry kicks in — now you're retrying a refusal. Detect refusals explicitly before the parse step, or you'll burn budget retrying a firm and final no.
+</Callout>
+
+### Timeout → retry once, then fall back
+
+A timeout is ambiguous: maybe the network hiccuped, maybe the task is genuinely too hard for the current model and budget. Retry the same model exactly once. If it times out again, that's signal — fall back to a faster/smaller path or degrade gracefully ("I couldn't complete that, here's what I have").
+
+### Rate limit → backoff with jitter
+
+The only failure that behaves like a classic transient error. Back off exponentially, and **always add jitter** — without it, every client that got rate-limited at the same instant retries at the same instant and stampedes the provider again. Respect the `Retry-After` header when the provider sends one.
+
+```python
+delay = min(base * (2 ** attempt), cap)
+delay += random.uniform(0, delay * 0.3)   # jitter prevents stampede
+```
+
+### Partial stream → never show the half-answer
+
+A stream that dies mid-token has given you a fragment that may be coherent enough to look complete and wrong enough to be dangerous. Discard it. Retry fresh, or resume from a checkpoint if your provider supports it — but never render the partial to a user.
+
+## The Two Things That Save You From Yourself
+
+### Idempotency
+
+If a write happens on the back of an LLM call, every retry risks doing it twice. Attach an idempotency key derived from the request so a retried call that already succeeded server-side doesn't fire the action again. This is the difference between a retry that's safe and a retry that double-charges a customer.
+
+### A circuit breaker
+
+This is the one that turns my old incident from a catastrophe into a blip. After N failures in a short window, *stop calling the model entirely* and fail fast for a cooldown period.
+
+```
+        failures < N        ┌──────────┐
+   ─────────────────────────►  CLOSED   │ calls flow normally
+                             └────┬─────┘
+                  N failures fast │
+                             ┌────▼─────┐
+                             │   OPEN    │ reject immediately,
+                             └────┬─────┘  no model calls, save $$$
+                  cooldown elapsed│
+                             ┌────▼─────┐
+                             │ HALF-OPEN │ let one test call through
+                             └──────────┘
+```
+
+<Callout type="danger" title="A naive retry loop is a billing weapon">
+A retry loop with no circuit breaker, wrapped around a streaming or agentic call, can re-issue the same expensive request hundreds of times before a human notices. I've watched it happen. The circuit breaker isn't optional infrastructure — it's the seatbelt that keeps a bad minute from becoming a bankrupt afternoon. Pair it with the cost-monitoring pulse so the spike shows up on a dashboard the same day.
+</Callout>
+
+## Failing Like a Grown-Up
+
+Mature error handling for LLMs isn't about preventing failure — these systems fail constantly and that's fine. It's about failing in a way that's *cheap, bounded, and explainable*. Name the failure. Pick the action from the table. Repair instead of repeat. Back off with jitter. Stay idempotent. And put a circuit breaker between your good intentions and your invoice.
+
+Do that, and your LLM features fail like grown-ups: quietly, safely, and without taking the rest of the system — or the budget — down with them.

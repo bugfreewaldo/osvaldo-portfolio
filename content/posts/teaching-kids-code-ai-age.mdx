@@ -1,0 +1,82 @@
+---
+title: "Teaching Kids to Code When the AI Writes the Code"
+description: "If AI can generate the code, does coding still matter for kids? From running Waldo's Code Lab in Panama: yes — but what we teach has to shift from syntax to thinking, judgment, and curiosity."
+date: 2026-05-16
+published: true
+category: "Education"
+tags: ["Education", "Teaching", "Kids", "AI", "Panama"]
+author: "Osvaldo Restrepo"
+tldr: "Parents keep asking me whether it's pointless to teach their kids to code now that AI writes code. My answer, from running Waldo's Code Lab — a free coding school for kids and teens in Panama — is yes, it absolutely still matters, but what we teach has to change. The value was never syntax memorization; it was learning to break a hard problem into small ones, to read and judge a solution, to debug when reality disagrees with you, and to stay curious. AI is a phenomenal tool for kids who think — and a thinking-replacement for kids who don't. My whole job now is making sure they learn to use it without outsourcing their own minds."
+faqs:
+  - question: "Does learning to code still matter for kids if AI can write code?"
+    answer: "Yes, more than ever — but the goal shifts. Memorizing syntax matters less because AI handles it. What matters is learning to decompose problems, read and evaluate code you didn't write, debug when things go wrong, and develop the taste to know whether a solution is actually good. Those skills are what coding always really taught; AI just stripped away the busywork that hid them."
+  - question: "Should kids be allowed to use AI tools while learning to program?"
+    answer: "Yes, with guardrails. Banning AI is unrealistic and leaves kids unprepared for the world they'll work in. The key is teaching them to use it as a tool that amplifies their thinking — they must understand, question, and test what it produces — rather than as a vending machine that does the thinking for them. The danger isn't the tool; it's passive use of the tool."
+  - question: "How do you stop kids from just copying AI answers without learning?"
+    answer: "Make them explain and defend the code, change the requirements so a copied answer breaks, and reward debugging and questioning over getting a fast result. When a kid has to explain why their solution works and adapt it when you move the goalposts, copying stops being a shortcut and understanding becomes the only path forward."
+relatedPosts: ["vibe-coding-ai-assisted-development", "ai-engineering-panama", "responsible-ai-ethical-ml-systems"]
+---
+
+A father came up to me after a session at Waldo's Code Lab, the free coding school I run for kids and teens here in Panama, and asked the question I now get almost every week. He was kind about it, almost apologetic. "Profe, I love that my daughter comes here. But — be honest with me. The AI writes the code now, doesn't it? Is this still worth her time?"
+
+It's a fair question and I refuse to wave it away. He's not wrong about the surface fact: a 12-year-old can describe an app to a chatbot and watch working code appear. The thing I spent years learning to type, she can summon in a sentence. If coding class is about teaching kids to produce syntax, then yes, that class is a museum exhibit.
+
+But it never was about syntax. We just couldn't always tell, because the syntax was in the way.
+
+## What we were actually teaching all along
+
+Here's the part that took me a while to see clearly. When I taught a kid a `for` loop, I told myself I was teaching loops. I wasn't, not really. I was using the loop as an excuse to teach something underneath it: *you have a repetitive problem, so you find the pattern, name it, and tell the machine to repeat it.* The loop was the vehicle. The thinking was the cargo.
+
+For decades the vehicle and the cargo were welded together. You couldn't get to "decompose this problem into steps" without first surviving "why won't this semicolon work." So we taught syntax, kids struggled with syntax, and the ones who pushed through happened to also absorb the thinking. The struggle was a filter, not a feature — and it filtered out a lot of kids who would have been brilliant problem-solvers if the punctuation hadn't ambushed them first.
+
+AI just unwelded the two. It does the syntax. What's left is the cargo, exposed, which is exactly the part that was always worth teaching.
+
+```
+   What changed                What didn't
+   ────────────                ───────────
+   Memorizing syntax     →     Breaking big problems into small ones
+   Typing boilerplate    →     Reading code and judging if it's good
+   Looking up the API    →     Debugging when reality disagrees with you
+   "Make the error stop" →     Asking "is this actually what I want?"
+   Fighting punctuation  →     Curiosity about how things really work
+```
+
+The left column is what AI absorbed. The right column is my entire syllabus now. And honestly? The right column is the good part. It's the part that makes a kid's eyes light up. We just used to bury it under a year of bracket-matching.
+
+## The fork in the road
+
+Here's what keeps me up at night, though, and why I get a little fierce about this. The same tool cuts two completely different ways depending on the kid using it.
+
+For a kid who thinks, AI is rocket fuel. She has an idea bigger than her current skills, the AI gets her past the boilerplate, and she spends her energy on the interesting part — the logic, the design, the "what if it did this instead." She learns *faster* than I ever could, because the tool removed the drudgery and left the substance.
+
+For a kid who doesn't think — or, more accurately, who hasn't yet been taught that thinking is the point — the same tool is a thinking-replacement. He types the assignment into the box, pastes the answer, gets the gold star, and learns nothing except that the box gives answers. He's not building a muscle. He's renting one. And the day the box is wrong, or the problem is one the box hasn't seen, he has nothing to fall back on, because he never built the thing class was supposed to build.
+
+<Callout type="danger" title="The real risk isn't AI. It's passive kids.">
+A child who uses AI to skip the struggle entirely doesn't get smarter and lazier — they just get more dependent. The danger of these tools in education isn't that they're bad. It's that they make intellectual passivity feel like productivity. A kid can produce a working app and learn absolutely nothing, and feel great about it. My job is to make sure that doesn't happen on my watch.
+</Callout>
+
+## How I teach it, concretely
+
+I don't ban the AI. Banning it is both unrealistic and dishonest — it's the world they'll work in, and pretending otherwise just hands the advantage to whoever ignores my rule. Instead I've built the whole class around making passive use impossible and active use rewarding.
+
+**They have to explain it.** If a kid brings me code, I don't ask "does it work?" I ask "why does this line exist?" and "what happens if I delete it?" The AI can write the code, but it can't sit in my chair and defend it. The moment a kid has to explain the solution, copying stops being a shortcut, because understanding is the only thing that survives the question.
+
+**I move the goalposts.** A copied answer is brittle. So after a kid gets something working, I change the requirements. "Great, now make it count backwards." "Now it has to handle when the list is empty." A real understanding adapts in thirty seconds. A pasted answer collapses, and the collapse is the lesson — gently, every time. They learn that the fragile thing wasn't the code. It was their relationship to it.
+
+**Debugging is the main event, not the punishment.** In my class, the moment something breaks is the moment we lean in, not the moment we feel dumb. I'll deliberately let the AI produce something subtly wrong and we hunt the bug together. Debugging is pure thinking — forming a hypothesis, testing it, being wrong, trying again. AI can't hand you that skill; it can only deny you the chance to build it if you let it. So we practice it on purpose, until being stuck feels like a puzzle instead of a verdict.
+
+**We talk about taste.** This one surprises people. I'll show two solutions that both work and ask which is *better* and why. One's clearer. One's a tangle. Developing the judgment to tell the difference — taste — is something AI can assist but cannot replace, because taste is about what *you* think is good, and you can't outsource your own opinion. A kid with taste can look at AI output and say "that's ugly, do it differently." A kid without it accepts whatever the box returns. I'm trying to grow kids who can disagree with the machine.
+
+<Callout type="tip" title="The one rule I give every kid">
+Never paste code you can't explain. That's the whole guardrail, and it's enough. If you understand it well enough to explain it to me, you can use whatever tool you want — AI, Google, your older cousin, anything. Use the tools. Just don't let them think for you. The understanding has to live in your head, not on your screen.
+</Callout>
+
+## Why this matters more in Panama, not less
+
+There's an extra layer to this where I am. A lot of my students don't come from families with engineers at the dinner table or expensive bootcamps on speed dial. For them, the playing field with kids in wealthier places was never level — those kids had tutors, connections, a head start measured in years.
+
+AI, used well, is the most powerful equalizer I've ever seen for these kids. A curious teenager in Panama City with a laptop and an internet connection now has, sitting next to her, a patient tutor that never gets tired, never makes her feel stupid for asking, and is available at midnight when the idea finally clicks. That's extraordinary. That genuinely narrows a gap I used to think was permanent.
+
+But — and this is the whole point — only if she's been taught to *drive* the tool instead of being driven by it. Used passively, the same AI widens the gap, because the privileged kid was taught to think and uses it as fuel, while the kid who was only ever shown the answer box uses it as a crutch. The tool amplifies whatever's already there. My job, the real mission behind the Code Lab, is to make sure that what's already there is a thinking, curious, slightly stubborn human being who refuses to let a machine do her thinking for her.
+
+So when that father asked me if it was still worth his daughter's time, I told him the truth. The coding she's learning here will matter more than the coding I learned, not less — because we stripped away the part a machine does better and kept the part that was always the point. She's not learning to type code. She's learning to think clearly, judge honestly, and stay curious in a world that will constantly offer to do her thinking for her. If she walks out of my lab able to refuse that offer, I've done my job. The code was never the lesson. She was.

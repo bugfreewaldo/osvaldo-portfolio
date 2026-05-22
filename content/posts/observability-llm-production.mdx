@@ -1,0 +1,140 @@
+---
+title: "What I Actually Log When an LLM Feature Ships to Production"
+description: "Normal app logs are not enough for an LLM feature. Here is the exact set of signals I capture so I can reconstruct any single bad answer — full input snapshot, model and version, token counts, tool calls, latency breakdown, raw completion, parsed result, validation outcome, and the user's eventual action."
+date: 2026-04-24
+published: true
+category: "AI Engineering"
+tags: ["Observability", "LLM", "Production", "Debugging", "AI Engineering"]
+author: "Osvaldo Restrepo"
+tldr: "When an LLM feature goes wrong, you rarely get a stack trace — you get a screenshot of a weird answer and a confused user. To debug that, you need to reconstruct the exact inputs that produced the output, not just the output itself. I log a full input snapshot (every message, system prompt, retrieved chunks), the model and version, input/output token counts, every tool call with arguments and results, a latency breakdown, the raw completion before parsing, the parsed result, the validation outcome, and the user's eventual action. This is distinct from cost auditing — it is the difference between 'we know it got more expensive' and 'we can explain exactly why this one answer was wrong.'"
+faqs:
+  - question: "Isn't logging the full prompt a privacy and storage problem?"
+    answer: "Both are real and both are solvable. Redact or tokenize PII at the logging boundary, not after. For storage, sample: log 100% of failures and flagged outputs, and a small percentage of the happy path. You almost never need to reconstruct a good answer — you need to reconstruct the bad ones, and those are rare enough to keep in full."
+  - question: "Why log the raw completion AND the parsed result separately?"
+    answer: "Because the gap between them is where a whole class of bugs lives. When a user reports a broken answer and your parsed result looks empty, the raw completion tells you whether the model said nothing, said something your parser choked on, or said something the validator rejected. Three different bugs, three different fixes, indistinguishable without both fields."
+  - question: "How is this different from a daily cost audit?"
+    answer: "Cost auditing is aggregate and trend-based — it answers 'is spend drifting?' This is per-request and forensic — it answers 'why was this specific answer wrong?' You need both. The cost audit watches the herd; this lets you autopsy a single animal."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "llm-evaluation-pipelines", "designing-llm-retry-fallbacks"]
+---
+
+A user sent me a screenshot. The MILA assistant — the NICU helper I built and named after my daughter — had given a nurse a dosing summary that referenced the wrong patient's weight. One screenshot, no error, no stack trace. The HTTP request returned 200. Every dashboard was green.
+
+I spent three hours that night trying to reproduce it and could not, because I had logged the *answer* but not the *inputs that produced the answer*. The retrieved context was gone. The exact system prompt version was gone. I was debugging a ghost.
+
+That night taught me the rule I now apply to every LLM feature before it ships: **you log the inputs that produced an output, not just the output.** Normal app logging assumes deterministic code — same input, same output, so the input barely matters. LLMs break that assumption completely. The only way to understand a bad answer is to rebuild the exact moment it was generated.
+
+## Why Normal Logs Fail You Here
+
+A traditional request log answers "what happened." For an LLM feature, that is almost useless. The model didn't crash. It confidently produced something wrong. To debug *wrong*, you need to replay the generation — and you can't replay what you didn't capture.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│   Normal app log              vs.    LLM feature log          │
+├──────────────────────────────────────────────────────────────┤
+│   request_id                        request_id                │
+│   endpoint                          endpoint                  │
+│   status: 200                       status: 200               │
+│   latency: 1.4s                     ── plus everything ──     │
+│                                     full input snapshot       │
+│                                     model + version           │
+│   "looks fine, ship it"             token counts (in/out)     │
+│                                     tool calls + args + result│
+│                                     latency breakdown         │
+│                                     raw completion            │
+│                                     parsed result             │
+│                                     validation outcome        │
+│                                     user's eventual action    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The left side tells you the server was healthy. The right side tells you why the nurse saw the wrong weight.
+
+## The Nine Signals
+
+Here is what I capture per LLM call. Each one earned its place by being the missing field in some debugging session that ran too long.
+
+### 1. The full input snapshot
+
+Every message in the conversation, the exact system prompt, and — critically — the retrieved chunks with their source IDs. Not a hash, not a summary. The literal text the model saw. In a RAG system, the retrieved context *is* the cause of most bad answers, and it is the first thing people forget to log.
+
+### 2. Model and version
+
+Not "claude" or "gpt." The exact model string, including the dated version. Providers update models. A prompt that was rock-solid can drift the day a new snapshot rolls out, and if your logs say `claude-sonnet` with no version, you cannot correlate the regression to the rollout.
+
+### 3. Token counts, input and output separated
+
+Cheap to log, endlessly useful. It is your latency explainer, your cost attribution, and your "did the context get truncated?" detector all at once.
+
+### 4. Every tool call — arguments and results
+
+If the model called a function, log the name, the exact arguments it generated, and what came back. A staggering number of "the AI is wrong" bugs are actually "the tool returned the wrong thing and the model faithfully reported it."
+
+<Callout type="info" title="Log the tool's output, not just the call">
+The model's job is to use what the tool gives it. If a search tool returns stale data, the model will confidently present stale data. Without the tool *result* in your logs, you'll blame the model for a data-layer bug — and rewrite a prompt that was never broken.
+</Callout>
+
+### 5. Latency breakdown
+
+Not one number. Split it: retrieval time, time-to-first-token, total generation time, tool round-trips. A 9-second response is a different bug if it was retrieval versus generation versus a slow tool. One total number hides which knob to turn.
+
+### 6. The raw completion
+
+The model's output exactly as it came off the wire, before any parsing. This is the field people skip and regret most.
+
+### 7. The parsed result
+
+What your code extracted from the raw completion. The gap between fields 6 and 7 is one of the highest-value things in the whole log.
+
+```
+raw completion              →  parser   →  parsed result  →  validator
+"Sure! Here's the JSON          extract     { dose: null }     FAIL
+ you asked for: {dose: 5mg}"     fields
+        │                                         │
+        └────────── model was fine ───────────────┘
+            parser regex missed the unit → real bug is in YOUR code
+```
+
+When `parsed result` is empty but `raw completion` is full, the model did its job and your parser failed. When both are empty, the model refused or returned nothing. Same symptom to the user; opposite fix.
+
+### 8. Validation outcome
+
+Did the parsed result pass your schema and business rules? Log pass/fail and the specific rule that failed. This is what turns "sometimes it's wrong" into "it fails the dosage-range check 4% of the time on premature infants."
+
+### 9. The user's eventual action
+
+The signal everyone forgets, and the one that tells you if the answer was actually *good*. Did they accept it, edit it, retry, or abandon? An answer that passes every validator but gets edited 80% of the time is a wrong answer your system thinks is right. The user's action is your only ground-truth label in production.
+
+<Callout type="tip" title="Action data is your free eval set">
+Every edit, retry, and abandonment is a labeled example a human gave you for free. Pipe these straight into your eval set. Production isn't just where the feature runs — it's the richest source of the hard cases your tests are missing.
+</Callout>
+
+## Stitch It With One Trace ID
+
+None of this helps if the fields live in different systems. One generated trace ID flows from the inbound request, through retrieval, through the model call, through parsing and validation, and onto the user-action event whenever it lands — minutes or hours later.
+
+```python
+log.emit("llm_call", {
+    "trace_id": trace_id,
+    "model": "claude-sonnet-4-5-20250930",
+    "input_snapshot": messages,          # full, redacted at boundary
+    "retrieved": [c.source_id for c in chunks],
+    "tokens": {"in": usage.input, "out": usage.output},
+    "tool_calls": tool_log,              # name, args, result
+    "latency_ms": {"retrieval": 120, "ttft": 380, "total": 1410},
+    "raw_completion": completion.text,
+    "parsed": parsed,
+    "validation": {"passed": False, "rule": "dose_range_neonatal"},
+})
+```
+
+The user-action event, emitted later, carries the same `trace_id`. That join is what lets you go from a screenshot to a full reconstruction in two minutes instead of three hours.
+
+<Callout type="warning" title="Redact at the boundary, not in review">
+For MILA, patient data never enters a log line raw — it's tokenized at the emit call. If you redact later, you've already written PII to disk. In healthcare that's a reportable event, not a cleanup task. Design the redaction into the logging function itself.
+</Callout>
+
+## What This Buys You
+
+The next time MILA produced a questionable answer, the loop was: paste the trace ID, see the retrieved chunks pulled a sibling's record because two patients shared a surname, fix the retrieval filter, add the case to the eval set. Twenty minutes, root cause confirmed, regression test in place.
+
+Cost auditing tells you the herd is drifting. This tells you why one specific answer was wrong. Ship the feature, but ship the reconstruction kit with it — because the bug you can't reproduce is the one that keeps you up at night, and in some domains, it's the one that matters most.

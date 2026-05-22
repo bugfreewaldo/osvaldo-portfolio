@@ -1,0 +1,110 @@
+---
+title: "El Eval Set Es la Especificación"
+description: "Para una feature de LLM, tu eval set codifica qué significa 'correcto' con más precisión que cualquier doc de producto. Cómo construir uno a partir de fallas reales, mantenerlo adversarial, versionarlo como verdad de producto, y dejar que él — no las opiniones — guíe cada cambio de prompt y modelo."
+date: 2026-05-12
+published: true
+category: "Ingeniería de IA"
+tags: ["LLM", "Evaluación", "Producto", "Especificación", "Ingeniería de IA"]
+author: "Osvaldo Restrepo"
+translationOf: "eval-set-is-the-spec"
+tldr: "Un PRD describe lo que deseas que la feature hiciera; el eval set define qué significa 'correcto' en realidad, ejemplo por ejemplo, en una forma que una máquina puede verificar. Para features de LLM el eval set es la especificación real — es el único artefacto lo suficientemente preciso para zanjar discusiones de '¿es bueno este output?' y el único que convierte un cambio de prompt de un sentir a una medición. Constrúyelo a partir de fallas reales de producción, mantenlo deliberadamente adversarial, versiónalo como código fuente, y exige que producto e ingeniería se alineen en ejemplos, no en adjetivos. Cuando el eval set y el PRD no concuerden, gana el eval set, porque es el que se puede testear."
+faqs:
+  - question: "¿No es esto solo llm-evaluation-pipelines con otro nombre?"
+    answer: "No — eso es la plomería, esto es la filosofía. El pipeline es cómo corres evals a escala: harnesses, graders, gates de CI. La idea del eval-set-como-spec es sobre quién es dueño de los ejemplos y qué significan. Puedes tener un gran pipeline corriendo un eval set sin sentido. El set es la spec; el pipeline solo lo ejecuta."
+  - question: "¿Qué tan grande debe ser el eval set para ser útil?"
+    answer: "Más pequeño de lo que crees para empezar. Treinta casos filosos, reales y adversariales que cada uno fija un comportamiento específico le ganan a trescientos sosos sacados de logs. La primera versión del eval set de MILA eran como cuarenta casos, cada uno sacado de un momento en que un clínico lo corrigió. Crécelo a partir de fallas reales, no de una cuota."
+  - question: "¿Quién debe ser dueño del eval set — producto o ingeniería?"
+    answer: "Ambos, y ese es el punto. Producto define qué significa 'correcto' aportando ejemplos y outputs esperados; ingeniería hace esos ejemplos ejecutables y mantiene honestos a los graders. El eval set es el contrato que firman juntos. Si solo ingeniería lo toca, deriva hacia 'lo que es fácil de testear'. Si solo producto lo toca, nunca corre."
+relatedPosts: ["llm-evaluation-pipelines", "observability-llm-production", "designing-llm-retry-fallbacks"]
+---
+
+Solía pensar que la especificación de producto era el documento. Escribe el PRD, consigue la aprobación, constrúyelo, lánzalo. Ese modelo sobrevivió toda mi carrera hasta el momento en que lancé features de LLM — y entonces se desmoronó la primera vez que un stakeholder y yo miramos fijamente el mismo output del modelo y no concordamos sobre si era *bueno*.
+
+El PRD decía que el asistente debía "proveer resúmenes claros y precisos". Ambos concordábamos en esas palabras. Discrepábamos violentamente sobre si *este resumen específico* las cumplía. No había nada a qué apelar. Las palabras "claro" y "preciso" eran un sentir, no una spec, y no puedes construir un sistema confiable sobre un sentir.
+
+Esa discusión es donde aprendí la regla que ahora gobierna cómo construyo cada feature de LLM: **el eval set es la especificación.** No el PRD. El PRD describe la intención en adjetivos. El eval set define lo correcto en ejemplos — inputs concretos emparejados con cómo se ve un buen output — y los ejemplos son el único lenguaje lo suficientemente preciso para zanjar la discusión.
+
+## Por Qué las Specs en Prosa se Rompen con LLMs
+
+Para software determinista, una spec en prosa usualmente alcanza porque el comportamiento es enumerable. "Cuando el usuario hace click en guardar, persiste el formulario." No hay mucho espacio para discrepar sobre si eso pasó.
+
+El comportamiento de un LLM no es enumerable. El espacio de inputs es abierto, el output es lenguaje natural difuso, y "correcto" es un juicio que dos personas razonables harán de forma distinta. La prosa no puede fijar eso. Solo los ejemplos pueden.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│   PRD dice:   "Los resúmenes deben ser precisos y concisos"  │
+│                          │                                   │
+│              ┌───────────┴───────────┐                       │
+│         Tú lo lees como:       Ellos lo leen como:           │
+│         "3 oraciones,          "1 oración,                   │
+│          todos los hechos"      el titular"                  │
+│                          │                                   │
+│            ambos 'cumplen', ambos distintos                  │
+│                          ▼                                   │
+│   Eval set dice:  input #14 → ESTE buen output exacto        │
+│                   input #15 → ESTE es muy escueto → FALLA    │
+│                          ▼                                   │
+│            una respuesta, testeable, sin discusión           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+El PRD es donde te alineas en *dirección*. El eval set es donde te alineas en *verdad*. Necesitas el primero para empezar y el segundo para lanzar.
+
+## Constrúyelo a Partir de Fallas Reales
+
+Los peores eval sets se escriben en una sala de juntas antes del lanzamiento, llenos de casos que el autor imaginó. Los mejores se cosechan de producción después de que la feature realmente estuvo mal frente a un usuario.
+
+Cada vez que un clínico corregía a MILA, esa corrección se volvía un caso de eval: el input exacto que produjo la mala respuesta, y el output que el clínico habría aceptado. El eval set creció una cicatriz a la vez. En pocos meses codificaba más conocimiento real de resumen médico que cualquier documento que hubiéramos podido escribir de antemano, porque cada caso era un lugar donde la realidad había discrepado con el modelo.
+
+<Callout type="tip" title="Mina tus logs de producción por la spec">
+Si logueas los inputs que produjeron cada output — el snapshot completo, no solo la respuesta — cada respuesta marcada o corregida por un usuario es un caso de eval listo. Tu capa de observabilidad y tu eval set son el mismo pipeline apuntado en dos direcciones. Captura la mala respuesta con suficiente contexto para reproducirla, y has capturado una línea de spec gratis.
+</Callout>
+
+## Mantenlo Adversarial
+
+Un eval set lleno de casos fáciles es un dashboard que te hace sentir bien, no una spec. Si cada caso pasa, el set no está haciendo su trabajo — te está adulando. Los casos que importan son los que *casi* rompen el sistema: el input ambiguo, la pregunta con trampa, el borde del dominio, el intento de prompt-injection, el paciente con dos interpretaciones válidas.
+
+Deliberadamente agrego casos que la versión actual *falla*. Una spec que ya cumples no restringe nada. El eval set siempre debe tener un puñado de luces rojas que representan comportamiento hacia el que estás trabajando activamente — esa es la diferencia entre una suite de regresión y una estrella polar.
+
+```
+Distribución sana de un eval set:
+
+  pasando  ████████████████████░░░░  ~80%  (guardia de regresión)
+  fallando ████░░░░░░░░░░░░░░░░░░░░░  ~20%  (la frontera de la spec)
+
+  100% pasando  →  tu set es muy fácil, te está adulando
+  100% fallando →  tu set es ficción aspiracional, no una spec
+```
+
+<Callout type="warning" title="Un eval set verde puede ser mentira">
+El momento más peligroso es cuando cada eval pasa y el equipo se relaja. Usualmente no significa que el modelo mejoró — significa que el set dejó de incluir los casos difíciles. Audita la dificultad de tu eval set con tanto cuidado como auditas la precisión del modelo. Un eval set que no puede fallar no puede protegerte.
+</Callout>
+
+## Versiónalo Como Código Fuente
+
+Si el eval set es la spec, merece el mismo rigor que el código. Vive en el repo. Los cambios pasan por pull requests. Cuando alguien debilita un caso — relaja un output esperado, borra un ejemplo que falla — eso aparece en un diff y se revisa como cualquier otro cambio a la verdad del producto.
+
+Aquí también es donde producto e ingeniería se alinean de verdad. No en una junta donde todos asienten a los adjetivos, sino en un PR donde producto propone "el input X debe producir el output Y" e ingeniería lo hace ejecutable y evaluable. La revisión *es* la alineación. Cuando el PRD y el eval set discrepan, gana el eval set — porque es el que realmente puedes correr.
+
+```
+specs/evals/
+├── summarization/
+│   ├── core_cases.yaml        # el happy path, guardia de regresión
+│   ├── adversarial.yaml       # inputs trampa, injections, bordes
+│   └── from_production/       # fallas reales cosechadas, con fecha
+│       └── 2026-05-08_confusion_dosis_hermano.yaml
+└── graders/
+    └── factual_consistency.py # cómo se juzga "correcto" mecánicamente
+```
+
+## Deja Que Guíe Cada Cambio
+
+Una vez que el eval set es la spec, el flujo se invierte de forma sana. No cambias el prompt y *luego* esperas que sea mejor. Haces el cambio y *corres la spec*. El eval set te dice si avanzaste, te quedaste igual, o regresaste — como número, no como opinión.
+
+Un ajuste de prompt que arregla el caso que te importaba pero rompe otros tres ahora es visible *antes* de lanzar, no tres semanas después en una cola de soporte. Una nueva versión de modelo se evalúa contra la misma spec antes de que se le permita acercarse a producción. El eval set convierte "creo que esto es mejor" en "esto pasa 47 de 50, subió de 44, sin regresiones" — y esa oración puede sobrevivir un code review.
+
+## El Cambio de Mentalidad
+
+Tratar el eval set como la spec cambia cómo habla todo el equipo. Las discusiones sobre calidad dejan de ser sobre gusto y empiezan a ser sobre qué caso estás discutiendo y cuál debería ser su output esperado. "No me gusta esta respuesta" se vuelve "agreguémoslo como caso y decidamos juntos el output correcto". La discrepancia se vuelve una contribución a la spec en vez de un punto muerto.
+
+El PRD te apunta en la dirección correcta. El eval set es a lo que realmente construyes, contra lo que lanzas, y lo que defiendes en una revisión. Escribe el doc para empezar la conversación — luego deja que los ejemplos tengan la última palabra.

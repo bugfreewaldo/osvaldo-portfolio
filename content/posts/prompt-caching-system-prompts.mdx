@@ -1,0 +1,120 @@
+---
+title: "Prompt Caching Changed How I Structure Every System Prompt"
+description: "Once prompt caching exists, prompt architecture becomes cache architecture. The ordering rules that decide your hit rate, the dynamic values that silently break the cache, how to measure it, and the latency and cost wins from getting the stable-prefix-vs-volatile-suffix split right."
+date: 2026-05-20
+published: true
+category: "AI Engineering"
+tags: ["Prompt Engineering", "Caching", "Cost Optimization", "LLM", "AI Engineering"]
+author: "Osvaldo Restrepo"
+tldr: "Prompt caching rewards a prompt whose beginning never changes and whose changes all live at the end. So I now design every prompt as two zones: a stable prefix (system instructions, tool definitions, few-shot examples) that's identical across requests and gets cached, and a volatile suffix (the user's turn, retrieved context, timestamps) that varies. The rule is simple and unforgiving — order from most-stable to most-volatile, and never let a dynamic value leak into the prefix. A single interpolated timestamp at the top can drop your hit rate from 90% to near zero and quietly multiply your bill. Measure hit rate like you measure latency, because it now is latency and cost."
+faqs:
+  - question: "How much can prompt caching actually save?"
+    answer: "On a feature with a large stable prefix — a long system prompt plus tool definitions plus few-shot examples — cached input tokens cost a fraction of fresh ones and skip most of the prefill latency. For a chatbot resending a 4,000-token system prompt every turn, that's the majority of your input cost turning nearly free, and a noticeably faster time-to-first-token. The bigger and more stable the prefix, the bigger the win."
+  - question: "What's the most common thing that silently breaks the cache?"
+    answer: "A dynamic value sitting in the prefix: the current timestamp, a request ID, a per-user greeting, or 'today is {date}' at the top of the system prompt. The cache matches on an exact prefix, so one character that changes per request invalidates everything after it. The fix is to move that value down into the volatile suffix where it belongs."
+  - question: "Does caching change how I should write the actual instructions?"
+    answer: "It changes where they go, not what they say. Keep the wording you'd write anyway, but commit to an order: invariant instructions and tool defs first, then anything that rotates occasionally, then the per-request content last. You're not writing for the cache's vocabulary — you're writing for its boundary."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "prompt-engineering-production-llms", "caching-strategies-production"]
+---
+
+For years I wrote system prompts the way most people do: as a single block of text, organized by what felt logical to read. Persona at the top, then a friendly "today's date is..." line, then instructions, then examples, then tools. It read well. It cost a fortune.
+
+The day I started taking prompt caching seriously, I realized that my nice readable ordering was actively fighting the cache. That date line near the top was silently invalidating everything below it on every single request. I had built a prompt optimized for a human reader and pessimized for the machine that actually pays the bill.
+
+Here's the shift that reorganized how I think: **once prompt caching exists, prompt architecture is cache architecture.** The question stops being "what's the clearest order to read this in?" and becomes "what's the longest stretch of the beginning that never changes?" Those are very different questions, and the second one is the one your invoice cares about.
+
+## Two Zones, One Boundary
+
+Caching works on an exact-prefix match. The provider hashes the start of your prompt; if it's seen that exact byte sequence before, it serves the cached state and you skip re-processing it. The instant the bytes differ, the cache misses from that point forward.
+
+So every prompt now has exactly two zones in my head:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  STABLE PREFIX  (cache this — identical every request)        │
+│  ────────────────────────────────────────────────────         │
+│   • System instructions / persona                             │
+│   • Tool & function definitions                               │
+│   • Few-shot examples                                         │
+│   • Static policies, formatting rules, schemas                │
+│                                                                │
+│  ─────────────  ← cache boundary  ─────────────                │
+│                                                                │
+│  VOLATILE SUFFIX  (changes every request — never cached)      │
+│  ────────────────────────────────────────────────────         │
+│   • Retrieved context (RAG chunks)                            │
+│   • The user's current turn                                   │
+│   • Timestamps, request IDs, per-user data                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Everything above the boundary is identical across thousands of requests and gets cached. Everything below it is unique per request and gets processed fresh. The whole game is making the stable zone as long as honestly possible and keeping it pure.
+
+## The Ordering Rule
+
+There's exactly one rule, and it's strict: **order from most-stable to most-volatile, top to bottom.** Anything that changes per request must come after everything that doesn't. No exceptions, because a single volatile token poisons the cache for everything after it.
+
+This is why my old prompt was bleeding money. Look at the before and after:
+
+```
+BEFORE (readable, terrible hit rate)        AFTER (caches beautifully)
+─────────────────────────────────          ──────────────────────────
+You are MILA, a NICU assistant.            You are MILA, a NICU assistant.
+Today is 2026-05-20 14:32 UTC.   ◄── breaks  [tool definitions]
+[tool definitions]                          [few-shot examples]
+[few-shot examples]                          [static policies]
+[static policies]                            ─── cache boundary ───
+[retrieved patient context]                  Today is 2026-05-20 14:32 UTC.
+User: what's the dosage?                     [retrieved patient context]
+                                             User: what's the dosage?
+
+hit rate: ~0%                                hit rate: ~90%+
+(timestamp changes every request,            (everything dynamic moved
+ invalidating the whole prefix)               below the boundary)
+```
+
+Same words. Same instructions. The only change is *where the dynamic line lives* — and that change is the difference between caching nothing and caching almost everything.
+
+<Callout type="warning" title="The timestamp is the classic cache killer">
+'Today is {now}' at the top of a system prompt feels harmless and helpful. It is neither. It mutates the prefix on every request and invalidates the entire cache behind it. If the model needs the current time, put it in the volatile suffix next to the user's turn — never in the prefix. I've watched this one line drop a hit rate from 94% to single digits.
+</Callout>
+
+## What Else Silently Breaks It
+
+The timestamp is the famous one, but it has cousins. Anything that varies per request, per user, or per session will break the cache if it sneaks above the boundary:
+
+- A per-user greeting baked into the system prompt ("Hello Maria, ...").
+- A request ID or trace ID injected for debugging.
+- Tool definitions whose order or whitespace is regenerated nondeterministically.
+- A "memory" or "recent activity" block that updates between turns.
+- Even reordering few-shot examples randomly "for variety."
+
+The insidious part is that all of these are reasonable-looking and none of them throw an error. The feature works perfectly. It just quietly costs three times more than it should, and you won't see it until you look at the hit rate.
+
+<Callout type="tip" title="Freeze your tool serialization">
+If you build tool definitions from a dict at runtime, make sure the serialization is deterministic — sorted keys, stable whitespace, fixed order. A JSON serializer that doesn't guarantee key order can produce a byte-different prefix on every deploy, or even every request, silently halving your cache hits with zero code that looks wrong.
+</Callout>
+
+## Measure the Hit Rate Like It's Latency — Because It Is
+
+Cache hit rate used to be a nice-to-have metric. With prompt caching, it's a first-class one, sitting right next to latency and cost — because it directly *is* both. A high hit rate means cheaper input tokens and a faster time-to-first-token; a collapsing hit rate means you're paying full price and waiting for full prefill on every call.
+
+This folds directly into the daily cost pulse I already run. Cache hit rate is one of the four numbers I check every morning, precisely because the failure mode is invisible in the happy path: the feature still works when the cache breaks, so nothing alerts. The only signal is the hit rate quietly falling and the cost quietly rising.
+
+```sql
+SELECT
+  date_trunc('day', created_at) AS day,
+  sum(cached_input_tokens)::float
+    / nullif(sum(input_tokens), 0) AS cache_hit_rate
+FROM llm_requests
+WHERE created_at > now() - interval '7 days'
+GROUP BY 1 ORDER BY 1 DESC;
+```
+
+When that number drops overnight, someone leaked a dynamic value into a prefix. I treat a sudden hit-rate fall the same way I treat a latency spike: open an issue before lunch and go find the variable that escaped into the stable zone.
+
+## The Mental Model That Sticks
+
+The reframe that made all of this automatic: **stop writing system prompts for a reader, start writing them for a boundary.** Picture the horizontal line that splits stable from volatile, and ask of every token, "which side does this belong on?" Invariant instructions, tool definitions, and few-shot examples go up top and earn their cache. The user's turn, the retrieved chunks, and anything with a clock in it go to the bottom.
+
+Get that boundary right and the rewards arrive without any cleverness in the wording: lower cost on every repeated request, faster responses your users can feel, and a system prompt that scales to thousands of calls an hour without the bill scaling with it. Prompt architecture became cache architecture for me the day I moved one timestamp — and I've never gone back to writing prompts top-down for the reader since.

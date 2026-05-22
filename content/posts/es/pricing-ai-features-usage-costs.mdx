@@ -1,0 +1,143 @@
+---
+title: "Cómo Ponerle Precio a Funcionalidades de IA Cuando Cada Llamada Te Cuesta Dinero"
+description: "El SaaS clásico tiene costo marginal casi cero. Las funcionalidades de IA no. Aquí está cómo eso rompe el pricing de tarifa plana, los modelos que realmente protegen tu margen, y cómo cobrar por valor en vez de por tokens."
+date: 2026-04-28
+published: true
+category: "Producto de IA"
+tags: ["Pricing", "Producto de IA", "SaaS", "Economía Unitaria", "Fundadores"]
+author: "Osvaldo Restrepo"
+translationOf: "pricing-ai-features-usage-costs"
+tldr: "El SaaS tradicional podía cobrar un plano de $29/mes porque servir a un usuario más costaba casi nada. Las funcionalidades de IA rompieron esa matemática: cada llamada tiene un costo de ventas real, y tus usuarios intensivos pueden convertir silenciosamente tu mejor plan en un agujero de dinero. Recorro los cuatro modelos de pricing que realmente he usado — por uso, créditos, niveles con topes, e híbrido — cuándo encaja cada uno, cómo proteger el margen sin cobrarle al usuario por cada clic, y por qué deberías cobrar por el resultado, no por los tokens. El pricing plano de IA no es valiente, es una fuga lenta."
+faqs:
+  - question: "¿Por qué no puedo simplemente cobrar una tarifa mensual plana por una funcionalidad de IA como un SaaS normal?"
+    answer: "Porque el SaaS tradicional tiene costo marginal casi cero por usuario, mientras que las funcionalidades de IA tienen un costo de ventas real en cada llamada. Una tarifa plana funciona hasta que un usuario intensivo consume diez veces el promedio. Con software normal eso es gratis; con IA puede borrar el margen de esa cuenta y de varias más. Puedes ofrecer un plan plano, pero necesitas topes de uso o un sistema de créditos por debajo para que unos pocos usuarios pesados no hundan la economía."
+  - question: "¿El pricing de IA debería ser por uso o por suscripción?"
+    answer: "Para la mayoría de productos, un híbrido: una suscripción que incluye una asignación de uso generosa, con el excedente cobrado por unidad o vendido como paquetes de créditos. El pricing puro por uso asusta a los compradores porque la factura es impredecible; el plano puro te expone a pérdidas por usuarios intensivos. El híbrido le da al cliente una base predecible y a ti te da protección contra el consumo descontrolado."
+  - question: "¿Cómo defino un precio que no pierda dinero con los usuarios intensivos?"
+    answer: "Primero conoce tu costo por acción — instruméntalo igual que cualquier costo de ventas. Luego ubica la asignación incluida donde el usuario mediano cae cómodamente y el usuario pesado choca con un tope o excedente. Cobra el excedente por encima de tu costo marginal con margen, y alinea la unidad que facturas con el valor que recibe el cliente, no con los tokens crudos que gastas."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "build-buy-wrap-ai-features", "building-for-small-business"]
+---
+
+Por unos quince años, el pricing de SaaS fue casi un problema resuelto. Construías la cosa una vez, y servir al cliente número mil costaba más o menos lo mismo que servir al primero: una astilla de cómputo, una fila en una base de datos, algo de ancho de banda. El costo marginal era básicamente cero. Ese solo hecho es la razón por la que podías cobrar un plano de $29/mes, por la que existían los planes "ilimitados", y por la que un plan gratuito no quebraba a nadie. La economía perdonaba mucho.
+
+Las funcionalidades de IA borraron silenciosamente ese hecho.
+
+Ahora cada llamada tiene un costo de ventas real y medible. Cuando un usuario hace clic en tu reluciente botón de "Resumir", tú lo pagas — en tokens, en tiempo de inferencia, en la factura de algún proveedor que llega a fin de mes sin importar si el cliente quedó encantado o no. La primera vez que vi a un solo usuario entusiasta generar una factura de modelo de cuatro cifras en un plan que habíamos puesto en $49, entendí que ya no estaba poniéndole precio a software. Le estaba poniendo precio a un commodity que tenía que comprar al por mayor y revender, y se me había olvidado revisar el precio mayorista.
+
+## El problema del costo marginal, dibujado
+
+Aquí está el cambio en una sola imagen. El mundo viejo a la izquierda, el mundo de la IA a la derecha.
+
+```
+   SaaS Clásico                        Funcionalidad de IA
+   ────────────                        ───────────────────
+   Costo
+   por     │                           Costo    │        ╱
+   usuario │                           por       │      ╱
+           │                           llamada  │    ╱
+   ~$0 ────┼──────────────             $$$  ────┼──╱──────────
+           └───────────────                     └─────────────
+              más uso →                            más uso →
+
+   La tarifa plana cubre a todos.   Cada llamada suma costo real.
+   Los usuarios intensivos          Los usuarios intensivos
+   son gratis.                      te cuestan dinero.
+```
+
+En el SaaS clásico, tu usuario más pesado y tu usuario más ligero te cuestan casi lo mismo, así que una tarifa plana promedia hermosamente. En IA, tu usuario más pesado puede costar 50 veces más que el más ligero, y una tarifa plana promedia en una pérdida en el momento en que tu distribución de uso se sesga — lo cual siempre pasa. El uso en cualquier producto sigue una ley de potencia. Una pequeña porción de usuarios genera la mayoría del consumo. Con costo marginal casi cero, esas personas son tus campeones. Con IA, esas mismas personas son tu mayor renglón de gasto.
+
+<Callout type="warning" title="El pricing plano de IA es una apuesta que perderás a escala">
+Un plan plano ilimitado en una funcionalidad de IA funciona bien hasta que no. Es una apuesta a que nadie la usará "demasiado". Esa apuesta paga en el demo y en los primeros 100 clientes amigables. Después alguien conecta tu funcionalidad a su propia automatización, la corre 8,000 veces al día, y descubres que has estado subsidiando su negocio con tu pista de despegue financiera.
+</Callout>
+
+## No puedes ponerle precio a lo que no mides
+
+Antes de elegir un modelo, necesitas conocer tu costo por acción — no por mes, por *acción*. ¿Cuánto te cuesta realmente un resumen, una generación, una corrida de agente, todo incluido? Eso significa los tokens del modelo, sí, pero también las llamadas de retrieval, el reranking, los reintentos cuando una llamada falla, y el ocasional fallback caro a un modelo más grande.
+
+Yo rastreo esto obsesivamente, y escribí una pieza entera aparte sobre la disciplina de hacerlo en [la auditoría diaria de prompts](/blog/daily-prompt-audit-llm-cost-control). La versión corta: instrumenta el costo igual que instrumentarías la latencia. Etiqueta cada llamada con el usuario, la funcionalidad y el modelo. Si no puedes responder "cuánto me cuesta mi usuario mediano al mes, y cuánto me cuesta mi usuario en el percentil 95", no estás listo para fijar un precio. Estás adivinando.
+
+## Los cuatro modelos que realmente he usado
+
+No hay un modelo universalmente correcto, pero hay cuatro que funcionan, y elegir entre ellos es sobre todo cuestión de quién es tu comprador y qué tan predecible es su uso.
+
+<table>
+  <thead>
+    <tr>
+      <th>Modelo</th>
+      <th>Cómo funciona</th>
+      <th>Mejor cuando</th>
+      <th>La desventaja</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Por uso</td>
+      <td>Pagas por unidad (llamada, token, generación)</td>
+      <td>Productos para devs/API; compradores sofisticados</td>
+      <td>Facturas impredecibles asustan a compradores no técnicos</td>
+    </tr>
+    <tr>
+      <td>Créditos</td>
+      <td>Compras un bucket de créditos, los gastas en acciones</td>
+      <td>Costos mixtos por funcionalidad; quieres flexibilidad</td>
+      <td>Los usuarios acaparan o resienten créditos que "expiran"</td>
+    </tr>
+    <tr>
+      <td>Niveles con topes</td>
+      <td>Niveles planos, cada uno con techo de uso</td>
+      <td>Productos simples; compradores predecibles</td>
+      <td>Chocar con un tope a media tarea se siente como castigo</td>
+    </tr>
+    <tr>
+      <td>Híbrido</td>
+      <td>Suscripción + asignación incluida + excedente</td>
+      <td>La mayoría del SaaS B2B</td>
+      <td>Más complejo de explicar y facturar</td>
+    </tr>
+  </tbody>
+</table>
+
+El **por uso** es el mapeo más honesto de costo a precio, y es por eso que toda API de modelo fundacional lo usa. Pero la honestidad no siempre se vende. He visto morir un plan por uso perfectamente bueno en compras porque el comprador no podía predecir la factura del próximo mes y su equipo de finanzas no aprobaría un renglón abierto. A los ingenieros les encanta el medidor. A los CFO les chocan las sorpresas.
+
+Los **créditos** son tanto un truco psicológico como un modelo de pricing, y lo digo como un cumplido. Te permiten cobrar montos distintos por funcionalidades distintas (una clasificación rápida cuesta 1 crédito, una corrida larga de agente cuesta 20) sin exponer la matemática cruda de tokens. También desacoplan la compra del consumo, lo que suaviza tus ingresos. La trampa es la expiración: nada genera tickets de soporte más furiosos que créditos que se esfumaron a fin de mes. Si expiras créditos, dilo en letra de 48 puntos.
+
+Los **niveles con topes** son lo más simple de entender y lo más fácil de vender, por eso lo uso en productos dirigidos a pequeñas empresas y compradores no técnicos. El peligro es el tope *duro*. No hay nada peor que un usuario chocando con su límite a la mitad de un trabajo real y recibiendo un muro. Los topes suaves — donde adviertes, luego limitas la velocidad, luego ofreces un upgrade — mantienen la relación intacta.
+
+El **híbrido** es donde aterrizo para la mayoría de productos B2B, porque les da a ambos lados lo que necesitan. El cliente obtiene un precio base predecible y una asignación incluida generosa, así que el 90% de ellos nunca piensa en el uso para nada. Tú obtienes un medidor por debajo que atrapa al 10% que de otra forma destruiría tu margen silenciosamente.
+
+```
+   Pricing híbrido, visualizado
+
+   $ ┤                                    ╱  ← excedente (por unidad,
+     │                                  ╱       con margen)
+     │                                ╱
+     │━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╱
+     │   tarifa base plana          ↑
+     │   (cubre la asignación      asignación
+     │    incluida)                incluida
+     └────────────────────────────┴──────────────→ uso
+                                usuario       usuario
+                                mediano       intensivo
+```
+
+## Protege tu margen sin cobrar por cada clic
+
+La parte difícil no es el modelo. Es proteger tu economía sin hacer que el cliente sienta que cada clic corre un taxímetro. Algunas cosas que aprendí, casi todas por las malas:
+
+Ubica la asignación incluida donde el usuario *mediano* nunca piense en ella. Si tu cliente típico está constantemente chocando con límites, tu pricing está enviando un mensaje hostil en cada interacción. La asignación debería sentirse como abundancia para usuarios normales y solo apretar a los outliers.
+
+Cachea y deduplica agresivamente, y deja que los ahorros fluyan a tu margen, no a la factura del cliente. Si dos usuarios hacen la misma pregunta, no deberías pagar dos veces — y ciertamente no deberías cobrar dos veces por una respuesta cacheada. Las optimizaciones baratas de tu lado son la forma más educada de mejorar la economía unitaria, porque el cliente nunca las siente.
+
+Cobra por las cosas caras y regala las baratas. ¿Una clasificación que te cuesta una fracción de centavo? Hazla gratis, hazla ilimitada, hazla la cosa de la que la gente se enamora. ¿El flujo agéntico de 40 pasos que cuesta dinero real? Para eso está el medidor. Alinear tu presión de pricing con tu presión real de costo se siente justo porque *es* justo.
+
+<Callout type="tip" title="Ponle precio al resultado, no a los tokens">
+Los clientes no quieren tokens. Quieren el candidato evaluado, el ticket resuelto, el reporte redactado. Factura por la unidad de valor que ellos reconocen — "por candidato evaluado", "por ticket resuelto" — no "por cada 1,000 tokens". Mapea a su ROI, sobrevive las bajadas de precio de los modelos sin renegociar, y te permite cambiar a un modelo más barato después y quedarte con el ahorro en vez de devolverlo.
+</Callout>
+
+Ese último punto es el que le tatuaría en el brazo a un fundador junior. Si pones precio en tokens, encadenaste tus ingresos a un número que los proveedores recortan cada pocos meses. Cuando el modelo se vuelve 60% más barato, un plan basado en tokens fuerza una conversación incómoda sobre bajar tu precio. Un plan basado en resultados te deja mejorar silenciosamente tu margen y reinvertirlo. Misma funcionalidad, mismo valor para el cliente, negocio muy distinto.
+
+## La conversación con el usuario intensivo que deberías planear
+
+Eventualmente tendrás un cliente cuyo uso no encaja en ningún nivel. En el SaaS clásico esto es una celebración — ¡una ballena! En IA es una negociación. La respuesta correcta casi nunca es cortarlos o comerte el costo en silencio. Es tener una conversación franca y amigable: "Estás obteniendo un valor enorme aquí, y tu uso está muy por encima del plan. Diseñemos algo que funcione para ambos." Desarrolla el músculo para esa conversación temprano, porque el demo que hace que todos se enamoren es también el demo que crea estas cuentas — lo cual, casualmente, es todo un modo de falla aparte que merece su propia discusión.
+
+Ponerle precio a la IA es genuinamente más difícil que ponerle precio al software, y quien te diga que lo clavó al primer intento o está mintiendo o todavía no ha visto su factura de usuario intensivo. Pero el principio por debajo es viejo y simple: conoce tus costos, alinea el precio con el valor, y no dejes que tus clientes más entusiastas se conviertan en tus mayores pérdidas. Logra eso y el medidor deja de dar miedo. Se vuelve la cosa que te deja decir sí al crecimiento en vez de temerle.

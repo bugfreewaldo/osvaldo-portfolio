@@ -1,0 +1,141 @@
+---
+title: "Pricing AI Features When Every Call Costs You Money"
+description: "Classic SaaS has near-zero marginal cost. AI features don't. Here's how that breaks flat-rate pricing, the models that actually protect your margin, and how to price for value instead of tokens."
+date: 2026-04-28
+published: true
+category: "AI Product"
+tags: ["Pricing", "AI Product", "SaaS", "Unit Economics", "Founders"]
+author: "Osvaldo Restrepo"
+tldr: "Traditional SaaS could charge a flat $29/month because serving one more user cost almost nothing. AI features broke that math: every call has real cost of goods sold, and your power users can quietly turn your best plan into a money pit. I walk through the four pricing models I've actually used — usage-based, credits, tiered caps, and hybrid — when each fits, how to protect margin without nickel-and-diming people, and why you should price the outcome, not the tokens. Flat-rate AI pricing isn't brave, it's a slow leak."
+faqs:
+  - question: "Why can't I just charge a flat monthly fee for an AI feature like normal SaaS?"
+    answer: "Because traditional SaaS has near-zero marginal cost per user, while AI features have real cost of goods sold on every call. A flat fee works until a power user runs ten times the average usage. With normal software that's free; with AI it can erase the margin on that account and several others. You can still offer a flat plan, but you need usage caps or a credit system underneath it so a few heavy users don't sink the economics."
+  - question: "Should AI pricing be usage-based or subscription-based?"
+    answer: "For most products, a hybrid: a subscription that includes a generous usage allowance, with overage priced per unit or sold as credit packs. Pure usage-based pricing scares buyers because the bill is unpredictable; pure flat-rate exposes you to power-user losses. The hybrid gives customers a predictable base and gives you protection against runaway consumption."
+  - question: "How do I set a price that doesn't lose money on heavy users?"
+    answer: "Know your cost per action first — instrument it the same way you'd track any COGS. Then set the included allowance where the median user lands comfortably and the heavy user hits a cap or overage. Price the overage above your marginal cost with margin, and align the unit you bill on with the value the customer gets, not the raw tokens you spend."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "build-buy-wrap-ai-features", "building-for-small-business"]
+---
+
+For about fifteen years, SaaS pricing was almost a solved problem. You built the thing once, and serving the thousandth customer cost roughly the same as serving the first: a sliver of compute, a row in a database, some bandwidth. Marginal cost was basically zero. That single fact is why you could charge a flat $29/month, why "unlimited" plans existed, and why a free tier didn't bankrupt anyone. The economics forgave a lot.
+
+AI features quietly deleted that fact.
+
+Now every call has a real, measurable cost of goods sold. When a user clicks your shiny "Summarize" button, you pay for it — in tokens, in inference time, in some provider's invoice that lands at the end of the month whether the customer was delighted or not. The first time I watched a single enthusiastic user generate a four-figure model bill on a plan we'd priced at $49, I understood that I wasn't pricing software anymore. I was pricing a commodity I had to buy wholesale and resell, and I'd forgotten to check the wholesale price.
+
+## The marginal cost problem, drawn out
+
+Here's the shift in one picture. The old world on the left, the AI world on the right.
+
+```
+   Classic SaaS                        AI Feature
+   ────────────                        ──────────
+   Cost
+   per     │                           Cost     │        ╱
+   user    │                           per      │      ╱
+           │                           call     │    ╱
+   ~$0 ────┼──────────────             $$$  ────┼──╱──────────
+           └───────────────                     └─────────────
+              more usage →                         more usage →
+
+   Flat fee covers everyone.       Each call adds real COGS.
+   Power users are free.           Power users cost you money.
+```
+
+In classic SaaS, your heaviest user and your lightest user cost you about the same, so a flat fee averages out beautifully. In AI, your heaviest user can cost 50x your lightest, and a flat fee averages out into a loss the moment your usage distribution skews — which it always does. Usage in any product follows a power law. A small slice of users drives the majority of consumption. With near-zero marginal cost, those people are your champions. With AI, those same people are your largest line item.
+
+<Callout type="warning" title="Flat-rate AI pricing is a bet you'll lose at scale">
+A flat unlimited plan on an AI feature works fine until it doesn't. It's a bet that no one will use it "too much." That bet pays off in the demo and in the first 100 friendly customers. Then someone wires your feature into their own automation, runs it 8,000 times a day, and you discover you've been subsidizing their business with your runway.
+</Callout>
+
+## You can't price what you don't measure
+
+Before you choose a model, you need to know your cost per action — not per month, per *action*. What does one summary, one generation, one agent run actually cost you, fully loaded? That means the model tokens, yes, but also the retrieval calls, the reranking, the retries when a call fails, and the occasional expensive fallback to a bigger model.
+
+I track this obsessively, and I've written a whole separate piece on the discipline of it in [the daily prompt audit](/blog/daily-prompt-audit-llm-cost-control). The short version: instrument cost the way you'd instrument latency. Tag every call with the user, the feature, and the model. If you can't answer "what does my median user cost me per month, and what does my 95th-percentile user cost me," you are not ready to set a price. You're guessing.
+
+## The four models I've actually used
+
+There's no universally correct model, but there are four that work, and choosing between them is mostly about who your buyer is and how predictable their usage is.
+
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>How it works</th>
+      <th>Best when</th>
+      <th>The downside</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Usage-based</td>
+      <td>Pay per unit (call, token, generation)</td>
+      <td>Developer/API products; sophisticated buyers</td>
+      <td>Unpredictable bills scare non-technical buyers</td>
+    </tr>
+    <tr>
+      <td>Credits</td>
+      <td>Buy a bucket of credits, spend on actions</td>
+      <td>Mixed feature costs; you want flexibility</td>
+      <td>Users hoard or resent "expiring" credits</td>
+    </tr>
+    <tr>
+      <td>Tiered with caps</td>
+      <td>Flat tiers, each with a usage ceiling</td>
+      <td>Simple products; predictable buyers</td>
+      <td>Hitting a hard cap mid-task feels punishing</td>
+    </tr>
+    <tr>
+      <td>Hybrid</td>
+      <td>Subscription + included allowance + overage</td>
+      <td>Most B2B SaaS</td>
+      <td>More complex to explain and bill</td>
+    </tr>
+  </tbody>
+</table>
+
+**Usage-based** is the most honest mapping of cost to price, and it's why every foundation model API uses it. But honesty isn't always sellable. I've watched a perfectly good usage-based plan die in procurement because the buyer couldn't predict next month's invoice and their finance team wouldn't approve an open-ended line item. Engineers love metering. CFOs hate surprises.
+
+**Credits** are a psychological trick as much as a pricing model, and I mean that as a compliment. They let you charge different amounts for different features (a quick classification costs 1 credit, a long agent run costs 20) without exposing the raw token math. They also decouple the purchase from the consumption, which smooths your revenue. The trap is expiration: nothing generates angrier support tickets than credits that vanished at month's end. If you expire credits, say so in 48-point font.
+
+**Tiered with caps** is the simplest to understand and the easiest to sell, which is why I reach for it in products aimed at small businesses and non-technical buyers. The danger is the *hard* cap. There's nothing worse than a user hitting their limit in the middle of real work and getting a wall. Soft caps — where you warn, then throttle, then offer an upgrade — keep the relationship intact.
+
+**Hybrid** is where I land for most B2B products, because it gives both sides what they need. The customer gets a predictable base price and a generous included allowance, so 90% of them never think about usage at all. You get a meter underneath that catches the 10% who would otherwise quietly destroy your margin.
+
+```
+   Hybrid pricing, visualized
+
+   $ ┤                                    ╱  ← overage (per unit,
+     │                                  ╱       priced with margin)
+     │                                ╱
+     │━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╱
+     │   flat base fee              ↑
+     │   (covers included          included
+     │    allowance)               allowance
+     └────────────────────────────┴──────────────→ usage
+                                median        power
+                                user          user
+```
+
+## Protect your margin without nickel-and-diming
+
+The hard part isn't the model. It's protecting your economics without making customers feel like every click runs a taxi meter. A few things I've learned, mostly the painful way:
+
+Set the included allowance where the *median* user never thinks about it. If your typical customer is constantly bumping into limits, your pricing is sending a hostile message on every interaction. The allowance should feel like abundance to normal users and only bind on the outliers.
+
+Cache and dedupe aggressively, and let the savings flow to your margin, not your customer's bill. If two users ask the same question, you shouldn't pay twice — and you certainly shouldn't charge twice for a cached answer. Cheap optimizations on your side are the most polite way to improve unit economics, because the customer never feels them.
+
+Charge for the expensive things and give away the cheap ones. A classification that costs you a fraction of a cent? Make it free, make it unlimited, make it the thing people fall in love with. The 40-step agentic workflow that costs real money? That's what the meter is for. Aligning your pricing pressure with your actual cost pressure feels fair because it *is* fair.
+
+<Callout type="tip" title="Price the outcome, not the tokens">
+Customers don't want tokens. They want the resume screened, the ticket resolved, the report drafted. Bill on the unit of value they recognize — "per screened candidate," "per resolved ticket" — not "per 1,000 tokens." It maps to their ROI, it survives model price drops without renegotiation, and it lets you switch to a cheaper model later and keep the savings instead of handing them back.
+</Callout>
+
+That last point is the one I'd tattoo on a junior founder's arm. If you price in tokens, you've chained your revenue to a number that providers cut every few months. When the model gets 60% cheaper, a token-priced plan forces an awkward conversation about lowering your price. An outcome-priced plan lets you quietly improve your margin and reinvest it. Same feature, same value to the customer, very different business.
+
+## The heavy-user conversation you should plan for
+
+You will, eventually, have a customer whose usage doesn't fit any tier. In classic SaaS this is a celebration — a whale! In AI it's a negotiation. The right answer is almost never to cut them off or to silently eat the cost. It's to have a frank, friendly conversation: "You're getting enormous value here, and your usage is well beyond the plan. Let's design something that works for both of us." Build the muscle for that conversation early, because the demo that makes everyone fall in love is also the demo that creates these accounts — which, as it happens, is a whole separate failure mode worth its own discussion.
+
+Pricing AI is genuinely harder than pricing software was, and anyone who tells you they've nailed it on the first try is either lying or hasn't seen their power-user bill yet. But the principle underneath it is old and simple: know your costs, align price with value, and don't let your most enthusiastic customers become your biggest losses. Get that right and the meter stops being scary. It becomes the thing that lets you say yes to growth instead of fearing it.

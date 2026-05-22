@@ -1,0 +1,83 @@
+---
+title: "El Demo Que Miente: Por Qué los Pilotos de IA se Estancan Antes de Producción"
+description: "El demo de IA 90% impresionante es una trampa. El último 10% — casos extremos, integración, confianza, seguridad, gestión del cambio — es donde los pilotos mueren silenciosamente en el 'purgatorio de pilotos'. Aquí está cómo escapar."
+date: 2026-05-07
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "Pilotos", "Producción", "Gestión del Cambio", "Fundadores"]
+author: "Osvaldo Restrepo"
+translationOf: "why-ai-pilots-stall"
+tldr: "La mayoría de los pilotos de IA no fallan en el demo — fallan después. El demo clava el camino feliz y todos se emocionan, pero el aburrido último 10% (casos extremos, integración real, revisión de seguridad, confianza, gestión del cambio) es donde los pilotos se estancan en el 'purgatorio de pilotos': siempre prometiendo, nunca entregando. Lo he visto pasar y lo he causado yo mismo. La solución no es un mejor modelo. Es acotar a un flujo de trabajo real, definir los criterios de producción antes de construir, hacer primero el poco glamoroso 10%, y diseñar para los casos de falla que el demo convenientemente saltó."
+faqs:
+  - question: "¿Por qué tantos pilotos de IA fallan en llegar a producción?"
+    answer: "Porque el demo solo prueba el 90% fácil — el camino feliz sobre entradas curadas. La producción requiere el 10% difícil: manejar datos reales y desordenados, integrarse con sistemas existentes, pasar la revisión de seguridad y cumplimiento, ganarse la confianza del usuario, y gestionar el cambio en cómo trabaja la gente. Los pilotos se estancan cuando los equipos tratan el demo impresionante como evidencia de que la parte difícil está hecha, cuando en realidad apenas empezó."
+  - question: "¿Qué es el 'purgatorio de pilotos'?"
+    answer: "Es el estado donde un proyecto de IA vive indefinidamente como un piloto que se ve exitoso pero que nunca se gradúa a producción. Los stakeholders siguen financiándolo porque el demo es impresionante, pero nunca maneja suficientes casos del mundo real para que se le confíe trabajo real. Está perpetuamente 90% terminado, lo que significa que en realidad no está ni cerca de terminado."
+  - question: "¿Cómo evitas que un piloto de IA se estanque?"
+    answer: "Acótalo a un flujo de trabajo real, de punta a punta, en vez de a una capacidad llamativa. Escribe los criterios de aceptación de producción antes de construir nada. Construye la infraestructura aburrida — manejo de errores, logging, integración, fallbacks — primero en vez de al final. Y diseña explícitamente para los casos de falla que el demo salta, porque en producción esos casos son la mayor parte del trabajo."
+relatedPosts: ["first-ai-feature-should-be-read-only", "build-buy-wrap-ai-features", "technical-decision-making"]
+---
+
+Tengo una confesión que probablemente debería preocupar a la gente que me ha contratado: he dado demos que mintieron. No con maldad. El modelo de verdad hizo la cosa impresionante, en vivo, frente a los stakeholders. Todos aplaudieron. Hablamos de cronogramas. Y después el proyecto se hundió en un pantano del que nunca salió, porque el demo había saltado silenciosamente la parte donde el trabajo realmente vive.
+
+Este es el patrón más confiable en IA aplicada, y casi nadie habla de él honestamente. El piloto se ve como un triunfo. El sistema en producción nunca llega. Y la brecha entre esos dos hechos no es un problema de modelo, de presupuesto, ni de talento. Es la diferencia entre el 90% que se demuestra bien y el 10% que decide si la cosa puede confiarse con trabajo real.
+
+## Por qué el demo es tan seductor
+
+Un demo es un ambiente controlado, y por eso miente. Tú eliges las entradas. Eliges el momento. Vuelves a correr en silencio la que falló. Los datos están limpios porque tú los limpiaste. La integración está fingida porque tú la fingiste — la salida va a una diapositiva, no al sistema de registro donde una respuesta equivocada tiene consecuencias.
+
+Así que el demo prueba que el modelo puede hacer la tarea *una vez, sobre una buena entrada, sin consecuencias*. Luego todos en la sala hacen una extrapolación silenciosa y optimista: si funciona aquí, funciona en todos lados. Esa extrapolación es la mentira. No el demo — la inferencia que la gente saca de él.
+
+```
+   Lo que el demo prueba       Lo que producción necesita
+   ─────────────────────       ──────────────────────────
+   Funciona una vez       →    Funciona 10,000 veces, consistente
+   Sobre una entrada      →    Sobre las entradas reales y desordenadas
+   limpia                      que mandan los usuarios
+   Solo el camino feliz   →    Cada caso extremo raro, con gracia
+   Salida a diapositiva   →    Salida a sistemas reales con consecuencias
+   Nadie arriesga su      →    El nombre de alguien va en el resultado
+   trabajo
+   "Mira lo que puede     →    "Le confío mi trabajo"
+   hacer"
+```
+
+Las dos columnas parecen el mismo proyecto. No lo son. La columna izquierda es una feria de ciencias. La columna derecha es un producto. Y la distancia entre ellas es la mayor parte del trabajo — trabajo que no produce aplausos en el camino.
+
+<Callout type="warning" title="El demo mide capacidad. La producción mide confianza.">
+Un modelo correcto el 90% de las veces da un demo electrizante y un producto inútil, si el 10% de fallas son silenciosas y caen en el regazo de alguien con su nombre encima. La capacidad es necesaria y para nada suficiente. Lo que llega a producción es la confianza, y la confianza se gana exactamente en los casos que tu demo saltó.
+</Callout>
+
+## El purgatorio de pilotos
+
+Así es como pasa de verdad. El piloto tiene éxito. Todos emocionados. Luego llegan las entradas reales — el PDF mal formado, el cliente que lo dice al revés, el registro con un nulo donde asumiste un valor — y la tasa de éxito que parecía 90% en el demo resulta ser 70% sobre la distribución verdadera. ¡No está mal! Pero no es confiable. Así que el equipo parcha los peores casos. La tasa sube a 80%. Aparecen nuevos casos extremos. El equipo los parcha. Y el proyecto se asienta en una órbita estable: por siempre impresionante, por siempre casi listo, por siempre fuera de producción.
+
+Esto es el purgatorio de pilotos, y tiene una firma emocional distintiva. A los stakeholders todavía les encanta el demo. El equipo sigue ocupado. El dinero sigue fluyendo. Nadie quiere ser el que diga que está atascado, porque admitirlo significa admitir que la emoción original fue prematura. Así que simplemente... continúa. He visto pilotos vivir en este estado por más de un año. El modelo no era el problema. El modelo era genial. El problema era que "genial en el demo" y "confiable en producción" nunca fueron el mismo hito, y nadie había definido el segundo.
+
+## El aburrido 10% es todo el trabajo
+
+Cuando un piloto se estanca, mira lo que falta, y nunca es la parte impresionante. Es la poco glamorosa infraestructura de la confianza:
+
+Los casos extremos que el demo saltó, que sobre datos reales no son casos extremos para nada — son un tercio de tu volumen. La integración a los sistemas que la gente realmente usa, para que la salida aterrice en el CRM o la herramienta de tickets en vez de una ventana de chat de la que alguien tiene que copiar y pegar. La revisión de seguridad y cumplimiento, que para cualquier cosa que toque datos de clientes o de salud no es un trámite y puede detener un proyecto en seco la semana antes del lanzamiento. La gestión del cambio — lograr que humanos cambien cómo trabajan, que es más difícil que cualquier fine-tuning y se presupuesta en cero. Y el manejo de fallas: qué hace el sistema cuando se equivoca o no está seguro, que es el comportamiento más importante en producción y el que los demos nunca muestran.
+
+<Callout type="info" title="Desde la UCIN: el 10% era todo el punto">
+Cuando construí MILA, un asistente con LLM para una unidad de cuidados intensivos neonatales, la parte del modelo de lenguaje era el fácil y demostrable 90%. El 10% que de verdad importaba — y que tomó la mayor parte del tiempo — era qué hacía cuando no estaba seguro, cómo se remitía a los clínicos, cómo nunca inventaba un número, cómo se ganaba la confianza de enfermeras que no iban a, y no debían, apostar un recién nacido frágil a una alucinación que sonaba segura. En ese entorno el aburrido 10% no era overhead. Era el producto. Todo lo demás era solo la parte que se demostraba bien.
+</Callout>
+
+## Cómo escapar antes de quedar atascado
+
+No le ganas al purgatorio de pilotos con un mejor modelo. Le ganas con cómo armas el piloto, antes de que alguien escriba un prompt.
+
+**Acota a un flujo de trabajo real, no a una capacidad llamativa.** "Resumir tickets de soporte" es una capacidad y una trampa — no tiene línea de meta. "Redactar la primera respuesta para tickets de categoría facturación, que un humano aprueba antes de enviar" es un flujo de trabajo. Tiene inicio, fin, un usuario real, y una definición clara de hecho. Los flujos de trabajo se gradúan a producción. Las capacidades se marinan en el purgatorio.
+
+**Escribe primero los criterios de aceptación de producción.** Antes de construir, responde por escrito: ¿qué precisión sobre la distribución de entradas *real* hace esto entregable? ¿Qué latencia? ¿Qué pasa con una respuesta equivocada, y quién la atrapa? ¿Qué integraciones son obligatorias, no deseables? Si no puedes escribir esto, no tienes un piloto — tienes un proyecto de ciencias con una fecha límite que nadie cree.
+
+**Construye primero el aburrido 10%.** Esto es contraintuitivo y es la mejor palanca que conozco. La mayoría de los equipos construye la capacidad impresionante y atornilla el manejo de errores, el logging y la integración "después". El después nunca llega, porque para entonces todos asumen que está hecho. Inviértelo. Construye la integración, el logging, el comportamiento de fallback, el paso con humano en el lazo *primero*, con un modelo hasta mediocre por detrás. Ahora tienes un sistema real con un cerebro actualizable, en vez de un cerebro brillante sin cuerpo — y un cerebro sin cuerpo es exactamente lo que vive en el purgatorio.
+
+**Diseña a propósito para los casos de falla.** Haz una lista de las formas en que el sistema se equivocará, luego diseña qué pasa en cada una. Seguro y equivocado es la peligrosa — ahí es donde agregas un umbral de confianza, una revisión humana, un "no estoy seguro, esto es por qué" en vez de una respuesta inventada. Un sistema que falla con gracia y de forma visible se gana la confianza más rápido que uno ligeramente más preciso pero que falla en silencio. Esto también es, no por casualidad, el argumento más fuerte para lanzar tu [primera funcionalidad de IA como solo lectura](/blog/first-ai-feature-should-be-read-only): una sugerencia que un humano aprueba puede estar equivocada sin ser un desastre, que es exactamente cómo sobrevives el 10% en el mundo real.
+
+## El replanteamiento honesto
+
+El verdadero cambio es dejar de tratar el demo como la línea de meta y empezar a tratarlo como el disparo de salida. El demo prueba que la idea *vale la pena perseguir*. No prueba nada sobre si llegará a producción. Cuando internalizas eso, la emocionada conversación de "vamos a producción" cambia de forma: en vez de "la parte difícil está hecha", se vuelve "la parte fácil está hecha, aquí está la difícil, y aquí está cómo sabremos cuándo está realmente terminada".
+
+Esa conversación es menos divertida. El subidón del demo es real y el bajón es un aguafiestas. Pero es la única versión que llega a producción, porque es la única versión que respeta el 10% como el trabajo real en vez de un error de redondeo. Los equipos que entregan IA no son los que tienen los demos más impresionantes. Son los que trataron el demo con la sospecha apropiada y fueron directo a la aburrida, constructora de confianza, poco glamorosa última milla — la parte que nadie aplaude, y la única parte que entrega.

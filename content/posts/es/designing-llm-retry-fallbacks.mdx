@@ -1,0 +1,142 @@
+---
+title: "Diseñando el Retry: Que las Llamadas a LLM Fallen Como Adultas"
+description: "Las llamadas a LLM fallan de formas más raras que las llamadas HTTP — JSON malformado, rechazos, timeouts, rate limits, streams parciales. Una taxonomía de tipos de falla y la respuesta correcta para cada uno, además de por qué un loop de retry ingenuo puede multiplicar tu factura por 10 o girar para siempre."
+date: 2026-05-02
+published: true
+category: "Ingeniería de IA"
+tags: ["LLM", "Confiabilidad", "Retry", "Manejo de Errores", "Ingeniería de IA"]
+author: "Osvaldo Restrepo"
+translationOf: "designing-llm-retry-fallbacks"
+tldr: "Un try/except con un loop de tres intentos es la forma incorrecta de manejar fallas de LLM, porque las llamadas a LLM no fallan como las llamadas a API normales. Fallan en al menos cinco formas distintas — output malformado, rechazo, timeout, rate limit y stream parcial — y cada una quiere una respuesta distinta: retry-con-reparación, modelo de fallback, degradar elegantemente, o fallar duro. Reintentar un rechazo desperdicia dinero y hace loop. Reintentar un error de JSON malformado sin cambiar el prompt repite el mismo error. La solución es una taxonomía de fallas, la acción correcta por tipo, idempotencia, backoff con jitter, y un circuit breaker para que un mal minuto no se vuelva una tarde en bancarrota."
+faqs:
+  - question: "¿Por qué no simplemente reintentar todo tres veces y seguir?"
+    answer: "Porque dos de los cinco tipos comunes de falla nunca deberían reintentarse tal cual. Un rechazo va a rechazar otra vez — estás pagando por el mismo 'no' tres veces. Un error de output malformado se malformará de nuevo a menos que cambies el request. Los retries ciegos convierten un parpadeo transitorio en un multiplicador de costos y, con streaming o agentes en el loop, a veces un loop infinito."
+  - question: "¿Cuál es el error de retry más caro que has visto?"
+    answer: "Un agente que malinterpretó un error de herramienta como 'intenta de nuevo', envuelto en un loop de retry sin circuit breaker, en un endpoint de streaming. Reemitió la misma llamada cara cientos de veces en pocos minutos antes de que alguien lo notara. El arreglo no fue un mejor prompt — fue un circuit breaker que dispara con fallas idénticas repetidas."
+  - question: "¿Los retries deben usar el mismo modelo o uno más barato?"
+    answer: "Depende de la falla. Para un timeout transitorio o rate limit, reintenta el mismo modelo — el request estaba bien. Para una falla de capacidad donde el modelo genuinamente no pudo hacer la tarea, caer a un modelo más fuerte puede ayudar; para degradación por costos, caer a una respuesta más barata o pequeña es la jugada. El tipo de falla te dice en qué dirección ir."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "streaming-llm-responses-guide", "observability-llm-production"]
+---
+
+El primer incidente de producción que causé con un LLM no fue una respuesta incorrecta. Fue un loop de retry.
+
+Había envuelto una llamada al modelo en el mismo patrón defensivo que usé por una década en servicios HTTP inestables: try, catch, reintenta tres veces con backoff. Razonable. Probado en batalla. Completamente equivocado para LLMs. Una tarde un cambio de prompt empezó a producir JSON que el modelo no podía cerrar del todo, el parser lanzó error, mi loop diligentemente reintentó el request *idéntico* tres veces, y cada retry produjo el JSON roto *idéntico* — porque nada del request había cambiado. Pagué por cuatro fallas donde una habría bastado, multiplicado por cada request de esa hora.
+
+Esa es la idea central: **las llamadas a LLM no fallan como las llamadas a API, así que no se pueden reintentar como las llamadas a API.** Un HTTP 503 es la misma falla cada vez y un retry es una apuesta razonable a que el servidor se recuperó. Una falla de LLM puede ser transitoria (rate limit), puede ser permanente hasta que cambies algo (output malformado), o puede ser el modelo rechazando correctamente (un "no" que seguirás pagando por escuchar).
+
+## La Taxonomía de Fallas
+
+Antes de poder reintentar bien, tienes que nombrar qué se rompió. Hay cinco formas para las que planifico.
+
+| Falla | Cómo se ve | Qué significa |
+|---|---|---|
+| **Output malformado** | El JSON no parsea, violación de schema | El request llegó, el modelo respondió con forma incorrecta |
+| **Rechazo** | "No puedo ayudar con eso" | El modelo funcionó bien; la respuesta es no |
+| **Timeout** | Sin respuesta en el presupuesto | Puede ser transitorio, puede ser una tarea muy difícil |
+| **Rate limit** | 429 del proveedor | Puramente transitorio, puramente sobre el ritmo |
+| **Stream parcial** | El stream se corta a mitad de token | La conexión murió; tienes media respuesta |
+
+Meter todo esto en un solo bloque `except` es el pecado original. Son cinco problemas distintos y quieren cuatro respuestas distintas.
+
+## La Tabla de Decisión
+
+Esta es la tabla que mantengo junto a cualquier código de retry que escribo. La acción depende enteramente del tipo de falla — nunca de un "reintenta N veces" genérico.
+
+```
+┌────────────────┬──────────────────┬───────────────────────────────┐
+│ FALLA          │ ¿RETRY?          │ ACCIÓN CORRECTA               │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Output         │ Sí, pero REPARA  │ Re-promptea con el error +    │
+│ malformado     │ primero          │ el output malo. No reenvíes   │
+│                │                  │ el mismo request.             │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Rechazo        │ NO               │ Falla duro o ruta a humano.   │
+│                │                  │ Reintentar paga el mismo no.  │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Timeout        │ Una vez, luego   │ Reintenta mismo modelo una    │
+│                │ FALLBACK         │ vez; si repite, degrada/cae.  │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Rate limit     │ Sí, con          │ Backoff + jitter. Respeta el  │
+│                │ BACKOFF          │ header Retry-After si lo dan.  │
+├────────────────┼──────────────────┼───────────────────────────────┤
+│ Stream parcial │ Sí, pero con     │ Reanuda si puedes; si no,     │
+│                │ cuidado          │ retry limpio. Nunca muestres  │
+│                │                  │ el parcial.                   │
+└────────────────┴──────────────────┴───────────────────────────────┘
+```
+
+### Output malformado → retry con reparación
+
+No reenvíes el mismo request. Manda un request *nuevo* que incluya el output roto y el error de parseo, y pídele al modelo que lo arregle. Esta es la diferencia entre "intenta lo mismo otra vez" y "esto fue lo que salió mal, corrígelo". El primero repite el error; el segundo usualmente lo arregla en el primer intento de reparación.
+
+```python
+try:
+    result = parse(completion)
+except ParseError as e:
+    repair = call_model([
+        *original_messages,
+        {"role": "assistant", "content": completion},
+        {"role": "user", "content": f"Eso falló al parsear: {e}. "
+                                     f"Devuelve solo JSON válido según el schema."},
+    ])
+    result = parse(repair)  # un intento de reparación, luego falla duro
+```
+
+### Rechazo → no reintentar
+
+Un rechazo es el modelo funcionando correctamente. Reintentarlo es pagar tres veces para que te digan "no" tres veces — y si tu prompt o contenido cruzó un límite de seguridad, lo cruzará de nuevo. Ruta a un humano, devuelve un mensaje elegante, o falla duro. Solo no hagas loop.
+
+<Callout type="warning" title="Los rechazos se disfrazan de output malformado">
+Un rechazo frecuentemente llega como texto donde tu código esperaba JSON, así que tu parser lanza error y tu retry de output-malformado se activa — ahora estás reintentando un rechazo. Detecta los rechazos explícitamente antes del paso de parseo, o quemarás presupuesto reintentando un no firme y final.
+</Callout>
+
+### Timeout → reintenta una vez, luego cae
+
+Un timeout es ambiguo: tal vez la red tuvo un hipo, tal vez la tarea es genuinamente muy difícil para el modelo y presupuesto actuales. Reintenta el mismo modelo exactamente una vez. Si vuelve a hacer timeout, eso es señal — cae a un camino más rápido/pequeño o degrada elegantemente ("no pude completar eso, esto es lo que tengo").
+
+### Rate limit → backoff con jitter
+
+La única falla que se comporta como un error transitorio clásico. Haz backoff exponencial, y **siempre agrega jitter** — sin él, cada cliente al que le pegó rate limit en el mismo instante reintenta en el mismo instante y estampida al proveedor de nuevo. Respeta el header `Retry-After` cuando el proveedor lo mande.
+
+```python
+delay = min(base * (2 ** attempt), cap)
+delay += random.uniform(0, delay * 0.3)   # el jitter previene la estampida
+```
+
+### Stream parcial → nunca muestres la media-respuesta
+
+Un stream que muere a mitad de token te ha dado un fragmento que puede ser lo suficientemente coherente para verse completo y lo suficientemente equivocado para ser peligroso. Descártalo. Reintenta limpio, o reanuda desde un checkpoint si tu proveedor lo soporta — pero nunca renderices el parcial a un usuario.
+
+## Las Dos Cosas Que Te Salvan de Ti Mismo
+
+### Idempotencia
+
+Si una escritura ocurre a partir de una llamada a LLM, cada retry arriesga hacerla dos veces. Adjunta una clave de idempotencia derivada del request para que una llamada reintentada que ya tuvo éxito del lado del servidor no dispare la acción de nuevo. Esta es la diferencia entre un retry que es seguro y un retry que le cobra doble a un cliente.
+
+### Un circuit breaker
+
+Este es el que convierte mi viejo incidente de catástrofe a parpadeo. Después de N fallas en una ventana corta, *deja de llamar al modelo por completo* y falla rápido por un período de enfriamiento.
+
+```
+        fallas < N          ┌──────────┐
+   ─────────────────────────►  CERRADO  │ las llamadas fluyen normal
+                             └────┬─────┘
+                  N fallas rápido │
+                             ┌────▼─────┐
+                             │ ABIERTO   │ rechaza de inmediato,
+                             └────┬─────┘  sin llamadas, ahorra $$$
+                  enfriamiento OK │
+                             ┌────▼─────┐
+                             │ SEMI-ABTO │ deja pasar una llamada test
+                             └──────────┘
+```
+
+<Callout type="danger" title="Un loop de retry ingenuo es un arma de facturación">
+Un loop de retry sin circuit breaker, envuelto alrededor de una llamada de streaming o agéntica, puede reemitir el mismo request caro cientos de veces antes de que un humano lo note. Lo he visto pasar. El circuit breaker no es infraestructura opcional — es el cinturón de seguridad que evita que un mal minuto se vuelva una tarde en bancarrota. Combínalo con el pulso de monitoreo de costos para que el pico aparezca en un dashboard el mismo día.
+</Callout>
+
+## Fallar Como Adulto
+
+El manejo maduro de errores para LLMs no se trata de prevenir la falla — estos sistemas fallan constantemente y eso está bien. Se trata de fallar de una forma que sea *barata, acotada y explicable*. Nombra la falla. Elige la acción de la tabla. Repara en vez de repetir. Haz backoff con jitter. Mantente idempotente. Y pon un circuit breaker entre tus buenas intenciones y tu factura.
+
+Haz eso, y tus features de LLM fallan como adultas: en silencio, de forma segura, y sin llevarse el resto del sistema — ni el presupuesto — con ellas.

@@ -1,0 +1,142 @@
+---
+title: "Qué Logueo en Realidad Cuando una Feature de LLM Llega a Producción"
+description: "Los logs normales de una app no alcanzan para una feature de LLM. Aquí está el conjunto exacto de señales que capturo para poder reconstruir cualquier respuesta incorrecta — snapshot completo del input, modelo y versión, conteo de tokens, tool calls, desglose de latencia, la completion cruda, el resultado parseado, el resultado de validación, y la acción final del usuario."
+date: 2026-04-24
+published: true
+category: "Ingeniería de IA"
+tags: ["Observabilidad", "LLM", "Producción", "Debugging", "Ingeniería de IA"]
+author: "Osvaldo Restrepo"
+translationOf: "observability-llm-production"
+tldr: "Cuando una feature de LLM falla, rara vez recibes un stack trace — recibes un screenshot de una respuesta rara y un usuario confundido. Para depurar eso, necesitas reconstruir los inputs exactos que produjeron el output, no solo el output. Logueo un snapshot completo del input (cada mensaje, system prompt, chunks recuperados), el modelo y versión, conteo de tokens de entrada/salida, cada tool call con sus argumentos y resultados, un desglose de latencia, la completion cruda antes de parsear, el resultado parseado, el resultado de validación, y la acción final del usuario. Esto es distinto a la auditoría de costos — es la diferencia entre 'sabemos que se puso más caro' y 'podemos explicar exactamente por qué esta respuesta estuvo mal'."
+faqs:
+  - question: "¿Loguear el prompt completo no es un problema de privacidad y almacenamiento?"
+    answer: "Ambos son reales y ambos tienen solución. Redacta o tokeniza la PII en el borde del logueo, no después. Para almacenamiento, muestrea: loguea 100% de las fallas y outputs marcados, y un porcentaje pequeño del happy path. Casi nunca necesitas reconstruir una buena respuesta — necesitas reconstruir las malas, y esas son lo suficientemente raras para guardarlas completas."
+  - question: "¿Por qué loguear la completion cruda Y el resultado parseado por separado?"
+    answer: "Porque la brecha entre ambos es donde vive toda una clase de bugs. Cuando un usuario reporta una respuesta rota y tu resultado parseado se ve vacío, la completion cruda te dice si el modelo no dijo nada, dijo algo que tu parser no pudo procesar, o dijo algo que el validador rechazó. Tres bugs distintos, tres arreglos distintos, indistinguibles sin ambos campos."
+  - question: "¿En qué se diferencia esto de una auditoría diaria de costos?"
+    answer: "La auditoría de costos es agregada y de tendencias — responde '¿está derivando el gasto?'. Esto es por request y forense — responde '¿por qué estuvo mal esta respuesta específica?'. Necesitas ambos. La auditoría de costos vigila el rebaño; esto te deja hacerle la autopsia a un solo animal."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "llm-evaluation-pipelines", "designing-llm-retry-fallbacks"]
+---
+
+Un usuario me mandó un screenshot. El asistente MILA — el ayudante de UCIN que construí y nombré por mi hija — le había dado a una enfermera un resumen de dosificación que referenciaba el peso del paciente equivocado. Un screenshot, sin error, sin stack trace. El request HTTP devolvió 200. Todos los dashboards estaban en verde.
+
+Pasé tres horas esa noche intentando reproducirlo y no pude, porque había logueado la *respuesta* pero no los *inputs que produjeron la respuesta*. El contexto recuperado se había ido. La versión exacta del system prompt se había ido. Estaba depurando un fantasma.
+
+Esa noche me enseñó la regla que ahora aplico a cada feature de LLM antes de lanzarla: **logueas los inputs que produjeron un output, no solo el output.** El logueo tradicional de apps asume código determinista — mismo input, mismo output, así que el input casi no importa. Los LLMs rompen esa suposición por completo. La única forma de entender una respuesta incorrecta es reconstruir el momento exacto en que se generó.
+
+## Por Qué los Logs Normales Te Fallan Aquí
+
+Un log de request tradicional responde "qué pasó". Para una feature de LLM, eso es casi inútil. El modelo no se cayó. Produjo algo incorrecto con confianza. Para depurar lo *incorrecto*, necesitas reproducir la generación — y no puedes reproducir lo que no capturaste.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│   Log normal de app           vs.    Log de feature de LLM    │
+├──────────────────────────────────────────────────────────────┤
+│   request_id                        request_id                │
+│   endpoint                          endpoint                  │
+│   status: 200                       status: 200               │
+│   latencia: 1.4s                    ── más todo esto ──       │
+│                                     snapshot completo input   │
+│                                     modelo + versión          │
+│   "se ve bien, lánzalo"             tokens (in/out)           │
+│                                     tool calls + args + result│
+│                                     desglose de latencia      │
+│                                     completion cruda          │
+│                                     resultado parseado        │
+│                                     resultado de validación   │
+│                                     acción final del usuario  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+El lado izquierdo te dice que el servidor estaba sano. El lado derecho te dice por qué la enfermera vio el peso equivocado.
+
+## Las Nueve Señales
+
+Esto es lo que capturo por cada call de LLM. Cada una se ganó su lugar siendo el campo faltante en alguna sesión de debugging que se alargó demasiado.
+
+### 1. El snapshot completo del input
+
+Cada mensaje de la conversación, el system prompt exacto y — crítico — los chunks recuperados con sus IDs de fuente. No un hash, no un resumen. El texto literal que vio el modelo. En un sistema de RAG, el contexto recuperado *es* la causa de la mayoría de las respuestas incorrectas, y es lo primero que la gente olvida loguear.
+
+### 2. Modelo y versión
+
+No "claude" o "gpt". El string exacto del modelo, incluyendo la versión con fecha. Los proveedores actualizan modelos. Un prompt que era sólido como roca puede derivar el día que sale un nuevo snapshot, y si tus logs dicen `claude-sonnet` sin versión, no puedes correlacionar la regresión con el rollout.
+
+### 3. Conteo de tokens, entrada y salida por separado
+
+Barato de loguear, infinitamente útil. Es tu explicador de latencia, tu atribución de costos, y tu detector de "¿se truncó el contexto?" todo a la vez.
+
+### 4. Cada tool call — argumentos y resultados
+
+Si el modelo llamó una función, loguea el nombre, los argumentos exactos que generó, y qué devolvió. Una cantidad asombrosa de bugs de "la IA está mal" son en realidad "la herramienta devolvió lo equivocado y el modelo lo reportó fielmente".
+
+<Callout type="info" title="Loguea el output de la herramienta, no solo el call">
+El trabajo del modelo es usar lo que la herramienta le da. Si una herramienta de búsqueda devuelve datos viejos, el modelo presentará datos viejos con confianza. Sin el *resultado* de la herramienta en tus logs, culparás al modelo por un bug de la capa de datos — y reescribirás un prompt que nunca estuvo roto.
+</Callout>
+
+### 5. Desglose de latencia
+
+No un solo número. Sepáralo: tiempo de retrieval, time-to-first-token, tiempo total de generación, round-trips de herramientas. Una respuesta de 9 segundos es un bug distinto si fue retrieval versus generación versus una herramienta lenta. Un solo número total esconde qué perilla girar.
+
+### 6. La completion cruda
+
+El output del modelo exactamente como llegó por el cable, antes de cualquier parseo. Este es el campo que la gente se salta y más lamenta.
+
+### 7. El resultado parseado
+
+Lo que tu código extrajo de la completion cruda. La brecha entre los campos 6 y 7 es una de las cosas de mayor valor en todo el log.
+
+```
+completion cruda      →  parser  →  resultado parseado →  validador
+"¡Claro! Aquí está     extraer    { dose: null }          FALLA
+ el JSON: ```json      bloque
+ {dose: 5mg}```"       JSON
+        │                                 │
+        └── el modelo estuvo bien ────────┘
+            el regex del parser perdió la unidad → el bug está en TU código
+```
+
+Cuando `resultado parseado` está vacío pero `completion cruda` está llena, el modelo hizo su trabajo y tu parser falló. Cuando ambos están vacíos, el modelo se rehusó o no devolvió nada. Mismo síntoma para el usuario; arreglo opuesto.
+
+### 8. Resultado de validación
+
+¿Pasó el resultado parseado tu schema y reglas de negocio? Loguea pass/fail y la regla específica que falló. Esto es lo que convierte "a veces está mal" en "falla el chequeo de rango de dosis 4% de las veces en recién nacidos prematuros".
+
+### 9. La acción final del usuario
+
+La señal que todos olvidan, y la que te dice si la respuesta fue realmente *buena*. ¿La aceptaron, la editaron, reintentaron, o la abandonaron? Una respuesta que pasa todos los validadores pero se edita el 80% de las veces es una respuesta incorrecta que tu sistema cree correcta. La acción del usuario es tu única etiqueta de verdad en producción.
+
+<Callout type="tip" title="Los datos de acción son tu eval set gratis">
+Cada edición, reintento y abandono es un ejemplo etiquetado que un humano te dio gratis. Canaliza estos directo a tu eval set. Producción no es solo donde corre la feature — es la fuente más rica de los casos difíciles que a tus pruebas les faltan.
+</Callout>
+
+## Únelo Con un Solo Trace ID
+
+Nada de esto ayuda si los campos viven en sistemas distintos. Un solo trace ID generado fluye desde el request entrante, a través del retrieval, a través del call del modelo, a través del parseo y validación, y hasta el evento de acción del usuario cuando ocurra — minutos u horas después.
+
+```python
+log.emit("llm_call", {
+    "trace_id": trace_id,
+    "model": "claude-sonnet-4-5-20250930",
+    "input_snapshot": messages,          # completo, redactado en el borde
+    "retrieved": [c.source_id for c in chunks],
+    "tokens": {"in": usage.input, "out": usage.output},
+    "tool_calls": tool_log,              # nombre, args, resultado
+    "latency_ms": {"retrieval": 120, "ttft": 380, "total": 1410},
+    "raw_completion": completion.text,
+    "parsed": parsed,
+    "validation": {"passed": False, "rule": "dose_range_neonatal"},
+})
+```
+
+El evento de acción del usuario, emitido después, lleva el mismo `trace_id`. Ese join es lo que te deja ir de un screenshot a una reconstrucción completa en dos minutos en vez de tres horas.
+
+<Callout type="warning" title="Redacta en el borde, no en la revisión">
+Para MILA, los datos del paciente nunca entran a una línea de log en crudo — se tokenizan en el call de emisión. Si redactas después, ya escribiste PII al disco. En salud eso es un evento reportable, no una tarea de limpieza. Diseña la redacción dentro de la función de logueo misma.
+</Callout>
+
+## Qué Te Compra Esto
+
+La siguiente vez que MILA produjo una respuesta cuestionable, el loop fue: pegar el trace ID, ver que los chunks recuperados jalaron el registro de un hermano porque dos pacientes compartían apellido, arreglar el filtro de retrieval, agregar el caso al eval set. Veinte minutos, causa raíz confirmada, prueba de regresión en su lugar.
+
+La auditoría de costos te dice que el rebaño está derivando. Esto te dice por qué una respuesta específica estuvo mal. Lanza la feature, pero lanza el kit de reconstrucción con ella — porque el bug que no puedes reproducir es el que te quita el sueño, y en algunos dominios, es el que importa.

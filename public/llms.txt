@@ -80,7 +80,7 @@ Free coding school for teens and kids.
 URL: https://waldoscodelab.com
 
 ## Blog
-49 technical articles on AI engineering, published in English and Spanish.
+65 technical articles on AI engineering, published in English and Spanish.
 Topics: LLMs, RAG, AI agents, MCP, voice AI, databases, architecture, DevOps, leadership
 URL: https://osvaldorestrepo.dev/blog
 RSS: https://osvaldorestrepo.dev/feed.xml

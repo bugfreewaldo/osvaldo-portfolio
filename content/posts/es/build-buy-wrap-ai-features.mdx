@@ -1,0 +1,105 @@
+---
+title: "Construir vs. Comprar vs. Envolver: El Nuevo Cálculo para Funcionalidades de IA"
+description: "La IA agregó una tercera opción a la clásica decisión de construir-o-comprar: envolver una API de modelo fundacional. Un marco práctico para qué envolver, qué comprar y qué construir — y cuándo 'solo envuelve GPT' es lo correcto o peligrosamente equivocado."
+date: 2026-05-22
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "Arquitectura", "Construir vs Comprar", "Modelos Fundacionales", "Fundadores"]
+author: "Osvaldo Restrepo"
+translationOf: "build-buy-wrap-ai-features"
+tldr: "La vieja decisión de construir-o-comprar acaba de ganar una tercera opción: envolver una API de modelo fundacional. Envolver es lo correcto mucho más seguido de lo que los ingenieros orgullosos admiten — la inteligencia commodity como clasificación, extracción y redacción es un problema resuelto que deberías alquilar, no reconstruir. Compra cuando un vertical ya está resuelto por un especialista. Construye solo donde tengas un foso real: datos propietarios, un problema difícil de evaluación, o un flujo de trabajo que te diferencia. Los errores son envolver donde la latencia, el costo a escala, el lock-in o la diferenciación deberían haberte empujado a construir, y construir donde simplemente debiste envolver. Aquí está un árbol de decisión que de verdad uso."
+faqs:
+  - question: "¿Qué significa 'envolver' un modelo fundacional?"
+    answer: "Envolver significa construir tu funcionalidad encima de una API de modelo alojado — como Claude, GPT o Gemini — en vez de entrenar o alojar tu propio modelo. Tú aportas el prompt, el contexto y la experiencia de producto; el proveedor aporta la inteligencia. Es el equivalente en la era de la IA de usar un servicio cloud administrado en vez de correr tus propios servidores, y para inteligencia commodity suele ser la decisión correcta."
+  - question: "¿Cuándo deberías construir tu propia IA en vez de envolver una API?"
+    answer: "Construye cuando envolver no puede darte una ventaja defendible o no puede cumplir una restricción dura: cuando tienes datos propietarios que un modelo general no puede igualar, cuando la latencia o el costo a escala extrema vuelven inviables las llamadas a la API, cuando necesitas inferencia offline o en el dispositivo, o cuando el modelo mismo es tu diferenciación en vez del producto a su alrededor. Para la mayoría de las funcionalidades, nada de esto aplica y deberías envolver."
+  - question: "¿'Solo envuelve GPT' es un negocio real o solo un wrapper delgado?"
+    answer: "Puede ser cualquiera de los dos. Un wrapper delgado que no agrega nada que la app del propio proveedor no haga es frágil. Pero un wrapper que agrega contexto propietario, un flujo de trabajo a la medida, integración a sistemas de registro, evaluación y confianza es un producto real — el modelo es un componente, no el foso. El foso es todo lo que construyes alrededor del modelo, no el modelo en sí."
+relatedPosts: ["why-ai-pilots-stall", "pricing-ai-features-usage-costs", "building-ai-agents-production"]
+---
+
+Durante la mayor parte de mi carrera, la pregunta de arquitectura fue binaria: lo construyes o lo compras. Escribir el sistema de auth o pagar por Auth0. Levantar el flujo de pago o usar Stripe. Toda la disciplina de ser un ingeniero senior se trataba en parte de desarrollar buenos instintos para esa bifurcación — saber cuándo la cosa era lo bastante central para poseerla y cuándo era un commodity que deberías alquilar y olvidar.
+
+La IA agregó un tercer camino, y es silenciosamente el más importante. Ahora puedes *envolver* un modelo fundacional: construir tu funcionalidad encima de una API alojada — Claude, GPT, Gemini — donde alguien más aporta la inteligencia y tú aportas el producto. Se ubica entre construir y comprar de una forma que genuinamente cambia el cálculo, y muchos equipos están equivocando la nueva decisión de tres vías en ambas direcciones. Construyen donde deberían envolver, quemando meses reinventando inteligencia commodity. Y envuelven donde deberían construir, pintándose en esquinas de costo, latencia y diferenciación.
+
+Así que aquí está cómo lo pienso de verdad.
+
+## Las tres opciones, en simple
+
+**Comprar** no cambió. Alguien ya resolvió tu problema vertical exacto y lo vende como producto. Lo integras y sigues. La IA no mató esto; creó una ola de nuevas herramientas especialistas que vale la pena comprar.
+
+**Construir** también es inmutable en espíritu pero más raro en la práctica. Creas la capacidad tú mismo — tu propio modelo, tu propio pipeline, tu propia lógica — porque poseerla es una ventaja real. La vara para esto *subió*, porque la tercera opción absorbió la mayor parte de lo que antes requería construir.
+
+**Envolver** es la nueva. La inteligencia se alquila de un proveedor; el producto, el contexto y la experiencia son tuyos. Es la descendiente en la era de la IA de "usa el servicio cloud administrado en vez de armar tus propios servidores". Y al igual que ese cambio, los ingenieros más reacios a envolver suelen ser aquellos cuyo orgullo está tomando la decisión.
+
+<Callout type="tip" title="'Solo envuelve GPT' es lo correcto más seguido de lo que los ingenieros admiten">
+Hay un desdén reflejo hacia los 'wrappers delgados', y hace que equipos inteligentes desperdicien trimestres reconstruyendo inteligencia commodity para sentirse ingenieros de verdad. Envolver un modelo de frontera para clasificación, extracción, resumen o redacción no es flojera. Es correcto. No vas a superar en ingeniería a un laboratorio que gastó cientos de millones de dólares en un modelo general, e intentarlo es la forma cara del ego.
+</Callout>
+
+## Un árbol de decisión que de verdad uso
+
+Cuando una nueva funcionalidad de IA aterriza en mi plato, la corro más o menos por esto:
+
+```
+                 Se necesita nueva funcionalidad de IA
+                            │
+                            ▼
+        ¿Un producto especialista ya resuelve bien
+        este problema vertical exacto?
+                    │                │
+                   SÍ                NO
+                    │                │
+                    ▼                ▼
+                CÓMPRALO     ¿La inteligencia es un
+                             COMMODITY? (clasificar,
+                             extraer, resumir, redactar,
+                             responder desde tus docs)
+                                  │           │
+                                 SÍ           NO / NO SEGURO
+                                  │           │
+                                  ▼           ▼
+                         ¿Envolver choca con   ¿El MODELO mismo es tu
+                         un muro duro?         diferenciación, o tienes
+                         (latencia, costo a    datos que ningún modelo
+                         escala, offline,      general tiene?
+                         lock-in, privacidad)    │           │
+                              │        │        NO          SÍ
+                             NO       SÍ         │           │
+                              │        │         ▼           ▼
+                              ▼        ▼     ENVUÉLVELO   CONSTRÚYELO
+                          ENVUÉLVELO CONSTRUYE/HÍBRIDO
+```
+
+El árbol pone al frente las dos respuestas más baratas — comprar y envolver — a propósito. Construir está al fondo del árbol porque es el compromiso más caro y al que deberías llegar solo cuando los caminos más baratos genuinamente fallan.
+
+## Qué envolver: inteligencia commodity
+
+Envuelve las cosas que un modelo de propósito general ya hace mejor de lo que tú jamás harás: clasificar texto, sacar campos estructurados de documentos desordenados, resumir, redactar un primer borrador, responder preguntas sobre tu propio contenido con retrieval. Esto es *inteligencia commodity* — capacidad ampliamente útil que ya no diferencia a nadie porque todos pueden acceder a los mismos modelos.
+
+El error aquí es emocional, no técnico. Los ingenieros quieren que la parte de IA sea *suya*. Así que proponen hacer fine-tuning de un modelo para clasificar tickets de soporte cuando un modelo de frontera bien promptado lo hace al 95% de precisión el día uno, por centavos, con cero pipeline de entrenamiento que mantener. El wrap no es la opción vergonzosa. Es la que entrega este mes y libera a tu equipo para construir la parte que de verdad importa.
+
+El verdadero trabajo de producto en un wrap no es la llamada al modelo. Es todo lo que la rodea: el contexto propietario que alimentas, el flujo de trabajo en que lo envuelves, la integración al sistema de registro, la evaluación, la construcción de confianza. Esa capa circundante es tu foso — no el modelo, que tu competidor puede alquilar igual de fácil.
+
+## Qué comprar: verticales resueltos
+
+Compra cuando alguien ya hizo el trabajo difícil y específico para tu problema exacto. Un especialista que pasó tres años y un millón de ejemplos etiquetados en, digamos, codificación médica o revisión de contratos ha construido algo que no puedes superar envolviendo a la ligera. Su data de evaluación por sí sola es un foso que necesitarías años para igualar.
+
+La tensión comprar-vs-envolver es real aquí. A veces la herramienta especialista es solo un wrapper con sobreprecio, y puedes hacer lo mismo tú mismo por una décima parte del costo. A veces encarna profundidad de dominio genuina — datos curados, manejo de casos extremos ganado con esfuerzo, trabajo de cumplimiento — que sería tonto reconstruir. La prueba que uso: si le quitara su modelo y conservara sus datos, evals y lógica de dominio, ¿lo que queda sigue siendo valioso? Si sí, compra. Si lo que queda es nada, es un wrapper y deberías envolverlo tú mismo.
+
+## Qué construir: tu foso
+
+Construye solo donde construir crea una ventaja defendible. En la práctica eso es una lista corta:
+
+Tienes **datos propietarios** que un modelo general nunca ha visto y no puede inferir — el conocimiento acumulado y estructurado de tu dominio que hace que un modelo entrenado o ajustado sobre ellos sea genuinamente mejor para tus usuarios que cualquier modelo general. Tienes un **problema difícil de evaluación** que *es* el producto — donde saber si una respuesta es correcta, en tu dominio específico, es la habilidad diferenciadora, y tu eval set es el verdadero activo. O **el modelo es el punto** — eres una empresa de IA en el sentido literal, y el comportamiento del modelo es lo que los clientes compran, no la app a su alrededor.
+
+<Callout type="warning" title="Envolver tiene cuatro modos de falla — conócelos antes de comprometerte">
+Envolver suele ser correcto, pero se rompe en lugares específicos y predecibles. Latencia: un viaje de ida y vuelta a la API es muy lento para una experiencia en tiempo real con el humano en el lazo. Costo a escala: el precio por llamada que es trivial a 1,000 llamadas al día se vuelve ruinoso a 10 millones. Lock-in: construir tan profundamente alrededor de las peculiaridades de un proveedor que cambiar significa reescribir. Diferenciación: si todo tu producto es un prompt que cualquiera puede copiar, no tienes foso y el proveedor podría lanzar tu funcionalidad gratis el próximo trimestre. Si cualquiera de estas aprieta, el wrap debería volverse un build o un híbrido.
+</Callout>
+
+## El híbrido en el que probablemente terminarás
+
+En la realidad, los productos maduros rara vez viven en una sola caja. Envuelven para amplitud, construyen para el foso, y compran para los bordes resueltos — todo a la vez. Un sistema podría envolver un modelo de frontera para razonamiento general, construir un pequeño modelo especializado para el único paso de alto volumen, sensible a la latencia y al costo donde las llamadas a la API no cuadran, y comprarle a un vendedor especialista una rebanada cargada de cumplimiento que nadie en el equipo debería estar reinventando.
+
+Eso no es indecisión. Es madurez. La decisión de construir-vs-comprar-vs-envolver no se toma una vez para todo el producto; se toma por capacidad, y la respuesta correcta para el 80% commodity casi siempre es "envolver", mientras que el defendible 20% se gana el construir. La disciplina es resistir el impulso de construir el 80% para sentirte importante, y resistir la flojera de envolver el 20% que se supone es tu ventaja.
+
+Empieza por envolver. Envuelve hasta que algo — latencia, costo, lock-in, o la fría comprensión de que tu producto es un prompt copiable — te fuerce a construir. Luego construye exactamente esa pieza, y ni una funcionalidad más. Los equipos que ganan la era de la IA no son los que más construyen. Son los que son honestos sobre cuál 20% es realmente suyo para poseer, y despiadados al alquilar el resto.

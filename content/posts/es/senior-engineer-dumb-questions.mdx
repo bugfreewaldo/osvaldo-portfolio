@@ -1,0 +1,116 @@
+---
+title: "El Ingeniero Senior Que Hace las Preguntas Tontas"
+description: "La seniority no se trata de tener todas las respuestas. Es la libertad —y el deber— de hacer la pregunta obvia cuando todos los demás asienten. Por qué fingir que entiendes es el hábito más caro de la ingeniería."
+date: 2026-04-26
+published: true
+category: "Carrera"
+tags: ["Carrera", "Habilidades Blandas", "Liderazgo de Ingeniería", "Cultura de Equipo", "Comunicación"]
+author: "Osvaldo Restrepo"
+translationOf: "senior-engineer-dumb-questions"
+tldr: "Lo más valioso que hago como ingeniero senior no es escribir el código más ingenioso, es hacer la pregunta que todos en la sala tienen demasiado miedo de hacer. '¿Espera, qué significa ese acrónimo?' y '¿por qué estamos haciendo esto?' han salvado más de mis proyectos que cualquier diagrama de arquitectura. Hacer la pregunta obvia le cuesta un poco a tu ego y le ahorra semanas a tu equipo. Y cuando un senior lo hace en voz alta, le da permiso a cada junior en la sala de dejar de fingir."
+faqs:
+  - question: "¿Hacer preguntas básicas no hace que un ingeniero senior parezca incompetente?"
+    answer: "Lo contrario, normalmente. Los juniors hacen preguntas básicas porque no saben. Los seniors hacen preguntas básicas porque saben lo caras que son las suposiciones equivocadas. Después de unas cuantas veces en que tu pregunta 'tonta' expone un vacío real, tu equipo aprende que cuando preguntas, vale la pena parar a responder."
+  - question: "¿Cómo construyo la confianza para hacer preguntas obvias en reuniones?"
+    answer: "Empieza por reformularlo. No estás admitiendo ignorancia, estás protegiendo al equipo de una suposición compartida que nadie ha verificado. Plantéalo como un servicio: '¿Podemos asegurarnos de que todos entendemos lo mismo por este término?' Y recuerda que si tú estás confundido, al menos otras dos personas en la sala también lo están."
+  - question: "¿Cuál es el costo de fingir que entiendes algo?"
+    answer: "Se acumula. Asientes, construyes sobre un malentendido, y tres semanas después la desalineación aparece como trabajo desechado. Fingir que entiendes no es gratis, solo difiere el costo y le agrega intereses. El momento más barato para preguntar siempre es ahora."
+relatedPosts: ["soft-skills-fast-paced-engineering", "junior-to-senior-engineer-growth", "phd-taught-me-shipping-software"]
+---
+
+Unos años después de empezar mi carrera, estaba sentado en una reunión de planificación donde siete personas inteligentes pasaron cuarenta minutos diseñando una integración alrededor de un sistema llamado "el FRS." Todos asentían. Se dibujaron diagramas. Se estimaron tickets. La gente se ofreció para trabajos.
+
+Yo no tenía idea de qué significaba FRS.
+
+Y no dije nada, porque era el nuevo senior contratado y admitir que no conocía un acrónimo que todos los demás lanzaban se sentía como un suicidio profesional. Así que asentí también. Dibujé en mi propia libretita. Me ofrecí para un ticket.
+
+Me tomó dos días de arqueología silenciosa y aterrada —hilos viejos de Slack, una página medio muerta de Confluence— descubrir que FRS era un servicio interno de facturación que había sido renombrado dieciocho meses antes. La mitad de la sala estaba construyendo contra un modelo mental de un sistema que ya no existía bajo ese nombre. La reunión de cuarenta minutos había sido cuarenta minutos de gente acordando cosas ligeramente distintas.
+
+Si una sola persona hubiera dicho "perdón, ¿qué es FRS?" nos habríamos ahorrado un sprint.
+
+Pienso mucho en esa reunión. Porque la persona que debió preguntar era yo. Tenía la mayor seniority en esa sala y por lo tanto el mayor permiso para preguntar. Y lo desperdicié protegiendo mi ego.
+
+## El Trabajo Cambia en Silencio Bajo Tus Pies
+
+Cuando eres junior, tu valor se mide en respuestas. Cierras tickets, arreglas bugs, haces que la cosa funcione. Hacer preguntas se siente como un impuesto que pagas hasta que "te vuelvas bueno." Así que lo minimizas. Googleas frenéticamente a medianoche en lugar de preguntar en el canal. Aprendes a actuar competencia.
+
+Luego un día eres senior, y la función de valor se invierte, y nadie te lo dice.
+
+Porque esto es lo que eventualmente entendí: el output más caro de un ingeniero senior no es código. Son las suposiciones sobre las que todo el equipo construye. Si dejo pasar una mala suposición porque era demasiado orgulloso para cuestionarla, no estoy salvando las apariencias, estoy escribiendo un defecto sobre el que diez personas van a construir. Mi silencio ahora tiene apalancamiento. Mi confusión también.
+
+El ingeniero senior que hace la pregunta tonta no está mostrando debilidad. Está haciendo lo de mayor apalancamiento disponible: detener el tren antes de que salga por la vía equivocada.
+
+<Callout type="info" title="El Replanteamiento Que Cambió Mi Carrera">
+Un junior pregunta "¿qué significa esto?" porque no sabe. Un senior pregunta "¿qué significa esto?" porque sabe exactamente lo caro que resulta cuando una sala llena de gente entiende cada uno algo ligeramente distinto en silencio. Las mismas palabras. Un acto completamente diferente.
+</Callout>
+
+## Las Dos Preguntas Que Salvan Proyectos
+
+En diez años lo he reducido a dos preguntas que hacen casi todo el trabajo pesado. Suenan triviales. No lo son.
+
+**Pregunta uno: "Espera, ¿qué significa eso, exactamente?"**
+
+Esta es la pregunta del acrónimo. La pregunta de la jerga. La pregunta de "sigues diciendo 'el pipeline' y quiero asegurarme de que hablamos del mismo pipeline." Se siente remedial. Es la herramienta más efectiva que tengo para sacar a la superficie la brecha entre lo que la gente dice y lo que cree que está acordando.
+
+Palabras como "tiempo real," "listo," "el usuario," "seguro" y "pronto" son minas. Todos tienen una definición. Casi nadie tiene la *misma* definición. La movida senior es detonarlas de forma segura, a propósito, en la reunión, en lugar de accidentalmente, en producción.
+
+**Pregunta dos: "¿Por qué estamos haciendo esto?"**
+
+Esta da más miedo, porque suena a insubordinación. Pero es la pregunta más valiosa en software. He visto equipos pasar un trimestre construyendo una funcionalidad con artesanía extraordinaria, y luego preguntar demasiado tarde si alguien la quería. La pregunta del "por qué" no se trata de cuestionar el plan. Se trata de asegurarse de que el plan todavía mapea a un objetivo real que pudo haber cambiado silenciosamente hace tres pivotes.
+
+```
+Lo que la sala escucha       Lo que realmente hago
+─────────────────────        ─────────────────────
+"Pregunta tonta, pero..."  →  Verificar una suposición compartida
+"¿Qué es FRS?"             →  Sacar a la luz un vacío oculto
+"¿Por qué hacemos esto?"   →  Reanclar el trabajo a un objetivo real
+"¿Me lo explicas otra      →  Forzar la complejidad latente a salir
+ vez?"                         a donde podamos verla
+```
+
+## El Costo al Ego Es Real (Y Vale la Pena Pagarlo)
+
+No voy a fingir que esto es gratis. Hay una incomodidad real, física, en levantar la mano en una sala de gente que toda parece entender y decir "no te sigo." Se te calienta la cara. Una parte de tu cerebro grita que estás a punto de ser descubierto como un fraude.
+
+Esto es lo que he aprendido a decirle a esa parte de mi cerebro: *si estás confundido, casi nunca eres el único.* La confusión en una reunión rara vez es una experiencia en solitario. Es una sala llena de gente esperando en privado que alguien más pregunte. Cuando preguntas, verás hombros relajarse alrededor de la mesa. Recibirás el mensaje aparte después: "gracias a Dios preguntaste eso, yo tampoco tenía idea."
+
+El costo al ego es real por unos cuatro segundos. El costo de fingir se paga durante semanas, por todos.
+
+<Callout type="warning" title="El Hábito Más Caro de la Ingeniería">
+Fingir que entiendes no es un acto neutral. Asientes, construyes sobre el malentendido, y la brecha aparece después como retrabajo, como un incidente en producción, como una funcionalidad que nadie necesitaba. Fingir no hace que la confusión desaparezca. Solo la entierra en algún lugar más caro de excavar.
+</Callout>
+
+## No Solo Estás Preguntando — Estás Modelando
+
+Esta es la parte que más me tomó apreciar, y es la que más me importa ahora.
+
+Cuando un ingeniero senior hace la pregunta obvia, reparte permiso.
+
+Dirijo una escuela gratuita de programación para niños y adolescentes aquí en Panamá —Waldo's Code Lab— y veo la misma dinámica con niños de doce años que veo con ingenieros senior. En el momento en que un niño es valiente para decir "no entiendo," cuatro manos se levantan. La valentía era contagiosa; solo necesitaba que alguien fuera primero. Los juniors de un equipo te están observando constantemente, aprendiendo qué es seguro. Si la persona senior nunca admite confusión, la lección que absorben es: *competencia significa nunca no saber.* Así que aprenden a fingirlo. Y acabas de entrenar a tu gente más junior en el hábito más caro de la ingeniería.
+
+Pero si te ven a ti —la persona con el título, la antigüedad, la supuesta autoridad— decir con calma "no sé qué significa eso, ¿me lo puedes explicar?", les has enseñado algo que ningún documento de onboarding hará jamás: que no saber en voz alta es como operan los ingenieros fuertes. Que preguntar es un comportamiento senior, no junior.
+
+Eso es seguridad psicológica, y no la construyes con un eslogan en la pared. La construyes siendo la persona más senior de la sala y siendo el primero en admitir que estás perdido.
+
+## Cómo Preguntar Sin Descarrilar
+
+Una objeción justa: ¿no puede esto volverse una forma de perder el tiempo de todos, o de parecer que no hiciste la tarea? Sí. Así que algunas reglas que me impongo.
+
+- **Haz la pregunta estructural, no la perezosa.** "¿Qué significa FRS y quién lo mantiene?" es estructural. "¿Alguien puede explicar microservicios?" en una reunión de microservicios es tarea que debiste hacer. Conoce la diferencia.
+- **Plantéalo como un servicio a la sala.** "¿Podemos asegurarnos de que todos entendemos lo mismo por 'listo' aquí?" invita al grupo. No es "estoy confundido," es "verifiquemos que estamos alineados."
+- **Pregunta temprano.** La pregunta tonta es más barata en el minuto dos de la reunión y más cara en el minuto cuarenta, cuando el plan está fijado y la gente está emocionalmente invertida en él.
+- **Y luego escucha de verdad.** Hacer la pregunta y luego escuchar a medias la respuesta porque te alivia que ya terminó derrota todo el propósito.
+
+## Lo Que Les Digo a los Ingenieros Que Mentoreo
+
+En algún punto cerca del nivel senior, dejas de cobrar por lo que sabes y empiezas a cobrar por lo que vuelves seguro para que el equipo lo resuelva. El acrónimo que no reconoces, el objetivo que ya no tiene sentido, la cosa "obvia" a la que todos asienten: esas no son amenazas a tu credibilidad. Son los lugares exactos donde se supone que tu seniority haga su trabajo.
+
+Todavía siento la cara caliente antes de preguntar. Solo he aprendido a tratarlo como una señal en lugar de una advertencia. Cuando esa vocecita dice "todos pensarán que eres lento," ese suele ser el momento en que más se necesita la pregunta, porque si me está trabando a mí, está trabando silenciosamente a media sala.
+
+Los mejores ingenieros con los que he trabajado nunca fueron los que sabían todo. Fueron los que no temían ser vistos no sabiendo. Hacían las preguntas tontas en voz alta, y al hacerlo evitaban que equipos enteros construyeran soluciones hermosas, bien probadas y amorosamente documentadas al problema equivocado.
+
+Esa reunión del FRS nos costó un sprint. He pasado los años desde entonces asegurándome de ser yo quien levanta la mano y dice "espera, ¿qué significa eso en realidad?" Es el seguro más barato de la ingeniería. Todo lo que cuesta son cuatro segundos de orgullo.
+
+---
+
+*¿Construyendo un equipo donde la gente se sienta segura de preguntar? [Contáctame](/contact). Siempre estoy feliz de hablar de cultura de ingeniería, y de admitir cuántos acrónimos todavía no conozco.*

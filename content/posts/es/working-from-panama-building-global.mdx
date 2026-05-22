@@ -1,0 +1,95 @@
+---
+title: "Trabajando Desde Panamá, Construyendo Para el Mundo"
+description: "Una década de trabajo remoto desde Panamá para equipos de EE. UU. y globales. La textura real de eso: la zona horaria como activo, ser el único ingeniero de IA que mucha gente conoce, las realidades del ancho de banda, la escritura asíncrona como supervivencia, y lo que 'remote-first' de verdad se siente desde la periferia."
+date: 2026-05-21
+published: true
+category: "Carrera"
+tags: ["Carrera", "Trabajo Remoto", "Panamá", "Latinoamérica", "IA"]
+author: "Osvaldo Restrepo"
+translationOf: "working-from-panama-building-global"
+tldr: "He trabajado remotamente desde Panamá para equipos de EE. UU. y globales por diez años, desde un puesto de soporte técnico hasta arquitectar un producto de IA. El remote-first se vive muy distinto desde la periferia que desde un suburbio de San Francisco. Lo bueno: una zona horaria que se solapa con el horario laboral de EE. UU., la disciplina que la escritura asíncrona te impone, y el orgullo de representar talento latinoamericano. Los tradeoffs honestos: ancho de banda e infraestructura que planificas, ser el único ingeniero de IA que mucha gente cercana ha conocido, y probar competencia a través de una distancia que a veces carga suposiciones. Vale cada parte."
+faqs:
+  - question: "¿Es Panamá una buena base para trabajo remoto con empresas de EE. UU.?"
+    answer: "Es una de las mejores de la región. Panamá corre en hora del Este sin el cambio de horario de verano, así que te solapas un día laboral completo de EE. UU. El dólar es la moneda, la infraestructura en las ciudades es sólida, y la cultura está cómoda trabajando a través de fronteras. El solo solapamiento horario es una ventaja competitiva genuina sobre gran parte del talento remoto del mundo."
+  - question: "¿Cuál es la parte más difícil de construir software global desde Latinoamérica?"
+    answer: "Honestamente, es menos técnica que perceptual. Las realidades de infraestructura son manejables con planificación. La parte más difícil es ocasionalmente probar competencia contra suposiciones sobre de dónde viene la ingeniería 'de verdad', y ser, para mucha gente a tu alrededor, el único ingeniero senior de IA que han conocido, sin un grupo de pares local en quien apoyarte."
+  - question: "¿Cómo te mantienes efectivo en un equipo distribuido a través de zonas horarias?"
+    answer: "La escritura asíncrona es el juego entero. Trata la comunicación escrita clara —descripciones de PR, documentos de decisiones, actualizaciones de estado— como una habilidad de ingeniería central, no como un gasto extra. Cuando tus compañeros están dormidos mientras trabajas, lo que escribiste es la única versión de ti que está presente. Domina eso y la distancia deja de ser una desventaja."
+relatedPosts: ["ai-engineering-panama", "soft-skills-fast-paced-engineering", "phd-taught-me-shipping-software"]
+---
+
+Son las 7am en Chiriquí. La provincia del volcán, en el oeste de Panamá, de donde soy: montañas verdes, fincas de café, ese tipo de silencio que la gente de ciudad paga por tener. Mi laptop está abierta, un equipo en EE. UU. apenas empieza a despertar a tres horas y un par de miles de kilómetros de distancia, y estoy empujando un deploy a un sistema que usarán personas que nunca sabrán que fue construido desde aquí.
+
+He estado haciendo alguna versión de esta mañana por diez años. Trabajo remoto desde Panamá para empresas en EE. UU. y más allá, desde unos audífonos de soporte técnico al inicio de mi carrera hasta arquitectar un producto de IA hoy. Y en esa década he aprendido que "remote-first" es una frase que significa algo muy distinto dependiendo de dónde estés sentado cuando la dices. Desde un suburbio de San Francisco significa que te ahorras un traslado. Desde la periferia —desde un país que la mayoría de tus compañeros no podrían ubicar en un mapa— significa otra cosa por completo. Quiero contarte cómo se siente de verdad. El orgullo, y los tradeoffs honestos.
+
+## La Zona Horaria Es una Característica, No un Bug
+
+Empecemos por lo que nadie menciona porque suena demasiado simple: Panamá está en hora del Este. Sin el baile del horario de verano, nunca. Simplemente nos quedamos en EST todo el año mientras los relojes de EE. UU. rebotan a nuestro alrededor.
+
+Esto es un superpoder silencioso, y no creo que la gente aprecie cuánto lo es. Un ingeniero brillante en gran parte de Asia o Europa del Este está trabajando de madrugada para atrapar una astilla de solapamiento con EE. UU., o viviendo permanentemente desfasado del equipo que le paga. Yo me solapo un día laboral completo de EE. UU. Cuando mi CTO tiene una pregunta a las 2pm su hora, estoy en mi escritorio. Cuando algo se rompe durante el horario laboral de EE. UU., estoy despierto y con cafeína, no iniciando sesión legañoso a las 3am.
+
+```
+Un día laboral normal desde Panamá (EST)
+─────────────────────────────────────────
+ 7:00  Trabajo profundo — equipo aún dormido, cero pings
+10:00  Costa este de EE. UU. en línea — empieza el solapamiento
+12:00  Standup / colaboración en tiempo real
+ 3:00  Costa oeste de EE. UU. totalmente en línea
+ 6:00  Cierre mientras el equipo sigue hacia el oeste
+```
+
+Para el talento remoto en Latinoamérica, la sola zona horaria es una ventaja estructural sobre la mayor parte del planeta. Estás lo bastante cerca para estar presente y lo bastante lejos para conseguir horas de trabajo profundo sin interrupciones antes de que empiecen los pings. Hago mi pensamiento más difícil en esas horas tempranas y silenciosas, antes de que se haya disparado una sola notificación de Slack.
+
+<Callout type="tip" title="Vende el Solapamiento">
+Si eres talento remoto en Latinoamérica, el solapamiento horario con EE. UU. no es una nota al pie en tu CV, es un titular. 'Trabajo en tu horario laboral, en tiempo real, sin heroísmos de turno nocturno' es un diferenciador genuino contra gente igual de capaz al otro lado del mundo. Lidera con eso.
+</Callout>
+
+## La Escritura Asíncrona Es Supervivencia, No Etiqueta
+
+En un equipo co-ubicado, la comunicación descuidada se parcha en el pasillo. Alguien está confundido, gira su silla, la brecha se cierra en treinta segundos y nadie nota que la falla siquiera ocurrió.
+
+Yo no tengo pasillo. Cuando mis compañeros están concentrados o dormidos, lo que escribí es la única versión de mí en la sala. Una descripción de PR vaga no se rescata con una charla de escritorio: simplemente se queda ahí, bloqueando, costando horas, hasta que nuestras ventanas se solapen otra vez. La distancia convierte cada pequeña falla de comunicación en un retraso medible.
+
+Así que aprendí, por pura necesidad, a tratar la escritura como una habilidad de ingeniería central en lugar de un gasto extra. Descripciones de PR que explican el *por qué* y no solo el *qué*. Documentos de decisiones que dejan a alguien actuar sin mí. Actualizaciones de estado lo bastante precisas para que nadie tenga que esperar doce horas para hacer una pregunta aclaratoria. La disciplina de escritura asíncrona que las empresas ahora predican como "mejor práctica remota," yo la aprendí por las malas, porque en la periferia no es una mejor práctica. Es la diferencia entre contribuir y ser un cuello de botella.
+
+Lo gracioso es que me volvió un mejor ingeniero en todas partes, no solo remotamente. Obligarte a explicar una decisión con claridad por escrito es una herramienta de depuración para tu propio pensamiento. La mitad de las veces escribo el documento y me doy cuenta de que mi plan estaba mal antes de que alguien más lo lea siquiera.
+
+## La Soledad de Ser el Único
+
+Aquí está la parte que es más difícil de poner en un post de LinkedIn.
+
+Para mucha gente en mi órbita, soy el único ingeniero senior de IA que han conocido. No hay una multitud local de gente haciendo exactamente lo que hago a la que pueda invitar un café y decir "oye, ¿así arquitectarías esto?" El grupo de pares que un ingeniero en un hub tecnológico da completamente por sentado —la experticia de pasillo, el meetup a la vuelta de la esquina, el amigo que ya resolvió tu problema exacto— mayormente no está ahí.
+
+Compensas. El internet es el gran ecualizador; tengo acceso a los mismos papers, el mismo open source, las mismas comunidades que cualquiera en cualquier hub. Pero el acceso no es lo mismo que la proximidad. Hay un sabor particular de aislamiento en ser el que tiene que resolverlo, porque no hay nadie cerca que ya lo haya hecho.
+
+Corta para el otro lado también, y esa parte me encanta. Ser el único significa que me toca *ser* el único. Dirijo Waldo's Code Lab, una escuela gratuita de programación para niños y adolescentes aquí, en parte por exactamente esta razón: para que el próximo niño de una provincia montañosa que sea curioso sobre cómo funciona todo esto no tenga que sentirse el único por tanto tiempo como yo. Si voy a ser una rareza local, prefiero usarlo para volverme menos raro.
+
+## La Infraestructura Que Planificas
+
+Seamos honestos sobre lo sin glamour. El ancho de banda y la energía son realidades alrededor de las cuales arquitectas tu día de una forma en que un ingeniero de SF nunca piensa.
+
+Las ciudades —Panamá, David— son sólidas. Pero "sólido" todavía significa que mantengo un hotspot móvil al alcance del brazo, porque el día en que un ISP decida tener una caída será inevitablemente el día del gran lanzamiento. Pienso en la continuidad de energía. He tomado llamadas importantes amarrado a mi teléfono al lado de una carretera. Nada de esto es una crisis: es solo *planificación*, una capa de paranoia operativa horneada tan profundo en mi rutina que olvido que está ahí hasta que un compañero queda perplejo de que tenga tres conexiones a internet.
+
+<Callout type="warning" title="La Redundancia Es Todo el Trabajo">
+Trabajar remotamente desde la periferia significa tratar tu propia infraestructura como producción: asume que fallará, y ten un respaldo listo antes de que lo haga. Una segunda conexión a internet no es paranoia, es profesionalismo. La caída vendrá en el peor día posible; eso no es pesimismo, son diez años de reconocimiento de patrones.
+</Callout>
+
+## Representando Más Que a Ti Mismo
+
+Hay un peso en esto que me tomó años nombrar. Cuando eres uno de los pocos, no solo te representas a ti mismo en ese standup. Justo o no, eres un dato sobre el talento de toda una región.
+
+Ocasionalmente he tenido que probar competencia a través de una distancia que cargaba suposiciones silenciosas, sobre de dónde viene la ingeniería "de verdad," sobre qué se le puede confiar a alguien que trabaja desde Panamá. No seguido, y rara vez dicho en voz alta. Pero está ahí, en el fondo, y lo sientes.
+
+He hecho las paces con eso decidiendo tratarlo como combustible en lugar de insulto. Cada sistema que envío, cada problema que resuelvo, cada pieza limpia de arquitectura que entrego es un pequeño argumento de que los ingenieros latinoamericanos pertenecen al centro de cómo se construye el software del mundo, no a los bordes, no como la opción barata, sino como pares. Me toca hacer ese argumento con mi trabajo, cada día. Eso no es una carga que resienta. Es un privilegio del que estoy orgulloso.
+
+## Por Qué Vale la Pena
+
+Una década después, esto es lo que sé. Me toca vivir de donde soy —cerca de la familia, de las montañas de Chiriquí, de una cultura que amo— y aun así construir en la frontera de la IA para equipos en cualquier parte del mundo. El internet borró la geografía que alguna vez me habría obligado a elegir entre las dos.
+
+El remote-first, vivido desde la periferia, no es una versión menor de la experiencia de SF. Es una distinta, con sus propias ventajas reales —la zona horaria, las mañanas de trabajo profundo, la disciplina de escritura que la distancia te impone— y sus propios costos reales —el aislamiento, la planificación de infraestructura, el peso ocasional de representar más que a ti mismo. No lo cambiaría.
+
+Son las 7am en Chiriquí. El equipo está despertando a un deploy que salió limpio mientras dormían. Probablemente no piensen de dónde vino. Pero yo sí. Siempre lo hago.
+
+---
+
+*¿Construyendo un equipo distribuido, o trabajando remotamente desde Latinoamérica y quieres comparar notas? [Contáctame](/contact). He estado haciendo esto desde Panamá por una década y siempre me alegra hablar del oficio con gente en la periferia.*

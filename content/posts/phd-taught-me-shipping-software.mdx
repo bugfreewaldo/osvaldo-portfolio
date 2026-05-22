@@ -1,0 +1,106 @@
+---
+title: "What a PhD Taught Me About Shipping Software"
+description: "Doctoral research is slow, uncertain, and drowning in literature. Shipping software is fast and iterative. So it surprised me that the PhD made me a better shipper — by teaching me to frame the question, define success before I start, and write things down."
+date: 2026-05-14
+published: true
+category: "Career"
+tags: ["Career", "PhD", "Research", "Software Engineering", "AI"]
+author: "Osvaldo Restrepo"
+tldr: "Everyone warns you that academia's slowness ruins you for industry's speed. Partly true. But the PhD also handed me habits that make me ship better: framing the question before chasing a solution, reading prior art so I don't reinvent it, defining success criteria upfront (a hypothesis is just an acceptance test), being genuinely comfortable not knowing, and writing things down so future-me and my team aren't guessing. The hard part was un-learning the one thing research rewards above all — perfection — and replacing it with iteration."
+faqs:
+  - question: "Doesn't a PhD make you too slow and perfectionist for industry?"
+    answer: "It can, and that's the part you have to actively un-learn. Research rewards polishing until a hostile reviewer can't find a flaw; shipping rewards getting value to users and iterating. But the underlying research habits — framing problems, defining success, reading prior art — make you faster once you decouple them from the perfectionism."
+  - question: "What's the single most transferable research skill for shipping software?"
+    answer: "Defining success before you start. A research hypothesis is functionally an acceptance test: a falsifiable statement of what 'done' and 'working' mean, written before you build. Bringing that discipline to a feature — deciding upfront how you'll know it worked — prevents enormous amounts of wasted, unfocused effort."
+  - question: "How is this different from the usual PhD-to-industry advice?"
+    answer: "Most of that advice is about what you lose and have to adjust — the speed shock, the identity shift. This is about what quietly transfers and makes you better: the framing, the comfort with uncertainty, the writing. It's the upside, not the culture shock."
+relatedPosts: ["phd-to-industry", "technical-decision-making", "eval-set-is-the-spec"]
+---
+
+The morning I shipped a feature in four hours that a tidier version of me would have spent three days perfecting, I caught myself reaching for an old instinct — and using it for the opposite of what it was built for.
+
+I'm a PhD candidate in AI, with my research focused on medical applications, and I do this from Panama while architecting a sprawling AI product. For a long time I assumed those two lives were at war. The doctorate is slow, uncertain, drowning in literature, allergic to declaring anything finished. Shipping software is fast, opinionated, and finished every single day. The conventional wisdom — which I've written about myself — is that academia gives you bad habits you have to unlearn before you can ship.
+
+That's true. But it's only half the story, and the half nobody tells you is more interesting: the PhD also made me a *better* shipper. Not despite the research training. Because of it. I just had to learn which instincts to keep and which to repurpose.
+
+## Frame the Question Before You Chase a Solution
+
+The first thing a doctorate beats into you is that the question is the hard part. Anybody can produce answers. The skill — the years of it — is figuring out what's actually worth asking, and stating it so precisely that an answer becomes possible.
+
+Engineers are terrible at this, and I include the pre-PhD version of myself. We see a problem and our hands twitch toward the keyboard. We love solutions; we're impatient with questions. So we build elaborate, elegant answers to problems that were never framed correctly, and we discover the misframing only after the elegant thing is deployed and useless.
+
+Research broke that habit. Now, before I open an editor, I make myself write the problem down in one sentence. Not the solution — the problem. "Users abandon onboarding at step three" is a question I can answer. "Build a better onboarding flow" is a solution wearing a problem's clothes, and it'll send me building the wrong thing beautifully.
+
+<Callout type="tip" title="One Sentence Before One Line">
+Before you write any code, write the problem in a single sentence — and make sure it describes a problem, not a solution in disguise. If your sentence contains the answer ('add a cache', 'build a dashboard'), you've skipped the framing. Back up. What's the actual question that answer is responding to?
+</Callout>
+
+## A Hypothesis Is Just an Acceptance Test
+
+This is the one I'd tattoo on a junior engineer if they'd let me.
+
+In research, you don't run an experiment and then decide afterward what would count as success — that's how you fool yourself into seeing results that aren't there. You state the hypothesis first. You define, *before* you collect a single data point, what outcome would confirm it and what outcome would falsify it. Success criteria come before the work, or they're not criteria, they're rationalizations.
+
+It took me an embarrassingly long time to notice this is *exactly* what a good acceptance test is. A hypothesis is a falsifiable statement of what "working" means, written before you build. So is a well-defined ticket. So is an eval set for an AI feature. Same discipline, different vocabulary.
+
+```
+Research                        Shipping software
+────────                        ─────────────────
+Hypothesis (stated first)    →  Acceptance criteria (defined first)
+Experimental design          →  Test plan / eval set
+"What would falsify this?"   →  "How will we know it's broken?"
+Reproducibility              →  CI, deterministic builds
+Literature review            →  Reading prior art / existing libraries
+```
+
+Now I won't start a feature of any size until I can answer "how will I know this worked?" If I can't, I don't have a task yet — I have a vibe. And building toward a vibe is how you end up three weeks deep with no way to tell whether you're done.
+
+## Read the Prior Art So You Don't Reinvent It
+
+A PhD is, in large part, an education in humility delivered through the literature review. You have a brilliant original idea. You read for two weeks. You discover four people had it before you, two of them found it doesn't work, and one wrote a far better version in 2014.
+
+That's not discouraging once you internalize it. It's *liberating*. It means the default assumption — for any problem — is that someone has already thought about this, and my first move should be to go find them rather than to start typing.
+
+In engineering this is the difference between "let me write a custom queue" and "Kafka exists, and so do a hundred people who've already hit the failure modes I'm about to discover the hard way." The literature-review reflex turned me from an engineer who reinvents into one who reaches for prior art first — open-source code, a teammate who solved it last year, a paper, the documentation. Reinventing is occasionally necessary. It should never be the default, and research taught me to feel that in my gut.
+
+## Get Genuinely Comfortable Not Knowing
+
+Here's a thing research gives you that's almost impossible to fake: a high tolerance for not knowing if the thing will work.
+
+You spend years on a question with no guarantee of an answer. Some experiments lead nowhere. Some months are wasted. You learn, deep in your nervous system, that "I don't yet know if this approach is viable" is a normal working state, not an emergency.
+
+That tolerance is gold when you're building something genuinely new — which, in AI right now, is most weeks. I work on systems where nobody can tell me upfront whether an approach will hold up, because nobody's built quite this thing before. Engineers without the research background sometimes find that genuinely distressing. To me it just feels like a Tuesday. The uncertainty isn't a sign something's gone wrong. It's the texture of doing work that hasn't been done.
+
+## Write It Down — For Reasons That Changed
+
+Academia turns you into a compulsive writer-down of things. Lab notebooks, methods sections, the obsessive documentation of what you did so a stranger could reproduce it.
+
+I carried the habit into industry but the *reason* changed, and that change matters. In research I wrote things down to prove I'd done them — documentation as evidence, aimed at a reviewer. In engineering I write things down so that other people can work without me — and so that future-me, who will remember none of this, isn't held hostage by present-me's cleverness. The design doc, the decision record, the honest README. Same compulsion, completely different purpose: not proof, but enablement.
+
+## The Part I Had to Un-Learn
+
+I'd be lying if I painted this as pure transfer. There was one deep instinct I had to fight, and it's the big one.
+
+Research rewards perfection. You polish a paper until Reviewer 2 — and Reviewer 2 is *always* hostile — can't find a flaw. You handle every edge case, anticipate every objection, because in academia an unhandled edge case isn't a follow-up ticket, it's a rejection. Five years of that wires perfectionism straight into your reflexes.
+
+Shipping rewards iteration. Value to a user this week beats a flawless thing next quarter. Real users teach you more in a day than your imagined edge cases teach you in a month. My first instinct — handle everything, ship nothing until it's bulletproof — was actively wrong here, and unlearning it was the hardest professional rewiring I've done.
+
+<Callout type="warning" title="Keep the Rigor, Drop the Perfectionism">
+The trap is thinking rigor and perfectionism are the same thing. They're not. Rigor is defining success clearly and verifying you hit it — keep that, it makes you faster. Perfectionism is refusing to ship until no flaw could possibly remain — drop that, it's the research habit that will quietly bury you in industry.
+</Callout>
+
+The way I finally separated them: rigor is about the *criteria*, perfectionism is about the *finish line*. I kept the discipline of defining precisely what "working" means. I threw out the instinct that nothing can ship until it's beyond all criticism. Define success tightly, then ship the moment you meet it — don't keep polishing past the line you drew.
+
+## What the Two Lives Taught Each Other
+
+A few years in, I've stopped seeing the doctorate and the day job as a tension to manage. They tutor each other.
+
+The PhD taught me to frame the question, define success before I start, read the prior art, sit calmly inside not-knowing, and write things down so the work outlives my memory. Shipping taught me to do all of that *fast*, to draw the finish line close, and to let real users — not an imagined hostile reviewer — be the ones who tell me whether I got it right.
+
+So when I shipped that feature in four hours instead of three days, I wasn't abandoning the researcher in me. I was using his sharpest tool — define success, then go get it — and finally pointing it at the right target. The question was framed. The success criteria were written. I built to exactly that line and not one polish-stroke past it.
+
+That, it turns out, is what a PhD taught me about shipping software. Not to slow down. To know precisely what I'm aiming at — and then to stop the moment I hit it.
+
+---
+
+*Making the research-to-industry jump, or trying to keep your rigor without drowning in perfectionism? [Reach out](/contact). I've lived both sides, and I'm still negotiating the border between them.*

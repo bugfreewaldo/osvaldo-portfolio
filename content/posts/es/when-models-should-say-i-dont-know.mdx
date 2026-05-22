@@ -1,0 +1,103 @@
+---
+title: "Cuándo el Modelo Debería Decir 'No Sé'"
+description: "La incertidumbre calibrada como requisito ético en la IA de alto riesgo. Por qué las respuestas equivocadas con seguridad son el modo de falla más peligroso, cómo detectar la baja confianza, y cómo diseñar el producto para revelar 'no estoy seguro, pregunta a un humano' en vez de farolear."
+date: 2026-05-22
+published: true
+category: "Ética de IA"
+tags: ["Ética de IA", "Incertidumbre", "IA en Salud", "Calibración", "MILA"]
+author: "Osvaldo Restrepo"
+translationOf: "when-models-should-say-i-dont-know"
+tldr: "Lo más peligroso que un sistema de IA puede hacer en un entorno de alto riesgo es estar seguro y equivocado. Una respuesta fluida y de tono seguro que resulta ser falsa se cuela ante humanos cansados precisamente porque no parece un error. La incertidumbre calibrada, la capacidad de detectar cuándo el modelo está sobre terreno inestable y decir 'no estoy seguro, pregunta a un humano', es por lo tanto un requisito ético, no un lujo. Este texto cubre por qué farolear es el peor modo de falla, señales concretas de baja confianza (puntajes de recuperación, abstención, autoconsistencia, modelos verificadores), y cómo diseñar la abstención en el producto para que la respuesta segura sea el camino por defecto."
+faqs:
+  - question: "¿Por qué una respuesta equivocada con seguridad es peor que un error obvio?"
+    answer: "Un error obvio se atrapa, parece equivocado, así que un humano lo verifica. Una respuesta equivocada con seguridad es peligrosa precisamente porque parece correcta. La prosa fluida y segura baja la guardia de quien lee, especialmente la de un médico cansado bajo presión de tiempo. La falla se cuela silenciosamente por la revisión, que es exactamente cuando hace daño. Farolear convierte el error del modelo en el error del usuario."
+  - question: "¿Cómo puedes detectar que un modelo está inseguro?"
+    answer: "Ninguna señal por sí sola es suficiente, así que combinas varias: puntajes de recuperación (¿hay evidencia de respaldo real?), abstención explícita (dejar que el modelo diga que no sabe y premiarlo por ello), autoconsistencia (muestrear varias respuestas y revisar la concordancia), y modelos verificadores (un segundo modelo o reglas que revisan al primero). La baja confianza en estas señales enruta la solicitud a un humano en vez de producir una respuesta."
+  - question: "¿Hacer que un modelo se abstenga no lo hace menos útil?"
+    answer: "Solo si mides la utilidad como 'siempre devuelve algo'. En entornos de alto riesgo, un bien ubicado 'no estoy seguro, aquí está a quién preguntar' es más útil que una conjetura segura, porque preserva la confianza y enruta a la persona a ayuda real. La abstención no es el modelo rindiéndose; es el modelo conociendo sus límites, que es lo que lo hace seguro para confiar en él en absoluto."
+relatedPosts: ["first-ai-feature-should-be-read-only", "responsible-ai-ethical-ml-systems", "why-healthcare-ai-should-be-boring"]
+---
+
+La oración más aterradora que un sistema de IA puede producir es una respuesta segura, fluida y bien formateada que está equivocada. No una confusa. No una alucinación obvia. Una respuesta limpia, plausible y autoritaria que un humano cansado lee, asiente y sobre la que actúa, porque nada en ella parece un error.
+
+Aprendí a temerle a esto del modo difícil. Durante la atención de mi hija, vi afirmaciones seguras, humanas, en ese caso, pasar sin cuestionarse porque se dijeron con certeza. La certeza es persuasiva incluso cuando es infundada, especialmente para alguien exhausto y asustado. Cuando construyo IA para entornos de alto riesgo ahora, la pregunta que me obsesiona no es "¿cómo hago el modelo más inteligente?". Es "¿cómo hago al modelo honesto sobre lo que no sabe?".
+
+La incertidumbre calibrada, la capacidad de reconocer cuándo está sobre terreno inestable y decirlo, no es una funcionalidad que agregas al final. En la IA de alto riesgo es un requisito ético. Un modelo que no puede decir "no sé" no puede ser confiable para decir nada.
+
+## Farolear Es el Peor Modo de Falla
+
+Permíteme ser preciso sobre por qué las respuestas equivocadas con seguridad son singularmente peligrosas, más peligrosas que los errores obvios.
+
+Un error obvio se defiende solo. Parece equivocado, así que un humano pausa, verifica, lo corrige. El error del sistema sigue siendo el error del sistema. Pero una respuesta equivocada con seguridad desarma el mismo paso de revisión que se suponía debía atraparla. La prosa fluida y segura baja la guardia. Mientras más autoritaria suena, menos probable es que una persona ocupada la cuestione. La falla se cuela silenciosamente por el punto de control humano, y en ese momento deja de ser el error del modelo y se vuelve el error del usuario, el médico que actuó sobre ella, el padre que la creyó.
+
+Este es el mismo instinto detrás de mi argumento de que [tu primera funcionalidad de IA debería ser de solo lectura](/es/blog/first-ai-feature-should-be-read-only). Ambos vienen del mismo lugar: el daño que hace una IA rara vez es la falla dramática y obvia. Es la silenciosa y plausible que nadie atrapa. Un modelo que farolea está optimizado para producir exactamente esas.
+
+<Callout type="danger" title="La fluidez no es conocimiento">
+Los modelos de lenguaje están entrenados para sonar correctos, lo cual no es lo mismo que ser correctos. Un modelo no tiene una penalización incorporada por la fabricación segura a menos que diseñes una. Dejado a sus valores predeterminados, llenará un vacío en su conocimiento con el texto que suene más plausible, entregado en el mismo registro seguro que sus respuestas correctas. En un hospital, un tribunal o una cabina de avión, eso no es una peculiaridad. Es un peligro.
+</Callout>
+
+## Detectar la Baja Confianza: Cuatro Señales
+
+La buena noticia es que la incertidumbre es detectable si la instrumentas. Ninguna señal por sí sola es confiable, así que combino varias y trato la concordancia entre ellas como la medida real.
+
+**Puntajes de recuperación.** En un sistema RAG, la primera pregunta es si hay evidencia de respaldo real para la respuesta. Si los documentos recuperados son débilmente relevantes, o los puntajes de similitud más altos son bajos, el modelo está a punto de responder desde su memoria paramétrica en vez de desde fuentes fundamentadas, que es exactamente cuando el riesgo de fabricación se dispara. Una recuperación débil es una fuerte señal de abstención.
+
+**Abstención explícita.** Tienes que darle al modelo permiso de no responder, y premiarlo por usar ese permiso correctamente. Si "no sé" nunca es una salida aceptable, el modelo aprende que cualquier respuesta le gana a ninguna respuesta. Pídelo en el prompt, afínalo, y evalúalo: un modelo que se abstiene correctamente en una pregunta sin respuesta debería puntuar *mejor* que uno que adivina.
+
+**Autoconsistencia.** Muestrea la misma pregunta varias veces. Si el modelo da la misma respuesta de todas las formas en que preguntas, eso es evidencia de estabilidad. Si da cinco respuestas distintas a cinco formulaciones, en realidad no sabe, está generando, y el desacuerdo es tu señal de incertidumbre.
+
+**Modelos verificadores.** Usa un segundo modelo, o un conjunto de reglas deterministas, para revisar la salida del primer modelo contra la fuente o contra restricciones conocidas. Un verificador que no puede confirmar la afirmación es motivo para retenerla. Este es el equivalente en modelos a un segundo médico firmando la aprobación.
+
+```
+                  ┌──────────────────────┐
+   solicitud  ────▶  recuperar evidencia  │
+                  └──────────┬───────────┘
+                             ▼
+                 ¿puntaje de recup. alto? ─no─┐
+                             │ sí             │
+                             ▼                │
+              ¿autoconsistencia concuerda? ─no┤
+                             │ sí             │
+                             ▼                │
+                ¿verificador confirma? ────no─┤
+                             │ sí             │
+                             ▼                ▼
+                   ┌──────────────┐   ┌─────────────────────┐
+                   │  RESPONDER   │   │  ABSTENERSE         │
+                   │ (fundamentada,│  │ "No estoy seguro.   │
+                   │  citar fuente)│  │  Aquí a quién       │
+                   └──────────────┘   │  preguntar"         │
+                                      │ + enrutar a humano  │
+                                      │ + registrar evento  │
+                                      └─────────────────────┘
+```
+
+La forma que importa: cualquier señal débil individual puede enrutar a la abstención. La vara para *responder* es alta; la vara para *deferir* es baja. En entornos de alto riesgo inclinas deliberadamente el sistema hacia "pregunta a un humano", porque el costo de una respuesta equivocada empequeñece el costo de una entrega extra.
+
+## Diseñar la Abstención en el Producto
+
+Detectar la incertidumbre es la mitad de ingeniería. La mitad más difícil es de producto: hacer del "no sé" un resultado de primera clase y bien diseñado en lugar de un callejón sin salida vergonzoso. Algunos principios a los que me aferro.
+
+**La abstención tiene que ser útil, no solo honesta.** "No puedo ayudar con eso" es una puerta cerrada de golpe. "No tengo confianza en este valor, y equivocarlo importa aquí, por favor confirma con el médico de planta" es una entrega. Nombra la incertidumbre, explica por qué importa, y señala al humano correcto. La buena abstención enruta; no solo rechaza.
+
+**Haz de la respuesta segura el camino por defecto, no la excepción.** Si abstenerse requiere que el sistema pelee contra sus propios incentivos, no se abstendrá. Diseña el flujo para que la baja confianza fluya natural y silenciosamente hacia un humano, de la misma manera en que [un sistema aburrido y predecible falla con elegancia hacia manos humanas](/es/blog/why-healthcare-ai-should-be-boring). La abstención debería sentirse como el sistema funcionando correctamente, porque lo es.
+
+**Nunca disfraces la incertidumbre de seguridad.** Este es el pecado capital. El lenguaje evasivo que aun así produce una respuesta de aspecto definitivo ("Probablemente es X") es peor que inútil, da cobertura para actuar mientras finge advertir. Si el sistema está inseguro, la inseguridad debe ser el titular, no una nota al pie.
+
+<Callout type="tip" title="La calibración es una propiedad medible">
+Puedes y debes medir si la confianza de tu sistema coincide con su precisión. Cuando dice que está 90% seguro, ¿acierta cerca del 90% de las veces? Un sistema bien calibrado se gana el derecho a ser creído cuando *está* seguro, precisamente porque se hace a un lado de forma confiable cuando no lo está. La calibración es lo que hace confiables tanto las respuestas como las abstenciones.
+</Callout>
+
+## Por Qué Esto Es Ética, No Solo Ingeniería
+
+Sería fácil archivar todo esto bajo "robustez" o "confiabilidad" y seguir adelante. Lo archivo bajo ética, deliberadamente, y está en el centro de cómo pienso sobre [construir IA responsable](/es/blog/responsible-ai-ethical-ml-systems).
+
+Este es el núcleo moral. Cuando despliegas un sistema que farolea, estás transfiriendo el riesgo del sistema a la persona más vulnerable del bucle, el paciente, el padre, el usuario que confió en la respuesta segura. El exceso de confianza del modelo se vuelve su mal resultado. Elegir no incorporar la abstención es elegir dejar que esa transferencia suceda silenciosamente. Esa es una decisión ética, la nombre alguien así o no.
+
+[MILA](/es/blog/why-i-built-mila) está construida sobre esta convicción. Cuando el contexto clínico es ambiguo, cuando un valor parece inverosímil, cuando el sistema no está seguro de cómo expresar algo de forma segura, no produce un mensaje pulido y espera. Revela la incertidumbre y le pide al médico que la resuelva. Prefiero que MILA diga "necesito un humano aquí" cien veces de más a que envíe con seguridad un mensaje equivocado a un padre asustado. Sé lo que una afirmación segura y equivocada puede costar. No estoy dispuesto a automatizar la producción de ellas.
+
+Lo más confiable que un sistema inteligente puede hacer es conocer el borde de su propio conocimiento y detenerse ahí. No porque sea débil, sino porque más allá de ese borde, la respuesta honesta, la *única* respuesta honesta, es "no sé. Pregunta a un humano".
+
+---
+
+*¿Construyendo IA de alto riesgo y lidiando con la incertidumbre? [Contáctame](/contact). Enseñarle a un modelo a decir 'no sé' es parte del trabajo más importante del campo.*

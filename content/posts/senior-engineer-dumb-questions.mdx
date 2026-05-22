@@ -1,0 +1,115 @@
+---
+title: "The Senior Engineer Who Asks the Dumb Questions"
+description: "Seniority isn't about having all the answers. It's the freedom — and the duty — to ask the obvious question when everyone else is nodding along. Here's why pretending to understand is the most expensive habit in engineering."
+date: 2026-04-26
+published: true
+category: "Career"
+tags: ["Career", "Soft Skills", "Engineering Leadership", "Team Culture", "Communication"]
+author: "Osvaldo Restrepo"
+tldr: "The most valuable thing I do as a senior engineer isn't writing the cleverest code — it's asking the question everyone in the room is too afraid to ask. 'Wait, what does that acronym mean?' and 'why are we doing this at all?' have saved more of my projects than any architecture diagram. Asking the obvious question costs your ego a little and saves your team weeks. And when a senior does it out loud, it gives every junior in the room permission to stop pretending."
+faqs:
+  - question: "Doesn't asking basic questions make a senior engineer look incompetent?"
+    answer: "The opposite, usually. Juniors ask basic questions because they don't know. Seniors ask basic questions because they know how expensive wrong assumptions are. After a few times where your 'dumb' question exposes a real gap, your team learns that when you ask, it's worth stopping to answer."
+  - question: "How do I build the confidence to ask obvious questions in meetings?"
+    answer: "Start by reframing it. You're not admitting ignorance — you're protecting the team from a shared assumption nobody has checked. Phrase it as a service: 'Can we make sure we all mean the same thing by this term?' And remember that if you're confused, at least two other people in the room are too."
+  - question: "What's the cost of pretending to understand something?"
+    answer: "It compounds. You nod, you build on a misunderstanding, and three weeks later the misalignment surfaces as thrown-away work. Pretending to understand isn't free — it just defers the cost and adds interest. The cheapest moment to ask is always now."
+relatedPosts: ["soft-skills-fast-paced-engineering", "junior-to-senior-engineer-growth", "phd-taught-me-shipping-software"]
+---
+
+A few years into my career, I sat in a planning meeting where seven smart people spent forty minutes designing an integration around a system called "the FRS." Everyone nodded. Diagrams got drawn. Tickets got scoped. People volunteered for work.
+
+I had no idea what FRS stood for.
+
+And I said nothing, because I was the new senior hire and admitting I didn't know an acronym everyone else was throwing around felt like career suicide. So I nodded too. I drew on my own little notepad. I volunteered for a ticket.
+
+It took me two days of quiet, panicked archaeology — old Slack threads, a half-dead Confluence page — to figure out that FRS was an internal billing service that had been renamed eighteen months earlier. Half the room was building against a mental model of a system that no longer existed under that name. The forty-minute meeting had been forty minutes of people agreeing about slightly different things.
+
+If one person had said "sorry, what's FRS?" we'd have saved a sprint.
+
+I think about that meeting a lot. Because the person who should have asked was me. I had the most seniority in that room and therefore the most permission to ask. And I wasted it protecting my ego.
+
+## The Job Quietly Changes Underneath You
+
+When you're junior, your value is measured in answers. You close tickets, you fix bugs, you make the thing work. Asking questions feels like a tax you pay until you "get good." So you minimize it. You Google furiously at midnight rather than ask in the channel. You learn to perform competence.
+
+Then one day you're senior, and the value function flips, and nobody tells you.
+
+Because here's what I eventually understood: a senior engineer's most expensive output isn't code. It's the assumptions the whole team builds on. If I let a bad assumption through because I was too proud to question it, I'm not saving face — I'm authoring a defect that ten people will build on top of. My silence has leverage now. So does my confusion.
+
+The senior engineer who asks the dumb question isn't displaying weakness. They're doing the highest-leverage thing available to them: stopping the train before it leaves on the wrong track.
+
+<Callout type="info" title="The Reframe That Changed My Career">
+A junior asks "what does this mean?" because they don't know. A senior asks "what does this mean?" because they know exactly how expensive it is when a room full of people each quietly mean something slightly different. Same words. Completely different act.
+</Callout>
+
+## The Two Questions That Save Projects
+
+Over ten years I've narrowed it down to two questions that do most of the heavy lifting. They sound trivial. They are not.
+
+**Question one: "Wait — what does that mean, exactly?"**
+
+This is the acronym question. The jargon question. The "you keep saying 'the pipeline' and I want to make sure we mean the same pipeline" question. It feels remedial. It is the single most effective tool I have for surfacing the gap between what people are saying and what they think they're agreeing to.
+
+Words like "real-time," "done," "the user," "secure," and "soon" are landmines. Everyone has a definition. Almost nobody has the *same* definition. The senior move is to detonate them safely, on purpose, in the meeting — instead of accidentally, in production.
+
+**Question two: "Why are we doing this at all?"**
+
+This one's scarier, because it sounds like insubordination. But it's the most valuable question in software. I've watched teams spend a quarter building a feature with extraordinary craft, and then ask too late whether anyone wanted it. The "why" question isn't about second-guessing the plan. It's about making sure the plan still maps to a real goal that may have quietly shifted three pivots ago.
+
+```
+What the room hears        What I'm actually doing
+─────────────────          ───────────────────────
+"Dumb question, but..."  →  Checking a shared assumption
+"What's FRS?"            →  Surfacing a hidden knowledge gap
+"Why are we doing this?" →  Re-anchoring work to a real goal
+"Can you walk me        →  Forcing latent complexity into
+ through that again?"        the open where we can see it
+```
+
+## The Ego Cost Is Real (And Worth Paying)
+
+I won't pretend this is free. There is a real, physical discomfort in raising your hand in a room of people who all seem to get it and saying "I don't follow." Your face gets warm. Some part of your brain screams that you're about to be found out as a fraud.
+
+Here's what I've learned to tell that part of my brain: *if you're confused, you are almost never the only one.* Confusion in a meeting is rarely a solo experience. It's a room full of people each privately hoping someone else will ask. When you ask, you'll watch shoulders drop around the table. You'll get the side message afterward: "thank god you asked that, I had no idea either."
+
+The ego cost is real for about four seconds. The cost of pretending is paid for weeks, by everyone.
+
+<Callout type="warning" title="The Most Expensive Habit in Engineering">
+Pretending to understand isn't a neutral act. You nod, you build on the misunderstanding, and the gap surfaces later as rework, as a production incident, as a feature nobody needed. Pretending doesn't make the confusion go away. It just buries it somewhere more expensive to dig out.
+</Callout>
+
+## You're Not Just Asking — You're Modeling
+
+Here's the part that took me longest to appreciate, and it's the part I care about most now.
+
+When a senior engineer asks the obvious question, they hand out permission.
+
+I run a free coding school for kids and teens here in Panama — Waldo's Code Lab — and I see the same dynamic with twelve-year-olds that I see with senior engineers. The moment one kid is brave enough to say "I don't get it," four hands go up. The bravery was contagious; it just needed someone to go first. Juniors on a team are watching you constantly, learning what's safe. If the senior person never admits confusion, the lesson they absorb is: *competence means never not-knowing.* So they learn to fake it. And you've just trained your most junior people in the most expensive habit in engineering.
+
+But if they watch you — the person with the title, the tenure, the supposed authority — calmly say "I don't know what that means, can you explain?", you've taught them something no onboarding doc ever will: that not-knowing out loud is how strong engineers operate. That asking is a senior behavior, not a junior one.
+
+That's psychological safety, and you don't build it with a slogan on the wall. You build it by being the most senior person in the room and being the first to admit you're lost.
+
+## How to Ask Without Derailing
+
+A fair objection: can't this become a way to waste everyone's time, or to look like you didn't do the reading? Yes. So a few rules I hold myself to.
+
+- **Ask the structural question, not the lazy one.** "What does FRS stand for and who owns it?" is structural. "Can someone explain microservices?" in a microservices meeting is homework you should have done. Know the difference.
+- **Frame it as a service to the room.** "Can we make sure we all mean the same thing by 'done' here?" invites the group in. It's not "I'm confused," it's "let's check we're aligned."
+- **Ask early.** The dumb question is cheapest at minute two of the meeting and most expensive at minute forty after the plan is set and people are emotionally invested in it.
+- **Then actually listen.** Asking the question and then half-hearing the answer because you're relieved it's over defeats the entire point.
+
+## What I Tell Engineers I Mentor
+
+Somewhere around the senior level, you stop being paid for what you know and start being paid for what you make safe for the team to figure out. The acronym you don't recognize, the goal that no longer makes sense, the "obvious" thing everyone's nodding at — those are not threats to your credibility. They're the exact places where your seniority is supposed to do its job.
+
+I still get the warm-face feeling before I ask. I've just learned to treat it as a signal rather than a warning. When that little voice says "everyone will think you're slow," that's usually the moment the question most needs asking — because if it's tripping me up, it's quietly tripping up half the room.
+
+The best engineers I've worked with were never the ones who knew everything. They were the ones unafraid to be seen not knowing. They asked the dumb questions out loud, and in doing so they kept entire teams from building beautiful, well-tested, lovingly-documented solutions to the wrong problem.
+
+That FRS meeting cost us a sprint. I've spent the years since making sure I'm the one who raises a hand and says "wait — what does that actually mean?" It's the cheapest insurance in engineering. All it costs is four seconds of pride.
+
+---
+
+*Building a team where people feel safe to ask? [Reach out](/contact). I'm always happy to talk about engineering culture — and to admit how many acronyms I still don't know.*

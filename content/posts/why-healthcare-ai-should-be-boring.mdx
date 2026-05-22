@@ -1,0 +1,128 @@
+---
+title: "Why Healthcare AI Should Be Boring"
+description: "In clinical settings, novelty is a liability. The most valuable healthcare AI is predictable, auditable, narrow, and humble. An argument against demo-driven magic in favor of boring reliability."
+date: 2026-04-30
+published: true
+category: "Healthcare Tech"
+tags: ["Healthcare AI", "Reliability", "Guardrails", "MILA", "Production AI"]
+author: "Osvaldo Restrepo"
+tldr: "The AI that gets to matter in a hospital is not the one that dazzles in a demo. It is the one that does a narrow job the same way every time, logs what it did, fails loudly into human hands, and never surprises the people who depend on it. Boring is not a compromise. In high-stakes settings, boring is the feature. MILA is built that way on purpose: a human approves every message, the scope is deliberately small, and the system would rather do less than guess."
+faqs:
+  - question: "Doesn't 'boring' just mean less capable?"
+    answer: "No. Boring means predictable. A boring system can be extremely sophisticated under the hood, retrieval, verification, calibration, but it behaves consistently from the outside. The capability goes into making the same correct thing happen every time, not into expanding the surface area of things that can go wrong. In clinical software, consistency is the capability that matters most."
+  - question: "What does 'narrow scope' look like in practice?"
+    answer: "It means the system does one well-defined task and explicitly refuses everything else. MILA drafts neonatal update messages for clinician review. It does not diagnose, dose, triage, or answer open medical questions. When asked to step outside its lane, it declines and points to a human. A narrow tool you can trust beats a general tool you have to babysit."
+  - question: "How do you keep a deterministic feel on top of a probabilistic model?"
+    answer: "You wrap the model in deterministic scaffolding: fixed input schemas, validated outputs, hard guardrails that reject anything out of bounds, a required human approval step, and complete audit logging. The model proposes; the system constrains; a person decides. The unpredictable part is contained inside a predictable shell."
+relatedPosts: ["first-ai-feature-should-be-read-only", "when-models-should-say-i-dont-know", "why-i-built-mila"]
+---
+
+The most impressive AI demo I ever saw was for a clinical product. The model read a messy chart, summarized it, suggested next steps, and answered follow-up questions in fluent, confident prose. The room applauded. I sat there with my stomach knotting, because I had seen what I lost to a system that was confident and wrong.
+
+I build healthcare AI for a living, and I have come to believe something that sounds like an insult: the best healthcare AI is boring. Not boring as in lazy or low-effort. Boring as in predictable. Boring as in it does the same correct thing every time, tells you exactly what it did, and steps aside the moment a human should be in charge.
+
+In most software, novelty is a selling point. In a clinical setting, novelty is a liability.
+
+## Demos Optimize for the Wrong Thing
+
+A demo is a performance. It is tuned to produce a feeling of magic in two minutes in front of people who will not be using the tool at 3 a.m. with a deteriorating patient. Demos reward breadth ("look at everything it can do"), surprise ("watch this"), and fluency ("read how natural that sounds"). Every one of those is a hazard in production healthcare.
+
+Breadth means more surface area where the system can fail in ways no one anticipated. Surprise means clinicians cannot build a stable mental model of what the tool will do, which means they cannot trust it. Fluency means wrong answers arrive wearing the costume of right ones. The smoother the prose, the harder it is to notice that the content underneath is hollow or false.
+
+I have written before that [your first AI feature should be read-only](/blog/first-ai-feature-should-be-read-only). This is the same instinct, scaled up to a philosophy. You earn the right to do more by first doing one thing so reliably that people stop thinking about whether to trust it.
+
+<Callout type="warning" title="The demo-to-disaster pipeline">
+A model that wows a purchasing committee and a model that survives a night shift are optimized for different things. If your evaluation looks like a demo, you are selecting for the exact qualities, breadth, surprise, fluent confidence, that hurt you most when a real patient is involved. Evaluate for the boring case, not the dazzling one.
+</Callout>
+
+## What Boring Actually Means
+
+Boring is not the absence of engineering. It is where the engineering goes. Four properties make a healthcare AI system boring in the way I mean:
+
+**Predictable.** Given the same input, it behaves the same way. No mystery modes, no creative reinterpretation of its own job. A clinician should be able to predict what the tool will do before it does it.
+
+**Auditable.** Every action it takes is logged with enough context to reconstruct exactly what happened and why. If someone asks "what did the system tell that family, and on what basis?" the answer is a query, not a shrug.
+
+**Narrow.** It does one well-defined job and explicitly refuses the rest. The refusal is a feature, not a gap.
+
+**Humble.** When it is unsure, it says so and hands off to a person. It would rather do less than guess. I have a whole separate argument about [when a model should say I don't know](/blog/when-models-should-say-i-dont-know), because confident wrong answers are the failure mode that frightens me most.
+
+## A Predictable Shell Around a Probabilistic Core
+
+The obvious objection: language models are probabilistic. How do you make something boring out of something inherently unpredictable?
+
+You do not make the model deterministic. You make the system around it deterministic. The model proposes; the scaffolding constrains; a human decides.
+
+```
+                 ┌─────────────────────────────┐
+  validated      │   DETERMINISTIC SHELL        │
+  input    ──────▶  - fixed input schema        │
+                 │  - allow-list of tasks       │
+                 │                              │
+                 │   ┌──────────────────────┐   │
+                 │   │  PROBABILISTIC CORE   │   │
+                 │   │  (the language model) │   │
+                 │   │  proposes a draft     │   │
+                 │   └──────────┬───────────┘   │
+                 │              │               │
+                 │   - output schema validation │
+                 │   - hard guardrails / filters│
+                 │   - confidence + abstention  │
+                 └──────────────┬───────────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │  HUMAN APPROVAL STEP   │   ← always
+                    │  clinician edits/sends │
+                    └───────────┬───────────┘
+                                │
+                                ▼
+                       audit log (immutable)
+```
+
+The unpredictable part is sealed inside a predictable container. The model is allowed to be creative inside a box whose walls do not move. Anything that tries to escape the box, an out-of-scope request, a malformed output, a low-confidence answer, hits a wall and routes to a human instead of leaking into the patient's experience.
+
+## How MILA Is Built to Be Boring
+
+[MILA](/blog/why-i-built-mila) is a neonatal communication assistant. It helps NICU staff turn clinical updates into clear, compassionate messages for parents. It is named after my daughter, who was born premature and whom we lost, in part to a system that could not keep track of its own information. So I do not get to be casual about how this thing behaves.
+
+Here is what boring looks like in MILA's design.
+
+**A human approves every single message.** There is no autonomous send. Ever. The model drafts; a clinician reads, edits if needed, and approves. The approval is one click on the happy path, because [respecting clinician time](/blog/healthcare-software-ux) matters, but it is never zero clicks. The human is not a formality. The human is the safety mechanism.
+
+**The scope is almost insultingly narrow.** MILA writes update messages. It does not diagnose. It does not suggest doses. It does not triage. It does not answer open-ended medical questions. When someone tries to push it outside that lane, it declines and says who to ask instead. A tool that confidently refuses is safer than a tool that helpfully improvises.
+
+**It would rather abstain than guess.** If the input is ambiguous, if a value looks implausible, if the clinical context is missing, MILA does not paper over the gap with fluent prose. It surfaces the uncertainty and asks the clinician to resolve it. Silence and "I need a human here" are valid, designed outputs.
+
+**Everything is logged.** Every draft, every edit, every approval, every refusal, with timestamps and the inputs that produced them. If a family ever asks what they were told and why, there is an answer. Audit logging is not bureaucratic overhead. In healthcare it is a form of respect.
+
+<Callout type="info" title="Boring is a promise to the person on the other end">
+Every design choice in MILA traces back to one question: would this have helped my family have a clearer, kinder conversation with Mila's care team? A predictable, auditable, narrow, humble system is not a technical preference. It is a promise to the exhausted parent who will read whatever this thing produces.
+</Callout>
+
+## Graceful Failure Is a Design Surface
+
+Most teams design the happy path and treat failure as an exception to handle later. In high-stakes AI, failure is a first-class design surface. The question is never "will it fail?" It will. The question is "what does it do when it fails, and who finds out?"
+
+Boring failure looks like this:
+
+- The system detects it cannot do the job well, low retrieval confidence, an out-of-scope request, a guardrail trip.
+- It stops. It does not improvise a plausible-sounding answer to fill the silence.
+- It says, plainly, that it cannot help with this and routes to a human.
+- It logs the event so the pattern is visible and fixable.
+
+Compare that to the exciting failure: the system does not know it is failing, produces a fluent and wrong message, a tired clinician approves it under time pressure, and a parent receives information that is subtly off. No alarm goes off. The damage is quiet. That is the failure mode that keeps me up.
+
+A boring system fails loudly and early. An exciting one fails quietly and late.
+
+## "But Boring Doesn't Win Deals"
+
+Sometimes it does not, at first. Boring does not dazzle a buyer in a fifteen-minute pitch. But boring is what is still installed three years later, because the clinicians did not rip it out, because it never embarrassed anyone, because it earned a quiet kind of trust that flashy tools never reach.
+
+The same lesson runs through everything I have learned building clinical software: in consumer apps you can chase delight, but in healthcare you chase trust, and [trust is earned through reliability](/blog/healthcare-software-ux), speed, and respect. The product that wins the long game is the one that stops being interesting because it just works.
+
+Make the demo a little less magical. Make the night shift a lot more survivable. In healthcare, that is not a trade-off. That is the whole job.
+
+---
+
+*Building clinical AI and trying to make it boring on purpose? [Reach out](/contact). The unglamorous work is the work that matters.*

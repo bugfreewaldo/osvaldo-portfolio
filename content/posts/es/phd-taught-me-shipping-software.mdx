@@ -1,0 +1,107 @@
+---
+title: "Lo Que un Doctorado Me Enseñó Sobre Enviar Software"
+description: "La investigación doctoral es lenta, incierta y ahogada en literatura. Enviar software es rápido e iterativo. Por eso me sorprendió que el doctorado me volviera mejor enviando, enseñándome a enmarcar la pregunta, definir el éxito antes de empezar, y escribir las cosas."
+date: 2026-05-14
+published: true
+category: "Carrera"
+tags: ["Carrera", "Doctorado", "Investigación", "Ingeniería de Software", "IA"]
+author: "Osvaldo Restrepo"
+translationOf: "phd-taught-me-shipping-software"
+tldr: "Todos te advierten que la lentitud de la academia te arruina para la velocidad de la industria. En parte es cierto. Pero el doctorado también me dio hábitos que me hacen enviar mejor: enmarcar la pregunta antes de perseguir una solución, leer el estado del arte para no reinventarlo, definir criterios de éxito por adelantado (una hipótesis es solo un test de aceptación), estar genuinamente cómodo sin saber, y escribir las cosas para que mi yo futuro y mi equipo no estén adivinando. La parte difícil fue desaprender lo único que la investigación premia por encima de todo —la perfección— y reemplazarlo con iteración."
+faqs:
+  - question: "¿Un doctorado no te vuelve demasiado lento y perfeccionista para la industria?"
+    answer: "Puede hacerlo, y esa es la parte que tienes que desaprender activamente. La investigación premia pulir hasta que un revisor hostil no encuentre una falla; enviar premia llevar valor a los usuarios e iterar. Pero los hábitos de investigación subyacentes —enmarcar problemas, definir el éxito, leer el estado del arte— te hacen más rápido una vez que los desacoplas del perfeccionismo."
+  - question: "¿Cuál es la habilidad de investigación más transferible para enviar software?"
+    answer: "Definir el éxito antes de empezar. Una hipótesis de investigación es funcionalmente un test de aceptación: una declaración falsable de lo que significa 'listo' y 'funcionando', escrita antes de construir. Llevar esa disciplina a una funcionalidad —decidir por adelantado cómo sabrás que funcionó— previene cantidades enormes de esfuerzo desperdiciado y sin foco."
+  - question: "¿En qué se diferencia esto del típico consejo de doctorado-a-industria?"
+    answer: "La mayoría de ese consejo es sobre lo que pierdes y debes ajustar: el choque de velocidad, el cambio de identidad. Esto es sobre lo que se transfiere en silencio y te vuelve mejor: el enmarcado, la comodidad con la incertidumbre, la escritura. Es la ventaja, no el choque cultural."
+relatedPosts: ["phd-to-industry", "technical-decision-making", "eval-set-is-the-spec"]
+---
+
+La mañana en que envié una funcionalidad en cuatro horas que una versión más ordenada de mí habría pasado tres días perfeccionando, me atrapé alcanzando un viejo instinto, y usándolo para lo opuesto de aquello para lo que fue construido.
+
+Soy candidato a doctorado en IA, con mi investigación enfocada en aplicaciones médicas, y hago esto desde Panamá mientras arquitecto un producto de IA extenso. Por mucho tiempo asumí que esas dos vidas estaban en guerra. El doctorado es lento, incierto, ahogado en literatura, alérgico a declarar algo terminado. Enviar software es rápido, opinado, y está terminado todos los días. La sabiduría convencional —sobre la que yo mismo he escrito— es que la academia te da malos hábitos que tienes que desaprender antes de poder enviar.
+
+Eso es cierto. Pero es solo la mitad de la historia, y la mitad que nadie te cuenta es más interesante: el doctorado también me volvió un *mejor* enviador. No a pesar del entrenamiento de investigación. Por causa de él. Solo tuve que aprender qué instintos conservar y cuáles reutilizar.
+
+## Enmarca la Pregunta Antes de Perseguir una Solución
+
+Lo primero que un doctorado te mete a golpes es que la pregunta es la parte difícil. Cualquiera puede producir respuestas. La habilidad —los años de ella— es averiguar qué vale realmente la pena preguntar, y plantearlo con tanta precisión que una respuesta se vuelva posible.
+
+Los ingenieros son terribles en esto, y incluyo a la versión pre-doctorado de mí mismo. Vemos un problema y nuestras manos se sacuden hacia el teclado. Amamos las soluciones; somos impacientes con las preguntas. Así que construimos respuestas elaboradas y elegantes a problemas que nunca fueron enmarcados correctamente, y descubrimos el mal enmarcado solo después de que la cosa elegante está desplegada e inútil.
+
+La investigación rompió ese hábito. Ahora, antes de abrir un editor, me obligo a escribir el problema en una oración. No la solución: el problema. "Los usuarios abandonan el onboarding en el paso tres" es una pregunta que puedo responder. "Construye un mejor flujo de onboarding" es una solución vestida de problema, y me mandará a construir lo equivocado de forma hermosa.
+
+<Callout type="tip" title="Una Oración Antes de Una Línea">
+Antes de escribir cualquier código, escribe el problema en una sola oración, y asegúrate de que describa un problema, no una solución disfrazada. Si tu oración contiene la respuesta ('agregar un caché', 'construir un dashboard'), te saltaste el enmarcado. Retrocede. ¿Cuál es la pregunta real a la que esa respuesta está respondiendo?
+</Callout>
+
+## Una Hipótesis Es Solo un Test de Aceptación
+
+Esta es la que le tatuaría a un ingeniero junior si me dejara.
+
+En investigación, no corres un experimento y luego decides después qué contaría como éxito; así es como te engañas viendo resultados que no existen. Planteas la hipótesis primero. Defines, *antes* de recolectar un solo dato, qué resultado la confirmaría y qué resultado la falsaría. Los criterios de éxito vienen antes del trabajo, o no son criterios, son racionalizaciones.
+
+Me tomó un tiempo vergonzosamente largo notar que esto es *exactamente* lo que es un buen test de aceptación. Una hipótesis es una declaración falsable de lo que significa "funcionando," escrita antes de construir. También lo es un ticket bien definido. También lo es un eval set para una funcionalidad de IA. La misma disciplina, vocabulario distinto.
+
+```
+Investigación                  Enviar software
+─────────────                  ───────────────
+Hipótesis (planteada antes) →  Criterios de aceptación (definidos antes)
+Diseño experimental         →  Plan de tests / eval set
+"¿Qué falsaría esto?"       →  "¿Cómo sabremos que se rompió?"
+Reproducibilidad            →  CI, builds deterministas
+Revisión de literatura      →  Leer el estado del arte / librerías
+```
+
+Ahora no empiezo una funcionalidad de ningún tamaño hasta que puedo responder "¿cómo sabré que esto funcionó?" Si no puedo, no tengo una tarea todavía, tengo una vibra. Y construir hacia una vibra es como acabas tres semanas adentro sin forma de saber si terminaste.
+
+## Lee el Estado del Arte Para No Reinventarlo
+
+Un doctorado es, en gran parte, una educación en humildad entregada a través de la revisión de literatura. Tienes una idea original brillante. Lees por dos semanas. Descubres que cuatro personas la tuvieron antes, dos de ellas encontraron que no funciona, y una escribió una versión mucho mejor en 2014.
+
+Eso no es desalentador una vez que lo internalizas. Es *liberador*. Significa que la suposición por defecto —para cualquier problema— es que alguien ya pensó en esto, y mi primer movimiento debería ser ir a encontrarlos en lugar de empezar a teclear.
+
+En ingeniería esta es la diferencia entre "déjame escribir una cola custom" y "Kafka existe, y también cien personas que ya chocaron con los modos de falla que estoy a punto de descubrir por las malas." El reflejo de revisar la literatura me convirtió de un ingeniero que reinventa en uno que alcanza primero el estado del arte: código open source, un compañero que lo resolvió el año pasado, un paper, la documentación. Reinventar es ocasionalmente necesario. Nunca debería ser lo por defecto, y la investigación me enseñó a sentir eso en las tripas.
+
+## Vuélvete Genuinamente Cómodo Sin Saber
+
+Aquí hay algo que la investigación te da que es casi imposible de fingir: una alta tolerancia a no saber si la cosa funcionará.
+
+Pasas años en una pregunta sin garantía de una respuesta. Algunos experimentos no llevan a ningún lado. Algunos meses se desperdician. Aprendes, en lo profundo de tu sistema nervioso, que "todavía no sé si este enfoque es viable" es un estado de trabajo normal, no una emergencia.
+
+Esa tolerancia es oro cuando estás construyendo algo genuinamente nuevo, lo cual, en IA ahora mismo, es la mayoría de las semanas. Trabajo en sistemas donde nadie me puede decir por adelantado si un enfoque aguantará, porque nadie ha construido exactamente esta cosa antes. Los ingenieros sin el trasfondo de investigación a veces encuentran eso genuinamente angustiante. Para mí solo se siente como un martes. La incertidumbre no es señal de que algo salió mal. Es la textura de hacer trabajo que no se ha hecho.
+
+## Escribe las Cosas — Por Razones Que Cambiaron
+
+La academia te convierte en un escritor compulsivo de cosas. Cuadernos de laboratorio, secciones de métodos, la documentación obsesiva de lo que hiciste para que un extraño pudiera reproducirlo.
+
+Llevé el hábito a la industria pero la *razón* cambió, y ese cambio importa. En investigación escribía las cosas para probar que las había hecho —documentación como evidencia, dirigida a un revisor. En ingeniería escribo las cosas para que otra gente pueda trabajar sin mí, y para que mi yo futuro, que no recordará nada de esto, no quede rehén de la inteligencia de mi yo presente. El documento de diseño, el registro de decisiones, el README honesto. La misma compulsión, propósito completamente distinto: no prueba, sino habilitación.
+
+## La Parte Que Tuve Que Desaprender
+
+Estaría mintiendo si pintara esto como pura transferencia. Hubo un instinto profundo que tuve que combatir, y es el grande.
+
+La investigación premia la perfección. Pules un paper hasta que el Revisor 2 —y el Revisor 2 *siempre* es hostil— no pueda encontrar una falla. Manejas cada caso límite, anticipas cada objeción, porque en la academia un caso límite sin manejar no es un ticket de seguimiento, es un rechazo. Cinco años de eso cablean el perfeccionismo directo en tus reflejos.
+
+Enviar premia la iteración. Valor para un usuario esta semana le gana a una cosa impecable el próximo trimestre. Los usuarios reales te enseñan más en un día de lo que tus casos límite imaginados te enseñan en un mes. Mi primer instinto —manejar todo, no enviar nada hasta que sea a prueba de balas— estaba activamente equivocado aquí, y desaprenderlo fue el recableado profesional más difícil que he hecho.
+
+<Callout type="warning" title="Conserva el Rigor, Suelta el Perfeccionismo">
+La trampa es pensar que rigor y perfeccionismo son lo mismo. No lo son. El rigor es definir el éxito con claridad y verificar que lo lograste; consérvalo, te hace más rápido. El perfeccionismo es negarte a enviar hasta que no pueda quedar ninguna falla; suéltalo, es el hábito de investigación que silenciosamente te enterrará en la industria.
+</Callout>
+
+La forma en que finalmente los separé: el rigor es sobre los *criterios*, el perfeccionismo es sobre la *línea de meta*. Conservé la disciplina de definir con precisión qué significa "funcionando." Tiré el instinto de que nada puede enviarse hasta estar más allá de toda crítica. Define el éxito de forma estrecha, luego envía en el momento en que lo cumplas; no sigas puliendo más allá de la línea que dibujaste.
+
+## Lo Que las Dos Vidas Se Enseñaron Una a la Otra
+
+Unos años después, dejé de ver el doctorado y el trabajo diario como una tensión que manejar. Se tutelan mutuamente.
+
+El doctorado me enseñó a enmarcar la pregunta, definir el éxito antes de empezar, leer el estado del arte, sentarme con calma dentro del no-saber, y escribir las cosas para que el trabajo sobreviva a mi memoria. Enviar me enseñó a hacer todo eso *rápido*, a dibujar la línea de meta cerca, y a dejar que los usuarios reales —no un revisor hostil imaginado— sean los que me digan si lo hice bien.
+
+Así que cuando envié esa funcionalidad en cuatro horas en lugar de tres días, no estaba abandonando al investigador en mí. Estaba usando su herramienta más afilada —define el éxito, luego ve a conseguirlo— y finalmente apuntándola al objetivo correcto. La pregunta estaba enmarcada. Los criterios de éxito estaban escritos. Construí exactamente hasta esa línea y ni un brochazo de pulido más allá.
+
+Eso, resulta, es lo que un doctorado me enseñó sobre enviar software. No a desacelerar. A saber con precisión a qué le estoy apuntando, y luego a parar en el momento en que le doy.
+
+---
+
+*¿Haciendo el salto de investigación a industria, o tratando de conservar tu rigor sin ahogarte en el perfeccionismo? [Contáctame](/contact). He vivido ambos lados, y todavía estoy negociando la frontera entre ellos.*

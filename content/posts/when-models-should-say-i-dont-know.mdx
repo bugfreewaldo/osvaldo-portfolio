@@ -1,0 +1,101 @@
+---
+title: "When the Model Should Say 'I Don't Know'"
+description: "Calibrated uncertainty as an ethical requirement in high-stakes AI. Why confident wrong answers are the most dangerous failure mode, how to detect low confidence, and how to design the product to surface 'I'm not sure, ask a human' instead of bluffing."
+date: 2026-05-22
+published: true
+category: "AI Ethics"
+tags: ["AI Ethics", "Uncertainty", "Healthcare AI", "Calibration", "MILA"]
+author: "Osvaldo Restrepo"
+tldr: "The most dangerous thing an AI system can do in a high-stakes setting is be confidently wrong. A fluent, certain-sounding answer that happens to be false slips past tired humans precisely because it does not look like an error. Calibrated uncertainty, the ability to detect when the model is on shaky ground and say 'I'm not sure, ask a human', is therefore an ethical requirement, not a nice-to-have. This post covers why bluffing is the worst failure mode, concrete signals for low confidence (retrieval scores, abstention, self-consistency, verifier models), and how to design abstention into the product so the safe answer is the default."
+faqs:
+  - question: "Why is a confident wrong answer worse than an obvious error?"
+    answer: "An obvious error gets caught, it looks wrong, so a human double-checks it. A confident wrong answer is dangerous precisely because it looks right. Fluent, certain prose lowers the reader's guard, especially a tired clinician under time pressure. The failure slips through review silently, which is exactly when it does harm. Bluffing converts a model's mistake into the user's mistake."
+  - question: "How can you detect that a model is uncertain?"
+    answer: "No single signal is sufficient, so you combine several: retrieval scores (is there real supporting evidence?), explicit abstention (letting the model say it doesn't know and rewarding that), self-consistency (sampling multiple answers and checking agreement), and verifier models (a second model or rules that check the first). Low confidence on these routes the request to a human instead of producing an answer."
+  - question: "Doesn't making a model abstain make it less useful?"
+    answer: "Only if you measure usefulness as 'always returns something.' In high-stakes settings, a well-placed 'I'm not sure, here's who to ask' is more useful than a confident guess, because it preserves trust and routes the person to real help. Abstention is not the model giving up; it is the model knowing its limits, which is what makes it safe to rely on at all."
+relatedPosts: ["first-ai-feature-should-be-read-only", "responsible-ai-ethical-ml-systems", "why-healthcare-ai-should-be-boring"]
+---
+
+The scariest sentence an AI system can produce is a confident, fluent, well-formatted answer that is wrong. Not a garbled one. Not an obvious hallucination. A clean, plausible, authoritative answer that a tired human reads, nods at, and acts on, because nothing about it looks like a mistake.
+
+I learned to fear this the hard way. During my daughter's care, I watched confident assertions, human ones, in that case, go unquestioned because they were stated with certainty. Certainty is persuasive even when it is unfounded, especially to someone exhausted and frightened. When I build AI for high-stakes settings now, the question I obsess over is not "how do I make the model smarter?" It is "how do I make the model honest about what it does not know?"
+
+Calibrated uncertainty, the ability to recognize when it is on shaky ground and say so, is not a feature you add at the end. In high-stakes AI it is an ethical requirement. A model that cannot say "I don't know" cannot be trusted to say anything.
+
+## Bluffing Is the Worst Failure Mode
+
+Let me be precise about why confident wrong answers are uniquely dangerous, more dangerous than obvious errors.
+
+An obvious error is self-defending. It looks wrong, so a human pauses, double-checks, corrects it. The system's mistake stays the system's mistake. But a confident wrong answer disarms the very review step that was supposed to catch it. Fluent, certain prose lowers your guard. The more authoritative it sounds, the less likely a busy person is to challenge it. The failure slips silently through the human checkpoint, and at that moment it stops being the model's mistake and becomes the user's mistake, the clinician who acted on it, the parent who believed it.
+
+This is the same instinct behind my argument that [your first AI feature should be read-only](/blog/first-ai-feature-should-be-read-only). Both come from the same place: the damage an AI does is rarely the dramatic, obvious failure. It is the quiet, plausible one that no one catches. A model that bluffs is optimized to produce exactly those.
+
+<Callout type="danger" title="Fluency is not knowledge">
+Language models are trained to sound right, which is not the same as being right. A model has no built-in penalty for confident fabrication unless you design one. Left to its defaults, it will fill a gap in its knowledge with the most plausible-sounding text, delivered in the same confident register as its correct answers. In a hospital, a courtroom, or a cockpit, that is not a quirk. It is a hazard.
+</Callout>
+
+## Detecting Low Confidence: Four Signals
+
+The good news is that uncertainty is detectable if you instrument for it. No single signal is reliable alone, so I combine several and treat agreement among them as the real measure.
+
+**Retrieval scores.** In a RAG system, the first question is whether there is actual supporting evidence for the answer. If the retrieved documents are weakly relevant, or the top similarity scores are low, the model is about to answer from its parametric memory rather than from grounded sources, which is exactly when fabrication risk spikes. Weak retrieval is a strong abstention signal.
+
+**Explicit abstention.** You have to give the model permission to not answer, and reward it for using that permission correctly. If "I don't know" is never an acceptable output, the model learns that any answer beats no answer. Prompt for it, fine-tune for it, and evaluate it: a model that correctly abstains on an unanswerable question should score *better* than one that guesses.
+
+**Self-consistency.** Sample the same question several times. If the model gives the same answer every way you ask, that is evidence of stability. If it gives five different answers to five phrasings, it does not actually know, it is generating, and the disagreement is your uncertainty signal.
+
+**Verifier models.** Use a second model, or a set of deterministic rules, to check the first model's output against the source or against known constraints. A verifier that cannot confirm the claim is grounds to withhold it. This is the model equivalent of a second clinician signing off.
+
+```
+                  ┌──────────────────────┐
+   user request ──▶  retrieve evidence    │
+                  └──────────┬───────────┘
+                             ▼
+                   retrieval score high? ──no──┐
+                             │ yes              │
+                             ▼                  │
+                   self-consistency agree? ─no──┤
+                             │ yes              │
+                             ▼                  │
+                   verifier confirms? ─────no───┤
+                             │ yes              │
+                             ▼                  ▼
+                   ┌──────────────┐   ┌─────────────────────┐
+                   │  ANSWER      │   │  ABSTAIN            │
+                   │  (grounded,  │   │  "I'm not sure.     │
+                   │   cite source)│  │   Here's who to ask"│
+                   └──────────────┘   │  + route to human   │
+                                      │  + log the event    │
+                                      └─────────────────────┘
+```
+
+The shape that matters: any single weak signal can route to abstention. The bar to *answer* is high; the bar to *defer* is low. In high-stakes settings you deliberately bias the system toward "ask a human," because the cost of a wrong answer dwarfs the cost of an extra handoff.
+
+## Designing Abstention Into the Product
+
+Detecting uncertainty is the engineering half. The harder half is product: making "I don't know" a first-class, well-designed outcome rather than an embarrassing dead end. A few principles I hold to.
+
+**The abstention has to be useful, not just honest.** "I cannot help with that" is a door slammed shut. "I'm not confident about this value, and getting it wrong matters here, please confirm with the attending" is a handoff. It names the uncertainty, explains why it matters, and points to the right human. Good abstention routes; it does not just refuse.
+
+**Make the safe answer the default path, not the exception.** If abstaining requires the system to fight its own incentives, it will not abstain. Design the flow so that low confidence naturally and quietly flows to a human, the same way [a boring, predictable system fails gracefully into human hands](/blog/why-healthcare-ai-should-be-boring). Abstention should feel like the system working correctly, because it is.
+
+**Never disguise uncertainty as confidence.** This is the cardinal sin. Hedging language that still produces a definite-looking answer ("It's probably X") is worse than useless, it gives cover to act while pretending to warn. If the system is unsure, the unsureness must be the headline, not a footnote.
+
+<Callout type="tip" title="Calibration is a measurable property">
+You can and should measure whether your system's confidence matches its accuracy. When it says it is 90% sure, is it right about 90% of the time? A well-calibrated system earns the right to be believed when it *is* confident, precisely because it reliably steps back when it is not. Calibration is what makes both the answers and the abstentions trustworthy.
+</Callout>
+
+## Why This Is Ethics, Not Just Engineering
+
+It would be easy to file all of this under "robustness" or "reliability" and move on. I file it under ethics, deliberately, and it sits at the center of how I think about [building responsible AI](/blog/responsible-ai-ethical-ml-systems).
+
+Here is the moral core. When you deploy a system that bluffs, you are transferring risk from the system to the most vulnerable person in the loop, the patient, the parent, the user who trusted the confident answer. The model's overconfidence becomes their bad outcome. Choosing not to build in abstention is choosing to let that transfer happen quietly. That is an ethical choice, whether or not anyone names it as one.
+
+[MILA](/blog/why-i-built-mila) is built on this conviction. When the clinical context is ambiguous, when a value looks implausible, when the system is not sure how to phrase something safely, it does not produce a smooth message and hope. It surfaces the uncertainty and asks the clinician to resolve it. I would rather MILA say "I need a human here" a hundred times too often than have it confidently send one wrong message to a frightened parent. I know what a confident wrong assertion can cost. I am not willing to automate the production of them.
+
+The most trustworthy thing an intelligent system can do is know the edge of its own knowledge and stop there. Not because it is weak, but because beyond that edge, the honest answer, the *only* honest answer, is "I don't know. Ask a human."
+
+---
+
+*Building high-stakes AI and wrestling with uncertainty? [Reach out](/contact). Teaching a model to say 'I don't know' is some of the most important work in the field.*

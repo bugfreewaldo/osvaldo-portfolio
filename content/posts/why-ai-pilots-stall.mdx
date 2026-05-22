@@ -1,0 +1,79 @@
+---
+title: "The Demo That Lies: Why AI Pilots Stall Before Production"
+description: "The 90%-impressive AI demo is a trap. The last 10% — edge cases, integration, trust, security, change management — is where pilots quietly die in 'pilot purgatory.' Here's how to escape it."
+date: 2026-05-07
+published: true
+category: "AI Product"
+tags: ["AI Product", "Pilots", "Production", "Change Management", "Founders"]
+author: "Osvaldo Restrepo"
+tldr: "Most AI pilots don't fail in the demo — they fail after it. The demo nails the happy path and everyone gets excited, but the boring last 10% (edge cases, real integration, security review, trust, change management) is where pilots stall out into 'pilot purgatory': always promising, never shipping. I've watched it happen and caused it myself. The fix isn't a better model. It's scoping to one real workflow, defining production criteria before you build, doing the unglamorous 10% first, and designing for the failure cases the demo conveniently skipped."
+faqs:
+  - question: "Why do so many AI pilots fail to reach production?"
+    answer: "Because the demo only proves the easy 90% — the happy path on curated inputs. Production requires the hard 10%: handling messy real data, integrating with existing systems, passing security and compliance review, earning user trust, and managing the change in how people work. Pilots stall when teams treat the impressive demo as evidence the hard part is done, when in fact it has barely started."
+  - question: "What is 'pilot purgatory'?"
+    answer: "It's the state where an AI project lives indefinitely as a successful-looking pilot that never graduates to production. Stakeholders keep funding it because the demo is impressive, but it never handles enough real-world cases to be trusted with real work. It's perpetually 90% done, which means it's actually nowhere near done."
+  - question: "How do you keep an AI pilot from stalling?"
+    answer: "Scope it to one real, end-to-end workflow instead of a flashy capability. Write down the production acceptance criteria before you build anything. Build the boring infrastructure — error handling, logging, integration, fallbacks — first instead of last. And explicitly design for the failure cases the demo skips, because in production those cases are most of the work."
+relatedPosts: ["first-ai-feature-should-be-read-only", "build-buy-wrap-ai-features", "technical-decision-making"]
+---
+
+I have a confession that should probably worry the people who've hired me: I have given demos that lied. Not maliciously. The model really did do the impressive thing, live, in front of stakeholders. Everyone clapped. We talked timelines. And then the project sank into a swamp it never climbed out of, because the demo had quietly skipped the part where the work actually lives.
+
+This is the most reliable pattern in applied AI, and almost nobody talks about it honestly. The pilot looks like a triumph. The production system never ships. And the gap between those two facts is not a model problem, a budget problem, or a talent problem. It's the difference between the 90% that demos well and the 10% that decides whether the thing can be trusted with real work.
+
+## Why the demo is so seductive
+
+A demo is a controlled environment, and that's exactly why it lies. You pick the inputs. You pick the moment. You quietly re-run the one that glitched. The data is clean because you cleaned it. The integration is faked because you faked it — the output goes to a slide, not into the system of record where a wrong answer has consequences.
+
+So the demo proves the model can do the task *once, on a good input, with no consequences*. Then everyone in the room performs a silent, optimistic extrapolation: if it works here, it works everywhere. That extrapolation is the lie. Not the demo — the inference people draw from it.
+
+```
+   What the demo proves        What production needs
+   ────────────────────        ─────────────────────
+   Works once             →    Works 10,000 times, consistently
+   On a clean input       →    On the messy real inputs users send
+   Happy path only        →    Every weird edge case, gracefully
+   Output to a slide      →    Output into real systems with consequences
+   No one's job at stake  →    Someone's name on the result
+   "Look what it can do"  →    "I trust it with my work"
+```
+
+The two columns look like the same project. They are not. The left column is a science fair. The right column is a product. And the distance between them is most of the work — work that produces no applause along the way.
+
+<Callout type="warning" title="The demo measures capability. Production measures trust.">
+A model that's right 90% of the time gives an electrifying demo and a useless product, if the 10% of failures are silent and land in someone's lap with their name on them. Capability is necessary and nowhere near sufficient. The thing that ships to production is trust, and trust is earned in exactly the cases your demo skipped.
+</Callout>
+
+## Pilot purgatory
+
+Here's how it actually plays out. The pilot succeeds. Everyone's excited. Then the real inputs arrive — the malformed PDF, the customer who phrases things sideways, the record with a null where you assumed a value — and the success rate that looked like 90% in the demo turns out to be 70% on the true distribution. Not bad! But not trustworthy. So the team patches the worst cases. The rate climbs to 80%. New edge cases surface. The team patches those. And the project settles into a stable orbit: forever impressive, forever almost ready, forever not in production.
+
+This is pilot purgatory, and it has a distinct emotional signature. The stakeholders still love the demo. The team is still busy. Money is still flowing. Nobody wants to be the one to say it's stuck, because admitting that means admitting the original excitement was premature. So it just... continues. I've seen pilots live in this state for over a year. The model wasn't the problem. The model was great. The problem was that "great in the demo" and "trusted in production" were never the same milestone, and no one had defined the second one.
+
+## The boring 10% is the whole job
+
+When a pilot stalls, look at what's missing, and it's never the impressive part. It's the unglamorous infrastructure of trust:
+
+The edge cases the demo skipped, which on real data are not edge cases at all — they're a third of your volume. The integration into the systems people actually use, so the output lands in the CRM or the ticketing tool instead of a chat window someone has to copy-paste from. The security and compliance review, which for anything touching customer or health data is not a formality and can stop a project cold the week before launch. The change management — getting humans to alter how they work, which is harder than any model fine-tune and gets budgeted at zero. And the failure handling: what the system does when it's wrong or unsure, which is the single most important behavior in production and the one demos never show.
+
+<Callout type="info" title="From the NICU: the 10% was the entire point">
+When I built MILA, an LLM assistant for a neonatal intensive care unit, the language-model part was the easy, demo-able 90%. The 10% that actually mattered — and took most of the time — was what it did when uncertain, how it deferred to clinicians, how it never invented a number, how it earned the trust of nurses who would not, and should not, gamble a fragile newborn on a confident-sounding hallucination. In that setting the boring 10% wasn't overhead. It was the product. Everything else was just the part that demoed well.
+</Callout>
+
+## How to escape before you're stuck
+
+You don't beat pilot purgatory with a better model. You beat it with how you set the pilot up, before anyone writes a prompt.
+
+**Scope to one real workflow, not a flashy capability.** "Summarize support tickets" is a capability and a trap — it has no finish line. "Draft the first response for billing-category tickets, which a human approves before it sends" is a workflow. It has a start, an end, a real user, and a clear definition of done. Workflows graduate to production. Capabilities marinate in purgatory.
+
+**Write the production acceptance criteria first.** Before you build, answer in writing: what accuracy on the *real* input distribution makes this shippable? What latency? What happens on a wrong answer, and who catches it? What integrations are mandatory, not nice-to-have? If you can't write these down, you don't have a pilot — you have a science project with a deadline nobody believes.
+
+**Build the boring 10% first.** This is counterintuitive and it's the single best lever I know. Most teams build the impressive capability and bolt on error handling, logging, and integration "later." Later never comes, because by then everyone assumes it's done. Flip it. Build the integration, the logging, the fallback behavior, the human-in-the-loop step *first*, with even a mediocre model behind them. Now you have a real system with an upgradeable brain, instead of a brilliant brain with no body — and a brain with no body is exactly what lives in purgatory.
+
+**Design for the failure cases on purpose.** Make a list of the ways the system will be wrong, then design what happens in each. Confident and wrong is the dangerous one — that's where you add a confidence threshold, a human review, a "I'm not sure, here's why" instead of a fabricated answer. A system that fails gracefully and visibly earns trust faster than one that's slightly more accurate but fails silently. This is also, not coincidentally, the strongest argument for shipping your [first AI feature as read-only](/blog/first-ai-feature-should-be-read-only): a suggestion a human approves can be wrong without being a disaster, which is exactly how you survive the 10% in the wild.
+
+## The honest reframe
+
+The real shift is to stop treating the demo as the finish line and start treating it as the starting gun. The demo proves the idea is *worth pursuing*. It proves nothing about whether it will ship. When you internalize that, the excited "let's go to production" conversation changes shape: instead of "the hard part is done," it becomes "the easy part is done, here's the hard part, here's how we'll know when it's actually finished."
+
+That conversation is less fun. The demo high is real and the comedown is a buzzkill. But it's the only version that gets to production, because it's the only version that respects the 10% as the actual work rather than a rounding error. The teams that ship AI aren't the ones with the most impressive demos. They're the ones who treated the demo with appropriate suspicion and went straight for the boring, trust-building, unglamorous last mile — the part nobody claps for, and the only part that ships.

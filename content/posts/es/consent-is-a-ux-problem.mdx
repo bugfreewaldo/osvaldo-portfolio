@@ -1,0 +1,117 @@
+---
+title: "El Consentimiento Es un Problema de UX, No una Casilla Legal"
+description: "El consentimiento informado real en apps de salud e IA es un desafío de diseño, no un muro de jerga legal detrás de un botón de 'Acepto'. Cómo se ve el consentimiento significativo en el flujo: divulgación progresiva, lenguaje claro, revocabilidad y mostrar a dónde van los datos y por qué."
+date: 2026-05-09
+published: true
+category: "Tecnología en Salud"
+tags: ["Consentimiento", "UX", "Privacidad", "IA en Salud", "Ética"]
+author: "Osvaldo Restrepo"
+translationOf: "consent-is-a-ux-problem"
+tldr: "El botón de 'Acepto' es donde el consentimiento va a morir. Un muro de jerga legal que nadie lee no es consentimiento informado; es teatro de responsabilidad. El consentimiento real es un problema de UX: divulgación progresiva en el momento en que una decisión realmente importa, lenguaje claro que una persona asustada pueda entender, un mapa visible de a dónde van los datos y por qué, y la capacidad de retirarlo tan fácilmente como lo diste. El consentimiento es un estado que mantienes, no una firma que recolectas una vez."
+faqs:
+  - question: "¿No es suficiente legalmente un formulario de consentimiento firmado?"
+    answer: "Puede satisfacer un mínimo legal mientras falla por completo el ético y el humano. El consentimiento informado requiere legalmente que la persona haya entendido realmente y aceptado libremente. Un muro de jerga legal detrás de un botón de 'Acepto' produce una firma sin comprensión, que es exactamente la brecha que erosiona la confianza y, cada vez más, no se sostiene. El cumplimiento es el piso, no la meta."
+  - question: "¿Qué es la divulgación progresiva en un flujo de consentimiento?"
+    answer: "En lugar de volcar todos los términos al inicio, revelas la información correcta en el momento en que cada decisión realmente importa. Un resumen corto en lenguaje claro cubre la elección central; los detalles se expanden a demanda; los permisos específicos de datos se solicitan en contexto cuando se usa la funcionalidad que los necesita. La persona queda informada donde cuenta, no enterrada antes de empezar."
+  - question: "¿Por qué importa tanto la revocabilidad para el consentimiento?"
+    answer: "El consentimiento que no se puede retirar no es consentimiento; es una trampa. Si decir que sí es permanente, cada sí está coaccionado por su propia irreversibilidad. El retiro debería ser tan fácil y encontrable como otorgarlo, debería surtir efecto pronto, y a la persona se le debería decir llanamente qué pasa con sus datos cuando revoca. La libertad de irse es lo que hace significativo el acuerdo de quedarse."
+relatedPosts: ["digital-health-compliance-guide", "web-accessibility-developers-guide", "responsible-ai-ethical-ml-systems"]
+---
+
+Hay un momento en el que pienso seguido. Un padre, exhausto, sentado en una silla de plástico junto a una incubadora, recibe una tabla con sujetapapeles con ocho páginas de texto a un solo espacio y se le pide firmar al final. No lo está leyendo. No puede leerlo. Está mirando los números en un monitor. Firma porque decir que no se siente como rechazar la atención para su hijo.
+
+A eso le llamamos "consentimiento informado". No es ni informado ni, en ningún sentido significativo, consentimiento. Es una firma recolectada para proteger a una institución, y hemos pasado décadas fingiendo que es algo más.
+
+Construyo software de salud e IA, y he llegado a una conclusión contundente: el consentimiento es un problema de UX, no una casilla legal. El botón de "Acepto" es donde el consentimiento va a morir. Si vamos en serio con respetar a las personas del otro lado de nuestros sistemas, especialmente en salud e IA donde lo que está en juego es personal y los datos son íntimos, entonces el consentimiento tiene que diseñarse, no solo divulgarse.
+
+## Teatro de Responsabilidad vs. Consentimiento Informado
+
+La definición legal de consentimiento informado es exigente. Requiere que la persona haya entendido realmente a qué accedía y lo haya elegido libremente. Nota lo que esa definición *no* dice: no dice "se presentó un documento". La comprensión y la libertad son la vara.
+
+El patrón del muro de jerga legal falla en ambas. Nadie entiende un contrato escrito para ser litigado en vez de leído. Y el encuadre, acepta o no puedes continuar, elimina la libertad. Lo que construimos en su lugar es teatro de responsabilidad: un ritual cuyo propósito real es producir evidencia de que el usuario hizo clic en el botón, no asegurar que sabía lo que hacía.
+
+El [cumplimiento en salud digital](/es/blog/digital-health-compliance-guide) es real y necesario, y no lo estoy descartando. Pero el cumplimiento es el piso, no la meta. Un sistema puede ser perfectamente conforme y aun así tratar a las personas con desprecio. El trabajo interesante empieza donde termina el mínimo legal.
+
+<Callout type="warning" title="El botón de 'Acepto' es un olor a problema">
+Si tu experiencia de consentimiento es un bloque de texto con scroll bloqueado y un solo botón, has optimizado para la defensa de la institución, no para la comprensión de la persona. Esa brecha, firma sin comprensión, es exactamente lo que los reguladores, tribunales y usuarios están cada vez menos dispuestos a aceptar. Tratar el consentimiento como una casilla es una falla de diseño disfrazada de salvaguarda legal.
+</Callout>
+
+## Cómo Se Ve el Consentimiento Significativo en el Flujo
+
+El buen consentimiento no es una página. Es una propiedad de toda la experiencia. Algunos principios alrededor de los que diseño:
+
+**Divulgación progresiva.** No vuelques todo al inicio. Empieza con un resumen corto y claro de la elección central y lo que significa. Deja que los detalles se expandan a demanda. Pide permisos específicos en contexto, en el momento en que la funcionalidad que los necesita se usa realmente, para que la persona pueda conectar la solicitud con una razón.
+
+**Lenguaje claro, escrito para el peor momento.** Asume que quien lee está asustado, exhausto, distraído y posiblemente leyendo en su segundo idioma. Apunta a un nivel de lectura bajo, oraciones cortas, sustantivos concretos. "Compartimos los resultados de laboratorio de tu bebé con el especialista de guardia para que pueda asesorar a tu equipo de atención" le gana a "La Información de Salud Protegida puede ser divulgada a personal autorizado de prestación de atención con fines de tratamiento".
+
+**Muestra a dónde van los datos y por qué.** Las personas consienten a cosas específicas, no a abstracciones. Un mapa pequeño y visible, estos datos, a este destinatario, para este propósito, le permite a alguien evaluar realmente el intercambio. El lenguaje vago oculta el intercambio; lo específico lo revela.
+
+**Revocabilidad que es real.** El retiro debe ser tan fácil de encontrar y usar como el sí original. Debe surtir efecto pronto. Y debe explicar, en palabras llanas, qué pasa con los datos ya recolectados. El consentimiento que no puedes retirar no es consentimiento; es una trampa que coacciona a cada usuario futuro por su propia irreversibilidad.
+
+**Granularidad sin abrumar.** Deja que las personas digan sí a los recordatorios de mensajes y no a la analítica, sí a compartir con su equipo de atención y no al uso en investigación. Pero no conviertas eso en un panel de control de cuarenta interruptores. Valores predeterminados sensatos más un camino claro para ajustar le ganan a un muro de switches que nadie toca.
+
+## El Consentimiento Es una Máquina de Estados, No una Firma
+
+El replanteamiento más profundo es este: el consentimiento no es un evento que capturas una vez. Es un estado que mantienes en el tiempo. Las personas lo otorgan, lo acotan, lo expanden y lo retiran. Tu sistema tiene que modelar todo eso con honestidad.
+
+Esta es la máquina de estados que dibujo cuando diseño un flujo de consentimiento:
+
+```
+        ┌──────────────┐
+        │  NO SOLICITADO│  (aún no existe estado de consentimiento)
+        └──────┬───────┘
+               │  la funcionalidad necesita permiso
+               ▼
+        ┌──────────────┐    declina
+        │  SOLICITADO  │──────────────┐
+        │ (lenguaje    │              ▼
+        │  claro, en   │       ┌──────────────┐
+        │  contexto)   │       │   DECLINADO   │
+        └──────┬───────┘       │ (ofrecer una  │
+               │ otorga        │  experiencia  │
+               ▼               │  limitada,    │
+        ┌──────────────┐       │  re-preguntar │
+   ┌────│  OTORGADO    │       │  solo ante un │
+   │    │ alcance:[...] │      │  disparador   │
+   │    └──────┬───────┘       │  real)        │
+   │           │               └──────────────┘
+   │  expandir │  acotar / retirar
+   │  alcance  ▼
+   │    ┌──────────────┐    confirmar + explicar
+   │    │  REVOCANDO   │──────────────┐
+   │    └──────────────┘              ▼
+   │                          ┌──────────────┐
+   └─────────────────────────▶│   REVOCADO   │
+        re-otorgar a solicitud │ (purgar o    │
+                              │  retener según│
+                              │  regla dicha, │
+                              │  mostrada al  │
+                              │  usuario)     │
+                              └──────────────┘
+```
+
+Nota las propiedades que esto te obliga a manejar. Una solicitud declinada no se repite para siempre, retrocede y solo vuelve a preguntar ante un disparador genuino. Un otorgamiento lleva un alcance explícito. La revocación es su propio estado con una confirmación y una explicación, no un cambio silencioso de bandera. Y re-otorgar siempre es posible, porque una persona que dijo no en pánico debería poder decir sí más tarde sin fricción.
+
+Cuando modelas el consentimiento así, las preguntas de diseño se vuelven concretas. ¿Cuál es el alcance mínimo que esta funcionalidad necesita? ¿Qué mostramos en el momento del retiro? ¿Qué pasa con los datos ya recolectados, y le decimos la verdad al usuario sobre ellos? Esas son decisiones de UX con peso ético, no ocurrencias legales tardías.
+
+## La Accesibilidad Es Parte del Consentimiento
+
+No puedes consentir a lo que no puedes percibir. Un flujo de consentimiento que falla con un lector de pantalla, depende solo del color, o asume vista perfecta en una UCIN tenue a las 2 de la madrugada no ha obtenido consentimiento informado de las personas que excluye, ha obtenido un clic. Todo en mi [guía de accesibilidad web](/es/blog/web-accessibility-developers-guide) aplica aquí con fuerza extra, porque lo que está en juego son los datos de salud de alguien y quien lee está en su momento más vulnerable.
+
+El lenguaje claro es en sí mismo una característica de accesibilidad. También lo es la operabilidad por teclado, el contraste suficiente, y no esconder la opción de retiro tres menús adentro. El consentimiento accesible y el consentimiento significativo son el mismo proyecto.
+
+<Callout type="tip" title="Diseña el camino del 'no' con tanto cuidado como el del 'sí'">
+La mayor parte del UX de consentimiento prodiga atención en llegar al sí y trata el no como un callejón sin salida o una carrera de obstáculos con patrones oscuros. Dale la vuelta. Haz que declinar y retirar sea limpio, respetuoso y libre de culpabilización. Un sistema que hace fácil irse es un sistema en el que las personas confían lo suficiente para quedarse. La calidad de tu camino del 'no' es la medida más verdadera de si tu consentimiento es real.
+</Callout>
+
+## La Prueba de Honestidad
+
+Esta es la prueba a la que someto mi propio trabajo. ¿Podría la persona del otro lado, el padre asustado, el paciente que acaba de recibir malas noticias, el usuario que no es abogado, describir con precisión a qué accedió, cinco minutos después de haber accedido? Si no, no obtuve consentimiento. Obtuve una firma.
+
+Esto se conecta con todo lo que creo sobre [construir IA de forma responsable](/es/blog/responsible-ai-ethical-ml-systems). Un sistema de IA que entrena silenciosamente sobre los datos de salud íntimos de alguien porque una vez pasó de largo un párrafo no se ha ganado el derecho a esos datos. Ganárselo significa hacer legible el intercambio: esto es lo que recolectamos, aquí va, por esto, y así lo retiras. Di eso en palabras llanas en el momento en que importa, y deja que las personas elijan de verdad.
+
+El consentimiento bien hecho cuesta más. Toma tiempo de diseño, trabajo de contenido, esfuerzo de accesibilidad, y la disciplina de dejar que las personas digan que no. Pero la alternativa es una relación construida sobre una firma que nadie entendió, y en salud, donde me he sentado en esa silla de plástico, eso no es una relación en absoluto.
+
+---
+
+*¿Diseñando consentimiento para productos de salud o IA y quieres que signifique algo? [Contáctame](/contact). El botón de 'Acepto' merece algo mejor que lo que le hemos dado.*
