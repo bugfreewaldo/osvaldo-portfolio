@@ -1,0 +1,95 @@
+---
+title: "Teaching a Model to Reason About Business, Not Just Talk About It"
+description: "A few things I've learned building a business-specialized LLM — why fluency isn't judgment, why structure beats raw scale for domain reasoning, and why grounding every claim in evidence matters more than sounding smart. The methodology, not the secret sauce."
+date: 2026-05-22
+published: true
+category: "AI Engineering"
+tags: ["LLM", "Domain Specialization", "AI Engineering", "Evaluation", "Business AI"]
+author: "Osvaldo Restrepo"
+tldr: "People ask if I trained my own model for business. The honest answer is more interesting than yes or no: the hard part of a business LLM is not scale, it's judgment. A general model writes a beautiful, confident, generic answer. Business reasoning needs consistency, evidence, and accountability that fluency alone doesn't provide. The leverage comes from specializing with structure — giving the model a disciplined, repeatable way to decompose a business problem — grounding every claim in source evidence, teaching it from expert-validated examples instead of the open web, and evaluating it against expert judgment rather than generic benchmarks. I'm deliberately keeping the proprietary internals out of this — what follows is the methodology, not the engine."
+faqs:
+  - question: "Did you train a business LLM from scratch?"
+    answer: "Training from scratch is almost never the right question for a domain like business. The interesting work isn't producing raw fluency — modern base models already have that. It's specialization: making the model reason about a business the same disciplined way every time, ground its claims in evidence, and know the limits of what it can say. That's where the real engineering lives, and it's mostly about data, structure, and evaluation rather than parameter count."
+  - question: "Why isn't a general-purpose LLM enough for business analysis?"
+    answer: "Because business judgment isn't a writing task, it's a consistency-and-accountability task. A general model will give you a fluent, plausible answer that's different every time you ask, can't tell you which parts are grounded versus guessed, and has no stable way to compare two companies on the same terms. Fluency hides all of that. Specialization is what turns a confident essay into a decision you can defend."
+  - question: "How do you evaluate something as fuzzy as 'good business reasoning'?"
+    answer: "You make it less fuzzy by encoding what 'good' means as concrete, expert-validated examples and rubrics — then you treat that set as the specification. Quality is measured against expert judgment, not against generic public benchmarks that have nothing to do with your domain. The eval set becomes the contract between what the experts mean and what the model does."
+relatedPosts: ["eval-set-is-the-spec", "when-models-should-say-i-dont-know", "building-production-rag-systems"]
+---
+
+A few times a month, someone asks me some version of: *"Did you train your own model?"* They want a yes or a no. The honest answer is more interesting than either, and it's the part I can actually talk about without getting into anything proprietary.
+
+The hard part of building a business-specialized LLM is not scale. It's judgment. And almost everything I've learned doing it comes back to one uncomfortable fact: **a model that sounds like it understands business is not the same as a model that actually reasons about it.**
+
+Let me share a few things — the methodology, not the engine.
+
+## Fluency Is Not Judgment
+
+Ask any modern general-purpose model to analyze a company and you'll get something that reads beautifully. Crisp prose, confident structure, the right vocabulary. It looks like expertise.
+
+Then ask it the same question twice and watch it give you two different answers. Ask it which parts are grounded in the documents you provided versus invented to fill the gap, and it can't tell you. Ask it to compare two companies on the same terms, and the terms quietly shift between them.
+
+<Callout type="warning" title="The Confidence Trap">
+The most dangerous output in business AI isn't a wrong answer — it's a fluent wrong answer. Fluency reads as competence. A polished paragraph that's subtly ungrounded will get pasted into a board deck before anyone checks whether it's actually true.
+</Callout>
+
+Fluency is table stakes now. It's also a disguise. Business decisions get made on top of these outputs — investments, hires, restructurings — and a beautiful generic answer that changes shape every time you ask is not something you can build a decision on. The whole job of specialization is to convert *fluent* into *accountable*.
+
+## Specialize With Structure, Not Just More Text
+
+The instinct most people have is "feed it more business text." More reports, more case studies, more documents. That helps a little and misses the point.
+
+What actually moves the needle is giving the model a **disciplined, repeatable way to think** — a structured way to decompose any business situation into the same dimensions, every time, so its reasoning is consistent and comparable rather than vibes-based. The structure is the thing that turns a clever writer into a reliable analyst.
+
+```
+General model                    Specialized model
+─────────────                    ─────────────────
+"Here's a thoughtful take"  →    "Here is this situation,
+  • different every run            decomposed the same way
+  • no fixed dimensions            every time
+  • can't compare A vs B           • stable dimensions
+  • sounds right                   • comparable across entities
+                                   • shows its reasoning"
+```
+
+I'm being deliberately abstract about *which* structure — that part isn't mine to publish. But the principle is general and worth saying out loud: for domain reasoning, **a consistent framework beats a bigger pile of text.** The framework is what makes two analyses of two different companies actually mean the same thing. Without it, you have a very articulate intern who reinvents their method on every task.
+
+## Ground Every Claim in Evidence
+
+This is the rule I'm most strict about. In a business context, an unsupported claim isn't just wrong — it's a liability. So the model is held to a simple standard: **say what the evidence supports, mark what you inferred, and admit what you don't know.**
+
+That means every meaningful statement traces back to a source. It means distinguishing between "this is in the documents," "this is a reasonable inference," and "we don't have enough to say." And it means the model is allowed — encouraged — to come back with *"there isn't enough here to answer that responsibly."*
+
+<Callout type="tip" title="Three Tiers, Always Visible">
+Grounded, inferred, unknown. Every claim carries its tier. A reader should never have to guess whether a number came from a document or from the model's imagination — the system tells them, every time. I wrote more about why this matters in [When the Model Should Say "I Don't Know"](/blog/when-models-should-say-i-dont-know).
+</Callout>
+
+A model that bluffs confidently is worse than no model at all in this domain, because it spends your trust faster than it earns it. Refusing to guess is a feature, not a limitation.
+
+## Teach It From Expertise, Not the Open Web
+
+The open internet is a fine teacher for general fluency and a terrible teacher for specialized judgment. The web is full of business writing that is generic, contradictory, or simply wrong. If you want a model to reason like a seasoned operator, you have to teach it from material that actually reflects how seasoned operators reason.
+
+That means **curated, expert-validated examples** — not scraped text — and structured scenarios built deliberately to exercise the kinds of reasoning the domain demands. The goal isn't to memorize answers. It's to distill a way of thinking: the questions an expert asks, the order they ask them in, the evidence they demand before committing to a conclusion. Done well, you get that discipline applied consistently at a scale no single human could cover.
+
+## The Eval Set Is the Specification
+
+Here's the part that surprises people: the most valuable artifact in the whole effort isn't the model. It's the evaluation set.
+
+Because "good business reasoning" is fuzzy until you make it concrete, and the way you make it concrete is by collecting examples — real situations, with the judgment an expert would actually apply — and treating that collection as the specification. Every prompt change, every adjustment, gets measured against it. Not against generic public benchmarks that have nothing to do with the domain. Against *your* experts' judgment, encoded as examples.
+
+<Callout type="info" title="Examples Are the Contract">
+A spec written in prose is open to interpretation. A spec written as a few hundred worked examples is not. The eval set is the contract between what the experts mean by 'right' and what the system actually does. I dig into this idea in [The Eval Set Is the Spec](/blog/eval-set-is-the-spec).
+</Callout>
+
+## Keep a Human in the Loop, and Keep It Auditable
+
+The last principle is the one that lets me sleep. Specialized or not, the model produces drafts and assessments — it does not get the final word on anything that matters. There's a human in the loop on consequential output, and there's a trail: what evidence was used, what was inferred, what the model was uncertain about. If someone asks "why did it conclude that?" the answer exists and can be inspected.
+
+That auditability isn't bureaucratic overhead. In business — as in healthcare, where I learned the lesson the hard way — being able to reconstruct *why* the system said what it said is the difference between a tool people trust and a tool people quietly stop using.
+
+## What I'm Actually Building
+
+So, did I train my own model? The framing I prefer: I'm teaching a model to reason about business with the discipline of a good analyst and the humility of a good one — consistent every time, grounded in evidence, honest about its limits, and always showing its work.
+
+The engine that makes it run is a story for another day, and parts of it aren't mine to tell. But the philosophy is no secret, and I think it's the part that actually matters: in a serious domain, you don't win by building a model that knows everything. You win by building one that reasons about your domain the same careful way, every single time — and can prove it.
