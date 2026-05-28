@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
-import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper, Database, Globe, Shield, BarChart3, Code2, Workflow, Smartphone, Activity, FileText, KeyRound } from "lucide-react";
+import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Database, Globe, Shield, BarChart3, Code2, Workflow, Smartphone, Activity, FileText, KeyRound } from "lucide-react";
 import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
 import Reveal from "@/components/motion/Reveal";
 
@@ -658,8 +658,14 @@ export default function Home() {
             transition={{ duration: 0.5 }}
           >
             <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 p-3 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
-                <Newspaper className="w-6 h-6 text-white" />
+              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-white p-2 flex items-center justify-center shadow-md ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+                <Image
+                  src="/images/usanews-logo.jpg"
+                  alt="USA News"
+                  width={56}
+                  height={56}
+                  className="w-full h-full object-contain"
+                />
               </div>
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-2">
