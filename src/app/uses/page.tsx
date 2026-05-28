@@ -120,9 +120,9 @@ const toolCategories: ToolCategory[] = [
       },
       {
         name: "OpenClaw",
-        description: "Open-source LLM tooling in the local-inference workflow",
+        description: "Local-first personal AI assistant framework — multi-channel agent that runs on my own hardware",
         logo: "openclaw",
-        url: "#",
+        url: "https://github.com/openclaw/openclaw",
         useFallback: true,
       },
       {

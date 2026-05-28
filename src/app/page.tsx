@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
-import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper, Database, Globe, Shield, BarChart3, Code2, Workflow } from "lucide-react";
+import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Newspaper, Database, Globe, Shield, BarChart3, Code2, Workflow, Smartphone, Activity, FileText, KeyRound } from "lucide-react";
 import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
 import Reveal from "@/components/motion/Reveal";
 
@@ -191,58 +191,86 @@ const capabilities = [
   {
     icon: Brain,
     title: "LLMs & RAG",
-    description: "Retrieval-augmented generation, prompt engineering, fine-tuning, and eval pipelines for production LLM apps",
+    description: "Retrieval-augmented generation, prompt engineering, prompt caching, and eval pipelines for production LLM apps",
     gradient: "from-purple-500 to-indigo-500",
-    tech: ["LangChain", "OpenAI", "Pinecone", "ChromaDB"],
+    tech: ["Claude", "OpenAI", "LangChain", "Hugging Face", "Cosmos DB", "Prompt Caching"],
   },
   {
     icon: MessageSquare,
     title: "AI Agents",
-    description: "Autonomous agents with tool-calling, memory, multi-step reasoning, and human-in-the-loop handoffs",
+    description: "Autonomous agents with tool-calling, memory, bounded loops, and human-in-the-loop handoffs",
     gradient: "from-[#FF6A3D] to-cyan-500",
-    tech: ["Claude", "CrewAI", "Function Calling", "MCP"],
+    tech: ["Claude", "MCP", "Tool Use", "Function Calling", "Bounded Loops", "Audit Logging"],
   },
   {
     icon: Cpu,
     title: "Voice AI",
     description: "End-to-end voice systems — STT, TTS, real-time conversation, phone agents, and IVR replacement",
     gradient: "from-cyan-500 to-emerald-500",
-    tech: ["Twilio", "Whisper", "ElevenLabs", "WebRTC"],
+    tech: ["Twilio", "Whisper", "ElevenLabs", "WebRTC", "SIP", "Real-time"],
   },
   {
     icon: Zap,
     title: "Automation",
     description: "Intelligent workflow automation connecting AI to CRMs, ERPs, billing, and business operations",
     gradient: "from-emerald-500 to-yellow-500",
-    tech: ["Stripe", "QuickBooks", "Zapier", "n8n"],
+    tech: ["Stripe", "QuickBooks", "Plaid", "Twilio", "Webhooks", "Cron"],
   },
   {
     icon: Globe,
     title: "Full-Stack Apps",
     description: "Production web apps with modern frameworks, real-time features, auth, payments, and deployment",
     gradient: "from-blue-500 to-indigo-500",
-    tech: ["Next.js", "React", "Node.js", "TypeScript"],
+    tech: ["Next.js", "React", "Vite", "Tailwind", "TypeScript", "Framer Motion"],
   },
   {
     icon: Database,
     title: "Data & ML Pipelines",
-    description: "ETL pipelines, vector databases, embedding workflows, and data infrastructure for AI-first products",
+    description: "ETL pipelines, vector stores, embedding workflows, and event-driven data infrastructure for AI-first products",
     gradient: "from-teal-500 to-cyan-500",
-    tech: ["PostgreSQL", "Redis", "Python", "Pandas"],
+    tech: ["Cosmos DB", "PostgreSQL", "Kafka", "Redis", "Python", "Pandas"],
   },
   {
     icon: Shield,
     title: "AI Safety & Evals",
-    description: "Guardrails, content filtering, hallucination detection, and systematic evaluation frameworks",
+    description: "Guardrails, calibration, hallucination detection, and evaluation suites tied to release gates",
     gradient: "from-rose-500 to-pink-500",
-    tech: ["Evals", "Guardrails", "RLHF", "Red-teaming"],
+    tech: ["Langfuse", "Giskard", "Arize", "Confident AI", "OPA", "Calibration"],
   },
   {
     icon: Workflow,
     title: "API & Integrations",
-    description: "RESTful APIs, webhooks, third-party integrations, and microservice architectures that scale",
+    description: "RESTful APIs, webhooks, MCP servers, and microservice architectures that scale",
     gradient: "from-amber-500 to-orange-500",
-    tech: ["REST", "GraphQL", "WebSockets", "Docker"],
+    tech: ["REST", "GraphQL", "MCP", "WebSockets", "OAuth", "JWT"],
+  },
+  {
+    icon: Smartphone,
+    title: "Mobile Apps",
+    description: "Native iOS and Android clients that federate against the same identity and APIs as the web product",
+    gradient: "from-pink-500 to-rose-500",
+    tech: ["Swift", "SwiftUI", "Kotlin", "Gradle KTS", "OIDC", "Push Notifications"],
+  },
+  {
+    icon: Activity,
+    title: "Observability",
+    description: "Vendor-neutral tracing, metrics, and logs across services — so you can debug what actually happened",
+    gradient: "from-fuchsia-500 to-purple-500",
+    tech: ["OpenTelemetry", "Grafana", "Prometheus", "Loki", "Tempo", "App Insights"],
+  },
+  {
+    icon: FileText,
+    title: "Document Generation",
+    description: "Programmatic PDF, PowerPoint, Word, and Excel exports — board packs, reports, and audit trails",
+    gradient: "from-orange-500 to-amber-500",
+    tech: ["pdfkit", "jsPDF", "PptxGenJS", "docx", "xlsx", "mammoth"],
+  },
+  {
+    icon: KeyRound,
+    title: "Identity & Policy",
+    description: "OIDC SSO, JWT federation, role-based access, and policy-as-code for decisions business logic shouldn't own",
+    gradient: "from-violet-500 to-indigo-500",
+    tech: ["Keycloak", "NextAuth", "JWT", "Azure MSAL", "OPA", "RBAC"],
   },
 ];
 
