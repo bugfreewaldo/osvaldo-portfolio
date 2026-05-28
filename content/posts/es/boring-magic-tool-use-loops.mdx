@@ -1,0 +1,209 @@
+---
+title: "La Magia Aburrida de los Loops de Uso de Herramientas"
+description: "Los demos llamativos de agentes son también los más fáciles de mal-construir en producción. El loop — el modelo llama a una herramienta, recibe un resultado, llama a otra, repite — necesita criterios estrictos de terminación: máximo de iteraciones, detección de no-progreso, presupuestos de tokens y tiempo, una salida de emergencia explícita. Por qué dejar que el agente decida cuándo terminó es el bug que se comió tu factura, y los patrones aburridos que hacen que los loops sobrevivan al tráfico real."
+date: 2026-05-27
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "Agentes", "Tool Use", "Confiabilidad", "LLM"]
+author: "Osvaldo Restrepo"
+translationOf: "boring-magic-tool-use-loops"
+tldr: "El loop de uso de herramientas — el modelo llama a una herramienta, observa el resultado, decide qué hacer después — es la parte de un agente que se ve mágica en un demo y que más seguido sale mal en producción. La magia no está en darle autonomía al modelo. La magia está en el control del loop: un tope duro de iteraciones, detección de no-progreso para que el agente no pueda moler para siempre sobre la misma llamada, un presupuesto de tokens y un presupuesto de tiempo de reloj, una salida de emergencia explícita que devuelve una respuesta parcial en vez de nada, y un traspaso humano claro. Los patrones aburridos son los patrones de producción. Deja que el agente decida cuándo terminó y se comerá tu factura, tu presupuesto de latencia y tu fin de semana, en ese orden."
+faqs:
+  - question: "¿Por qué un loop de uso de herramientas es distinto a una llamada LLM normal?"
+    answer: "Una llamada normal tiene una entrada y una salida; la puedes acotar con timeouts y límites de tokens como cualquier request HTTP. Un loop de uso de herramientas tiene al modelo decidiendo, en cada paso, si llama a otra herramienta y qué le pregunta. Sin criterios explícitos de terminación, puede girar sobre sí mismo, llamar a la misma herramienta con argumentos ligeramente distintos, o perseguir información que no necesita. El loop es la parte de un agente que convierte una request de cinco centavos en una de cincuenta dólares si lo dejas."
+  - question: "¿No es 'dejar que el agente decida cuándo terminó' todo el punto de un agente?"
+    answer: "Es el punto de marketing. En producción es el bug. El agente debería decidir qué hacer dentro de límites, no si los límites existen. Tú pones el máximo de iteraciones, el presupuesto de tokens, el presupuesto de tiempo de reloj, la detección de no-progreso y la salida de emergencia; el agente decide cómo usar ese sobre. Quitar el sobre no hace al agente más inteligente, hace su peor día catastrófico."
+  - question: "¿Cómo detectas que un agente no está haciendo progreso?"
+    answer: "Rastrea la secuencia de tuplas (tool_name, argumentos_normalizados) a través de las iteraciones. Si la misma tupla se repite, o el agente rota entre dos herramientas sin que entre nueva información al contexto, esa es una señal de no-progreso. Detén el loop, devuelve un resultado parcial con lo que tienes, y escala. Un patrón de llamadas que se repite es el agente diciéndote que está atascado; no lo hagas decírtelo dos veces."
+relatedPosts: ["building-ai-agents-production", "designing-llm-retry-fallbacks", "first-ai-feature-should-be-read-only"]
+---
+
+El primer loop de uso de herramientas que envié a producción corrió cuarenta y tres minutos sobre una sola request de usuario antes de que yo lo matara a mano. Cuarenta y tres minutos. Sobre una request que, en el demo, tomó seis segundos. El agente había decidido, con toda la confianza de un generador probabilístico de texto, que necesitaba "solo una búsqueda más" — una y otra vez — para estar seguro de su respuesta. Las búsquedas no eran gratis. Esa parte la aprendí a la mañana siguiente, de una factura.
+
+He construido muchos sistemas agénticos desde entonces, en su mayoría agentes de voz para pequeños negocios de EE. UU. a través de Shining Image, y más recientemente la capa de orquestación que une las diecisiete-plus apps en TheGreyMatter.ai. Y cada vez que me siento a diseñar un nuevo loop de uso de herramientas, pienso en esa corrida de cuarenta y tres minutos. Porque los demos de agentes más impresionantes y los incidentes de producción más costosos salen de la misma arquitectura. La diferencia está enteramente en cómo se acota el loop.
+
+Este texto trata de eso. No la magia. La magia aburrida. Los patrones que convierten un demo frágil en algo que puedes dejar corriendo durante un fin de semana largo sin revisarlo.
+
+## El Loop que Todos Dibujan
+
+Has visto este diagrama. Todo post de agentes lo tiene. El modelo llama a una herramienta, recibe un resultado, llama a otra herramienta, recibe otro resultado, repite hasta "terminar." Es un cicliquito hermoso y sugiere que el agente, como un becario reflexivo, sabrá cuándo detenerse.
+
+No lo sabrá. No de forma confiable. No a escala. No cuando el mundo empiece a lanzarle entradas raras. El ciclo es correcto como boceto y peligroso como contrato. He escrito sobre la brecha más amplia entre demos de agentes y producción de agentes en [construyendo agentes de IA que realmente funcionan en producción](/es/blog/building-ai-agents-production); este texto hace zoom al único subsistema que decide si tu loop vive o muere, que es la lógica de terminación.
+
+La versión honesta del diagrama, la que realmente construyo, se ve así:
+
+```
+              ┌─────────────────────────┐
+              │   Request del usuario   │
+              └────────────┬────────────┘
+                           │
+                           ▼
+            ┌────────────────────────────┐
+            │  CHEQUEO DE LÍMITES        │◄────┐
+            │  • iteraciones < N         │     │
+            │  • tokens < presupuesto    │     │
+            │  • elapsed < tiempo reloj  │     │
+            │  • no-progreso < umbral    │     │
+            └─────────┬──────────────┬────┘     │
+                      │              │          │
+              ok      │              │ límite   │
+                      ▼              ▼          │
+            ┌──────────────────┐  ┌──────────────────┐
+            │ LLM: elige tool  │  │ SALIDA EMERGENCIA│
+            └─────────┬────────┘  │ • resultado parc.│
+                      │           │ • o humano       │
+                      ▼           └──────────────────┘
+            ┌──────────────────┐
+            │  TOOL ejecuta    │
+            └─────────┬────────┘
+                      │
+                      ▼
+            ┌──────────────────┐
+            │ CHEQUEO PROGRESO │── llamada repetida?─┐
+            │  (fingerprint)   │                     │
+            └─────────┬────────┘                     │
+                      │ hubo progreso                │
+                      └──────────────────────────────┘
+```
+
+Nota las cosas que *no* son la llamada en sí. El chequeo de límites en cada iteración. El chequeo de progreso después de cada resultado de herramienta. La salida de emergencia explícita como rama de primera clase, no como excepción. Esto no son decoraciones. Son las partes que determinan si el loop es una herramienta o un peligro.
+
+<Callout type="warning" title="Los loops sin límites no son teóricos">
+"Deja al agente correr hasta que decida que terminó" es una oración bonita en un blog y un incidente de producción en un codebase. He visto personalmente a un agente loopear sobre la misma búsqueda cientos de veces porque la API estaba devolviendo resultados ligeramente distintos en cada llamada y el modelo seguía pensando que estaba progresando. Cada iteración costó dinero real. Cada iteración también costó latencia de reloj que un usuario estaba esperando. Pon los límites. Todos. El día uno.
+</Callout>
+
+## Los Cuatro Presupuestos
+
+Pienso en cada loop de uso de herramientas como teniendo cuatro presupuestos, y el loop está muerto en el momento en que cualquiera de ellos se acaba. Nombrarlos de esta forma cambia cómo prompteo, cómo registro y cómo escribo la salida de emergencia.
+
+**Iteraciones.** Un tope duro de cuántas veces damos la vuelta. Para la mayoría de mis agentes esto vive entre 5 y 12. Si tu agente regularmente necesita más, las herramientas son demasiado granulares, el prompt está pidiendo demasiado en un turno, o el modelo está forrajeando cuando debería estar respondiendo.
+
+**Tokens.** Un presupuesto sobre todo el loop, no por llamada. Incluyendo los resultados de herramientas que se vuelven a meter al contexto. Lo que sorprende es que un loop con cinco iteraciones puede reventar un presupuesto de cincuenta mil tokens si cada herramienta devuelve un blob JSON gordo que metes de vuelta al contexto. Pon tope al total.
+
+**Tiempo de reloj.** El usuario está esperando. Pon un techo que lo respete. Para un agente de voz esto es brutal: cualquier cosa sobre tres segundos sin una señal hablada de progreso se siente roto. Para trabajo de lote en segundo plano puede ser minutos. El número importa menos que el hecho de que el número existe.
+
+**Llamadas a herramientas.** Un contador separado de las iteraciones porque algunos loops llamarán a varias herramientas por turno del LLM. Si permites llamadas en paralelo, este es el presupuesto que te atrapa cuando el modelo decide traer dieciocho cosas "para ser exhaustivo."
+
+```python
+@dataclass
+class LoopBudget:
+    max_iterations: int = 8
+    max_total_tokens: int = 40_000
+    max_wall_clock_s: float = 20.0
+    max_tool_calls: int = 12
+
+@dataclass
+class LoopState:
+    iteration: int = 0
+    total_tokens: int = 0
+    tool_calls: int = 0
+    started_at: float = field(default_factory=time.monotonic)
+    fingerprints: list[str] = field(default_factory=list)
+
+def within_budget(state: LoopState, budget: LoopBudget) -> tuple[bool, str | None]:
+    if state.iteration >= budget.max_iterations:
+        return False, "iterations"
+    if state.total_tokens >= budget.max_total_tokens:
+        return False, "tokens"
+    if (time.monotonic() - state.started_at) >= budget.max_wall_clock_s:
+        return False, "wall_clock"
+    if state.tool_calls >= budget.max_tool_calls:
+        return False, "tool_calls"
+    return True, None
+```
+
+Eso es aproximadamente la mitad de la lógica de control del loop justo ahí, y me ha ahorrado más dinero que cualquier prompt ingenioso que haya escrito.
+
+## Detección de No-Progreso
+
+La otra mitad es más difícil, y rara vez la veo en los ejemplos públicos de agentes: detectar que el agente no está realmente progresando.
+
+El patrón que mejor me ha funcionado es la comparación de fingerprints. Después de cada llamada a herramienta, computa un fingerprint estable de `(tool_name, args_normalizados)` y guárdalo en el estado. Si el mismo fingerprint aparece dos veces seguidas, el agente se está repitiendo. Si aparece tres veces dentro de las últimas iteraciones sin que entre nueva información externa al contexto, el agente está moliendo.
+
+```python
+def fingerprint(tool_name: str, args: dict) -> str:
+    normalized = json.dumps(args, sort_keys=True, default=str)
+    return hashlib.sha1(f"{tool_name}::{normalized}".encode()).hexdigest()
+
+def is_stuck(state: LoopState, window: int = 3) -> bool:
+    recent = state.fingerprints[-window:]
+    if len(recent) < window:
+        return False
+    return len(set(recent)) == 1
+```
+
+Esto atrapa una cantidad sorprendente de modos de falla del mundo real. Dos de los más comunes: el modelo llama a la misma búsqueda con los mismos argumentos y de alguna manera cree que recibirá una respuesta distinta la segunda vez (usualmente no), y el modelo oscila entre dos herramientas, cada llamada deshaciendo el efecto de la otra sobre el razonamiento. Ambos patrones desperdician presupuesto mientras se ven, desde afuera, como "el agente está trabajando duro."
+
+Una vez que `is_stuck` devuelve true, no intento empujar al modelo fuera del atasco. Eso casi nunca funciona y cuesta más tokens. Salgo del loop hacia la salida de emergencia.
+
+<Callout type="info" title="La repetición es el agente pidiendo ayuda">
+Una llamada de herramienta que se repite no es un bug que se tape con un mejor prompt. Es el agente diciéndote, a su manera torpe, que no sabe qué hacer después. La respuesta correcta es parar, devolver lo que tienes y escalar. Intentar reintentar más allá de una señal de atasco es como ocurre una corrida de cuarenta y tres minutos.
+</Callout>
+
+## La Salida de Emergencia Es una Característica
+
+La tercera pieza, y la que requiere más disciplina, es la salida de emergencia. Cuando cualquier presupuesto se acaba, o se detecta no-progreso, el loop debe terminar en un estado útil, no en una excepción lanzada que la capa que llama tenga que adivinar.
+
+En la práctica eso significa que cada loop sabe cómo construir un resultado parcial. Concretamente: un sobre que incluye lo que el agente ha juntado hasta ahora, un código de estado claro (`hit_iteration_cap`, `hit_token_cap`, `no_progress`, `tool_failure`), un resumen de una oración que el modelo puede producir bajo demanda, y una bandera que indica si el resultado es seguro de mostrar al usuario o necesita una revisión humana antes de que pase algo.
+
+```python
+@dataclass
+class LoopResult:
+    status: Literal["complete", "hit_iteration_cap", "hit_token_cap",
+                    "hit_wall_clock", "no_progress", "tool_failure"]
+    answer: str | None
+    partial_findings: list[dict]
+    requires_human: bool
+    summary: str
+
+def escape(state: LoopState, status: str, findings: list[dict]) -> LoopResult:
+    return LoopResult(
+        status=status,
+        answer=None,
+        partial_findings=findings,
+        requires_human=True,
+        summary=summarize_for_human(findings, status)
+    )
+```
+
+Un loop que lanza cuando golpea un límite es un loop que ha entrenado a sus callers a envolverlo en `try/except` y fingir que no pasó nada. Un loop que devuelve un resultado parcial estructurado entrena a sus callers a hacer lo correcto: mostrar al usuario lo que sabemos, hacer visible que está incompleto y enrutar el resto a un humano si hace falta. He escrito por separado sobre [fallbacks elegantes al nivel de una sola llamada](/es/blog/designing-llm-retry-fallbacks); la versión a nivel de loop es la misma idea escalada hacia arriba.
+
+## Cuéntale al Modelo Sobre el Presupuesto
+
+Un pequeño truco que paga enormemente: cuéntale al modelo, en el system prompt, que está operando dentro de un loop acotado. No los números exactos, sino la forma.
+
+```text
+Operas dentro de un loop de uso de herramientas con límites estrictos en
+tiempo y número de llamadas. Prefiere pocas llamadas bien escogidas sobre
+muchas pequeñas. Si ya tienes suficiente información para responder,
+responde. No llames a una herramienta "por si acaso" si el resultado
+previo ya era concluyente. Si te encuentras inseguro después de dos o tres
+llamadas, devuelve lo que tienes y explica qué necesitarías para tener
+más confianza.
+```
+
+Esto no es magia. Los modelos a veces siguen sobre-llamando. Pero el promedio de iteraciones en mis agentes bajó notablemente después de que agregué un lenguaje así, porque el modelo ahora tiene un marco para "cuando dudes, detente." Ese marco está ausente del entrenamiento por defecto, que optimiza para ser útil en un solo turno en vez de ser eficiente a través de muchos.
+
+<Callout type="tip" title="El loop es parte del prompt">
+Tu system prompt debería describir el loop en el que el modelo está operando, no solo la tarea. Decirle al modelo "estás dentro de un loop acotado, prefiere parar cuando tengas suficiente" replantea su comportamiento de una forma que ninguna cantidad de descripciones ingeniosas de herramientas hará. El loop es contexto. Trátalo como contexto.
+</Callout>
+
+## Cuando el Loop Está Mal, Primero Solo-Lectura
+
+Una última pieza. Si estás diseñando el primer loop para un dominio nuevo, y especialmente uno donde los errores son caros — finanzas, agendamiento, cualquier cosa que escribe a un sistema real — empieza con un loop de solo-lectura. Ninguna herramienta que llame el agente debería tener efectos secundarios. El agente puede juntar, planificar y proponer. Un humano, o un paso determinista separado, ejecuta.
+
+Este es el patrón de [la primera función de IA debería ser solo-lectura](/es/blog/first-ai-feature-should-be-read-only), y aplica el doble dentro de un loop. Un loop de solo-lectura que muele un rato te cuesta tokens. Un loop con escritura habilitada que muele puede agendar la cita equivocada, cobrar la tarjeta equivocada, o disparar el lote de correos equivocado quince veces. El radio de explosión de un bug en un loop de escritura sin límites es, en mi experiencia, la mayor fuente de historias de "no puedo creer que eso acaba de pasar" en los sistemas agénticos.
+
+## La Disciplina Silenciosa
+
+No hay nada llamativo en nada de esto. Topes de iteración, presupuestos de tokens, detección de no-progreso basada en fingerprints, salidas de emergencia de resultado parcial, un system prompt que menciona el loop. Cada pieza son unas cuantas docenas de líneas. Nada de esto aparecerá en un video de demo.
+
+Pero esta es la magia aburrida. La cosa que hace que un agente funcione el próximo martes y el martes siguiente, cuando el tráfico está raro y el modelo está teniendo un mal día y una de las APIs río arriba está devolviendo formas sutilmente distintas. El loop es la parte de un agente donde el gusto de ingeniería se muestra más claramente, porque la tentación de saltarse los límites en nombre de "dejar al modelo ser inteligente" es constante, y el costo de ceder se paga en dinero real, latencia real y confianza real.
+
+Acota tu loop. Detecta el no-progreso. Siempre ten una salida de emergencia. Cuéntale al modelo que está en un loop. Empieza solo-lectura. Haz esas cinco cosas y enviarás agentes que sobreviven al contacto con usuarios reales, y no tendrás una historia propia de cuarenta y tres minutos que contar.
+
+O sí la tendrás. No puedo garantizar nada. Pero al menos será una historia distinta.
+
+---
+
+*Si estás diseñando un loop de uso de herramientas y quieres un segundo par de ojos sobre la lógica de terminación, [contáctame](/contact). El control del loop es donde viven los incidentes de producción más prevenibles, y es mucho más fácil de detectar en el código de alguien más que en el propio.*

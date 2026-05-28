@@ -1,0 +1,121 @@
+---
+title: "Two Tones of Wrong: Confident vs. Uncertain Mistakes in Clinical AI"
+description: "In clinical settings, a wrong answer does not have one cost — it has a tone. A confidently wrong answer slips into the chart. An uncertain wrong answer gets double-checked. Why a 95% accurate, always-confident model is more dangerous than an 88% accurate, properly calibrated one — and how I build calibration into the surface of MILA."
+date: 2026-05-26
+published: true
+category: "Healthcare AI"
+tags: ["Healthcare AI", "Calibration", "Clinical Safety", "MILA", "Uncertainty"]
+author: "Osvaldo Restrepo"
+tldr: "A wrong answer in clinical AI does not have a single cost. It has a tone. A confidently wrong answer is treated as fact and slips into the chart, into the conversation with the family, into the next decision. An uncertain wrong answer is taken at its calibrated weight, double-checked, and rarely causes harm even when wrong. That asymmetry is so strong that a 95% accurate model that is always confident is more dangerous in a clinic than an 88% accurate model that hedges honestly. Calibration is not a research nicety. It is a surface-level design decision: uncertainty has to be a first-class output, the language has to match the confidence, and refusal has to be a feature, not a bug. This is how I built that into MILA's approval workflow."
+faqs:
+  - question: "Isn't a more accurate model always safer than a less accurate one?"
+    answer: "Not in clinical settings. What matters is not just how often the model is wrong but how its wrong answers feel to the clinician reading them. A confidently wrong answer is dangerous because it is acted on; an honestly hedged wrong answer is double-checked. A higher-accuracy model that is always confident can cause more harm than a lower-accuracy model that calibrates its tone to its actual certainty, because the rare confident error blends in with the many confident truths."
+  - question: "How do you build calibration into an AI product surface?"
+    answer: "Make uncertainty a first-class output of the model, not metadata. Change the language of the response to match the confidence level — declarative for high confidence, hedged with named reasons for medium, and an explicit defer-to-human for low. Treat refusal as a normal, expected output rather than a failure. And in any workflow that touches a patient, require human review with confidence visible at a glance."
+  - question: "Doesn't constant hedging make the AI annoying or useless to clinicians?"
+    answer: "It would, if you hedge uniformly. The point of calibration is that the system speaks plainly when it should and hedges when it should, so the hedging carries signal. Clinicians learn quickly: when MILA hedges, look closer. When it speaks plainly, it has good reason to. Uniform hedging is noise. Calibrated hedging is information."
+relatedPosts: ["when-models-should-say-i-dont-know", "empathy-layer-ai-scared-parents", "why-healthcare-ai-should-be-boring"]
+---
+
+There is a moment I keep coming back to from MILA's earliest internal tests. A nurse, reviewing a draft summary the system had written about a baby's overnight respiratory trend, paused at one line. The line read: "respiratory status stable, no concerning desaturations." It was declarative. It was clean. It was the kind of sentence a tired person, mid-shift, reads once and trusts.
+
+It was also wrong. Not catastrophically. There had been two brief desats overnight, recovered without intervention, the kind of thing a clinician would normally not stop the world for. But "no concerning desaturations" was not what the chart said. The chart said two brief desats. The model had decided, on its own, that they were not concerning and erased them from the summary in a confident voice.
+
+The nurse caught it. She always does. But I sat with that draft for a long time afterward, because it told me something I had been circling for months: in clinical AI, **a wrong answer does not have one cost. It has a tone.**
+
+## The Two Tones
+
+A model can be wrong in two very different ways, and the difference matters more than the accuracy number on your dashboard.
+
+A **confidently wrong** answer is declarative. No hedging, no qualifying clauses, no "based on limited data." It reads exactly the way a confidently right answer reads, because the surface language carries no signal about the model's actual certainty. In a busy clinical environment, that kind of sentence gets scanned, accepted, and folded into the next decision. It becomes part of the chart, part of the handoff, part of what the family is told. By the time anyone realizes it was wrong, it has already done work in the world.
+
+An **uncertain wrong** answer is shaped differently. "Based on the available trend and limited overnight notes, the respiratory status appears stable, though I would flag the two brief desats around 02:00 for your review." Same possible error. Same possible miss. But the sentence itself is doing something the confident version did not: it is naming its own limits. It is asking to be checked. It is handing the clinician a thread to pull.
+
+Even when the uncertain version is wrong, it is wrong with its hands visible. The nurse reads it the way it asked to be read, slows down on the flagged piece, and almost always catches the issue. The confident version is wrong with its hands behind its back.
+
+<Callout type="warning" title="Accuracy is not the whole story">
+A 95% accurate model that is always confident will produce, over a thousand drafts, fifty confident errors that look exactly like its nine hundred and fifty confident truths. An 88% accurate model that calibrates honestly will produce a hundred and twenty errors, but the wrong ones will mostly hedge, ask, or defer, and the clinician will catch them. In a clinical context, the second model is safer. Calibration changes the cost of being wrong.
+</Callout>
+
+## Why "Just Be Right" Is Not the Goal
+
+I want to be honest about why this took me so long to internalize. Like most engineers, my first instinct was to push the accuracy number up. More data, better prompts, retrieval over the unit's own notes, evals on top of evals. Those are all good things. I still do them. But somewhere around the third or fourth round of "we just need to get this number higher," I noticed that the *kind* of error we shipped at 92% looked exactly like the kind we shipped at 88%. The number moved. The danger profile did not.
+
+The danger profile only changed when I stopped optimizing the model in isolation and started designing the *surface* — the language, the formatting, the workflow around the output — to carry confidence as a visible signal.
+
+This is the part most clinical AI demos skip. They show a clean answer in a clean box and they leave it to the clinician to remember "this is AI, double-check it." That works for one hour. It does not work for the seven-hundredth chart of a long week. The surface has to do the remembering, not the human.
+
+## What Calibration Looks Like on the Surface
+
+Here is the shape I have landed on after a lot of false starts. It is not novel research; it is the application of well-known calibration ideas at the place where they actually matter, which is where a human reads the output.
+
+```
+   model produces answer
+            │
+            ▼
+   model produces confidence  ◄──  (not a score in metadata,
+   (high / medium / low)            a first-class output)
+            │
+            ▼
+   ┌──────────────────────────────────────┐
+   │  LANGUAGE MATCHES CONFIDENCE         │
+   │                                      │
+   │  high   ──▶ declarative, plain        │
+   │             "respiratory stable"     │
+   │                                      │
+   │  medium ──▶ hedged with reason        │
+   │             "appears stable; two     │
+   │              brief desats noted"     │
+   │                                      │
+   │  low    ──▶ defer + name the gap      │
+   │             "insufficient overnight  │
+   │              notes; please review"   │
+   └────────────────┬─────────────────────┘
+                    │
+                    ▼
+   refusal is a normal output, not an error
+                    │
+                    ▼
+   human review with confidence
+   shown at a glance, not buried
+```
+
+The key move is that the confidence is not a number tucked into a tooltip. It changes how the sentence reads. A clinician scanning ten summaries can feel, at the level of language, which ones are leaning on solid data and which ones are stretching. That is the *whole point*. The calibration has to land in the part of the system the clinician actually reads — which is, almost always, just the words.
+
+<Callout type="info" title="Uncertainty is an output, not metadata">
+If your model emits a confidence score that lives next to the answer but does not change the answer, you have not built calibration. You have built a sticker. The confidence has to shape the words, the formatting, and the surrounding workflow, because that is the part the human actually processes. Anything else gets ignored by hour three of a shift.
+</Callout>
+
+## Refusal Is a Feature
+
+This is the piece I had to fight hardest for. Early on, every time MILA returned something like "there are not enough notes from overnight to characterize this trend; please review directly," someone would file it as a failure. Coverage gap. Missed answer. The dashboards punished it.
+
+I changed the dashboards. A refusal where refusal was correct is not a failure. It is the system doing exactly what a careful clinician would do: saying "I do not know enough to say." Treating that as a failure mode pressures the model — and the people prompting it — to push past genuine uncertainty into a confidently wrong answer, which is the worst outcome on the entire surface.
+
+So in MILA, abstention is logged as a normal output type. We track it. We even watch its rate as a *health* signal: if abstention drops to zero, something is wrong with calibration, the model has started confidently answering things it should not. (I have written about this more directly in [when models should say "I don't know"](/blog/when-models-should-say-i-dont-know) — abstention design and tone calibration are siblings, but this post is about how the wrongness *feels* once it is on the page.)
+
+## The Approval Workflow Carries the Calibration
+
+In MILA, no AI-written content reaches a parent or goes into a chart without a clinician approving it. That is non-negotiable, for reasons I have written about in [the empathy layer](/blog/empathy-layer-ai-scared-parents). But the approval workflow is also where calibration lives or dies in practice.
+
+Concretely, the review screen shows the draft with confidence-bearing language already shaped into the sentence, and a small but unmissable indicator next to it: a calm green band for high-confidence sections, a soft amber for hedged ones, a clear red for sections the model declined to characterize. The clinician's eye is trained, by the second day of use, to slow down on amber and to *expect* red on sparse-data shifts. Approvals on green sections are fast. Approvals on amber are slower, and that slowness is the feature. The system is buying attention back from the parts that need it.
+
+A confidently wrong sentence that slips through this kind of workflow is still possible. Nothing eliminates it. But it is now the rare case rather than the default case, and the rare case is what humans are good at catching.
+
+<Callout type="tip" title="Design the review for where the danger lives">
+The most dangerous draft is the one that reads cleanly and is wrong in one specific word. Design the review surface so the clinician's attention is drawn to exactly the parts that earned it, and freed from the parts that did not. Uniform review screens train uniform skimming. Calibrated review screens train calibrated attention.
+</Callout>
+
+## The Dignified Version of "Wrong"
+
+What I am really chasing, underneath all of this, is a kind of dignity in being wrong. A clinical AI system is going to be wrong sometimes. That is not a failure of the field; it is the nature of working with imperfect data and a probabilistic tool. What I will not accept is that it is wrong in a tone that disguises the wrongness and offloads the cost onto a tired nurse at 4 a.m. or a frightened parent at any hour.
+
+The dignified version of wrong looks like this: the system tells you, in the shape of its sentences, how much to trust it. When it is on solid ground, it speaks plainly. When it is stretching, it says so. When it is past its limits, it stops. The wrong answers it produces are mostly the hedged kind, and they get caught, because the hedge did its job.
+
+I think a lot about the draft the nurse caught. She caught it because she is excellent, and because the workflow gave her room to. But I do not want MILA's safety to depend on excellence and luck. I want it to depend on how the system speaks. That is what calibration on the surface really means: the model's certainty becomes part of the language, and the language becomes part of the safety.
+
+In clinical AI, you do not get to choose whether your system will be wrong. You only get to choose the tone of its wrongness. Choose carefully.
+
+---
+
+*If you build clinical AI, or you work on the receiving end of it, [reach out](/contact). Calibration is one of those topics that gets easier the more honestly we talk about our failure modes.*

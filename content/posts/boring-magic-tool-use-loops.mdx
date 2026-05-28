@@ -1,0 +1,207 @@
+---
+title: "The Boring Magic of Tool-Use Loops"
+description: "The flashy agent demos are also the easiest to misbuild in production. The loop — model calls a tool, gets a result, calls another, repeats — needs strict termination criteria: max iterations, no-progress detection, token and time budgets, an explicit escape hatch. Why letting the agent decide when it's done is the bug that ate your invoice, and the boring patterns that make loops survive contact with real traffic."
+date: 2026-05-27
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "Agents", "Tool Use", "Reliability", "LLM"]
+author: "Osvaldo Restrepo"
+tldr: "The tool-use loop — model calls a tool, observes the result, decides what to do next — is the part of an agent that looks magical in a demo and most often goes wrong in production. The magic is not in giving the model autonomy. The magic is in the loop control: a hard cap on iterations, no-progress detection so the agent cannot grind forever on the same call, a token budget and a wall-clock budget, an explicit escape hatch that returns a partial answer instead of nothing, and a clear human handoff. The boring patterns are the production patterns. Let the agent decide when it is done and it will eat your invoice, your latency budget, and your weekend, in that order."
+faqs:
+  - question: "Why is a tool-use loop different from a normal LLM call?"
+    answer: "A normal call has one input and one output; you can bound it with timeouts and token limits like any HTTP request. A tool-use loop has the model deciding, at each step, whether to call another tool and what to ask. Without explicit termination criteria, it can spin on itself, call the same tool with slightly different arguments, or chase information it does not need. The loop is the part of an agent that turns a five-cent request into a fifty-dollar one if you let it."
+  - question: "Isn't 'let the agent decide when it's done' the whole point of an agent?"
+    answer: "It is the marketing point. In production it is the bug. The agent should decide what to do within bounds, not whether the bounds exist. You set max iterations, token budget, wall-clock budget, no-progress detection, and an escape hatch; the agent decides how to use that envelope. Removing the envelope does not make the agent smarter, it makes its worst day catastrophic."
+  - question: "How do you detect that an agent is not making progress?"
+    answer: "Track the sequence of (tool_name, normalized_arguments) tuples across iterations. If the same tuple repeats, or the agent rotates between two tools without new information entering the context, that is a no-progress signal. Stop the loop, return a partial result with what you have, and escalate. A repeating call pattern is the agent telling you it is stuck; do not make it tell you twice."
+relatedPosts: ["building-ai-agents-production", "designing-llm-retry-fallbacks", "first-ai-feature-should-be-read-only"]
+---
+
+The first production tool-use loop I ever shipped ran for forty-three minutes on a single user request before I killed it by hand. Forty-three minutes. On a request that, in the demo, took six seconds. The agent had decided, with all the confidence of a probabilistic text generator, that it needed "just one more lookup" — over and over — to be sure of its answer. The lookups were not free. I learned that part the next morning, from a bill.
+
+I have built a lot of agentic systems since then, mostly voice agents for small US businesses through Shining Image, and more recently the orchestration layer that ties together the seventeen-plus apps in TheGreyMatter.ai. And every single time I sit down to design a new tool-use loop, I think about that forty-three-minute run. Because the most impressive agent demos and the most expensive production incidents come out of the same architecture. The difference is entirely in how the loop is bounded.
+
+This post is about that. Not the magic. The boring magic. The patterns that turn a fragile demo into something you can leave running over a long weekend without checking on it.
+
+## The Loop Everyone Draws
+
+You have seen this diagram. Every agent post has it. The model calls a tool, gets a result, calls another tool, gets another result, repeats until "done." It is a beautiful little cycle and it implies that the agent will, like a thoughtful intern, know when to stop.
+
+It does not. Not reliably. Not at scale. Not when the world starts throwing weird inputs at it. The cycle is correct as a sketch and dangerous as a contract. I have written about the broader gap between agent demos and agent production in [building AI agents that actually work in production](/blog/building-ai-agents-production); this post zooms into the single subsystem that decides whether your loop lives or dies, which is the termination logic.
+
+The honest version of the diagram, the one I actually build, looks like this:
+
+```
+              ┌─────────────────────────┐
+              │     User request        │
+              └────────────┬────────────┘
+                           │
+                           ▼
+            ┌────────────────────────────┐
+            │  LIMITS CHECK              │◄────┐
+            │  • iterations < N           │     │
+            │  • tokens < budget          │     │
+            │  • elapsed < wall_clock     │     │
+            │  • no-progress < threshold  │     │
+            └─────────┬──────────────┬────┘     │
+                      │              │          │
+              ok      │              │ limit hit│
+                      ▼              ▼          │
+            ┌──────────────────┐  ┌──────────────────┐
+            │  LLM: pick tool  │  │  ESCAPE HATCH    │
+            └─────────┬────────┘  │  • partial result│
+                      │           │  • or human raise│
+                      ▼           └──────────────────┘
+            ┌──────────────────┐
+            │  TOOL execute    │
+            └─────────┬────────┘
+                      │
+                      ▼
+            ┌──────────────────┐
+            │  PROGRESS check  │──── repeated call? ──┐
+            │  (fingerprint)   │                     │
+            └─────────┬────────┘                     │
+                      │ progress made                │
+                      └──────────────────────────────┘
+```
+
+Notice the things that are *not* the call itself. The limits check on every iteration. The progress check after every tool result. The explicit escape hatch as a first-class branch, not an exception. These are not decorations. They are the parts that determine whether the loop is a tool or a hazard.
+
+<Callout type="warning" title="Unbounded loops are not theoretical">
+"Let the agent run until it decides it is done" is a fine sentence in a blog post and a production incident in a codebase. I have personally watched an agent loop on the same lookup hundreds of times because the API was returning slightly different results each call and the model kept thinking it was making progress. Every iteration cost real money. Every iteration also cost wall-clock latency that a user was waiting through. Set the bounds. All of them. On day one.
+</Callout>
+
+## The Four Budgets
+
+I think of every tool-use loop as having four budgets, and the loop is dead the moment any one of them runs out. Naming them this way changes how I prompt, how I log, and how I write the escape hatch.
+
+**Iterations.** A hard cap on how many times we go around. For most of my agents this lives between 5 and 12. If your agent regularly needs more, the tools are too granular, the prompt is asking for too much in one turn, or the model is foraging when it should be answering.
+
+**Tokens.** A budget across the whole loop, not per call. Including the tool results that get fed back in. The thing that surprises people is that a loop with five iterations can blow a fifty-thousand-token budget if each tool returns a fat JSON blob you stuff back into context. Cap the total.
+
+**Wall-clock time.** The user is waiting. Set a ceiling that respects that. For a voice agent this is brutal: anything over three seconds without a spoken progress signal feels broken. For background batch work it can be minutes. The number matters less than the fact that the number exists.
+
+**Tool calls.** A separate counter from iterations because some loops will call multiple tools per LLM turn. If you allow parallel tool calls, this is the budget that catches you when the model decides to fetch eighteen things "to be thorough."
+
+```python
+@dataclass
+class LoopBudget:
+    max_iterations: int = 8
+    max_total_tokens: int = 40_000
+    max_wall_clock_s: float = 20.0
+    max_tool_calls: int = 12
+
+@dataclass
+class LoopState:
+    iteration: int = 0
+    total_tokens: int = 0
+    tool_calls: int = 0
+    started_at: float = field(default_factory=time.monotonic)
+    fingerprints: list[str] = field(default_factory=list)
+
+def within_budget(state: LoopState, budget: LoopBudget) -> tuple[bool, str | None]:
+    if state.iteration >= budget.max_iterations:
+        return False, "iterations"
+    if state.total_tokens >= budget.max_total_tokens:
+        return False, "tokens"
+    if (time.monotonic() - state.started_at) >= budget.max_wall_clock_s:
+        return False, "wall_clock"
+    if state.tool_calls >= budget.max_tool_calls:
+        return False, "tool_calls"
+    return True, None
+```
+
+That is roughly half of the loop control logic right there, and it has saved me more money than any clever prompt I have ever written.
+
+## No-Progress Detection
+
+The other half is harder, and I rarely see it in the public agent examples: detecting that the agent is not actually making progress.
+
+The pattern that has worked best for me is fingerprint comparison. After each tool call, compute a stable fingerprint of `(tool_name, normalized_args)` and store it on the state. If the same fingerprint appears twice in a row, the agent is repeating itself. If it appears three times within the last few iterations with no new external information entering the context, the agent is grinding.
+
+```python
+def fingerprint(tool_name: str, args: dict) -> str:
+    normalized = json.dumps(args, sort_keys=True, default=str)
+    return hashlib.sha1(f"{tool_name}::{normalized}".encode()).hexdigest()
+
+def is_stuck(state: LoopState, window: int = 3) -> bool:
+    recent = state.fingerprints[-window:]
+    if len(recent) < window:
+        return False
+    return len(set(recent)) == 1
+```
+
+This catches a surprising number of real-world failure modes. Two of the most common: the model calls the same lookup with the same arguments and somehow believes it will get a different answer the second time (it usually will not), and the model oscillates between two tools, each call undoing the other's effect on the reasoning. Both of these patterns waste budget while looking, from outside, like "the agent is working hard."
+
+Once `is_stuck` returns true, I do not try to nudge the model out of it. That almost never works and costs more tokens. I exit the loop into the escape hatch.
+
+<Callout type="info" title="Repetition is the agent asking for help">
+A repeating tool call is not a bug to be papered over with a better prompt. It is the agent telling you, in its own clumsy way, that it does not know what to do next. The right response is to stop, return what you have, and escalate. Trying to retry past a stuck signal is how a forty-three-minute run happens.
+</Callout>
+
+## The Escape Hatch Is a Feature
+
+The third piece, and the one that takes the most discipline, is the escape hatch. When any budget runs out, or no-progress is detected, the loop must terminate into a useful state, not a thrown exception that the calling layer has to guess about.
+
+In practice that means every loop knows how to construct a partial result. Concretely: an envelope that includes whatever the agent has gathered so far, a clear status code (`hit_iteration_cap`, `hit_token_cap`, `no_progress`, `tool_failure`), a one-sentence summary the model can produce on demand, and a flag indicating whether the result is safe to show the user or needs a human review before anything happens.
+
+```python
+@dataclass
+class LoopResult:
+    status: Literal["complete", "hit_iteration_cap", "hit_token_cap",
+                    "hit_wall_clock", "no_progress", "tool_failure"]
+    answer: str | None
+    partial_findings: list[dict]
+    requires_human: bool
+    summary: str
+
+def escape(state: LoopState, status: str, findings: list[dict]) -> LoopResult:
+    return LoopResult(
+        status=status,
+        answer=None,
+        partial_findings=findings,
+        requires_human=True,
+        summary=summarize_for_human(findings, status)
+    )
+```
+
+A loop that throws when it hits a limit is a loop that has trained its callers to wrap it in `try/except` and pretend nothing happened. A loop that returns a structured partial result trains its callers to do the right thing: show the user what we know, surface that it is incomplete, and route the rest to a human if needed. I have written separately about [graceful fallbacks at the single-call level](/blog/designing-llm-retry-fallbacks); the loop-level version is the same idea scaled up.
+
+## Tell the Model About the Budget
+
+A small trick that pays back enormously: tell the model, in the system prompt, that it is operating in a bounded loop. Not the exact numbers, but the shape.
+
+```text
+You operate inside a tool-use loop with strict limits on time and the number
+of tool calls. Prefer fewer, well-chosen calls over many small ones. If you
+already have enough information to answer, answer. Do not call a tool "just
+to be sure" if the previous result was already conclusive. If you find
+yourself unsure after two or three tool calls, return what you have and
+explain what you would need to be more confident.
+```
+
+This is not magic. Models still over-call sometimes. But the average iteration count on my agents dropped noticeably after I added language like this, because the model now has a frame for "when in doubt, stop." That frame is missing from the default training, which optimizes for being helpful in a single turn rather than being efficient across many.
+
+<Callout type="tip" title="The loop is part of the prompt">
+Your system prompt should describe the loop the model is operating in, not just the task. Telling the model "you are inside a bounded loop, prefer to stop when you have enough" reframes its behavior in a way that no amount of clever tool descriptions will. The loop is context. Treat it like context.
+</Callout>
+
+## When the Loop Is Wrong, Read-Only First
+
+One last piece. If you are designing the first loop for a new domain, and especially one where mistakes are expensive — finance, scheduling, anything that writes to a real system — start with a read-only loop. No tool the agent calls should have side effects. The agent can gather, plan, and propose. A human, or a separate deterministic step, executes.
+
+This is the pattern from [first AI feature should be read-only](/blog/first-ai-feature-should-be-read-only), and it applies double inside a loop. A read-only loop that grinds for a while costs you tokens. A write-enabled loop that grinds can book the wrong appointment, charge the wrong card, or fire off the wrong batch of emails fifteen times. The blast radius of a bug in an unbounded write loop is, in my experience, the single largest source of "I cannot believe that just happened" stories in agentic systems.
+
+## The Quiet Discipline
+
+There is nothing flashy about any of this. Iteration caps, token budgets, fingerprint-based no-progress detection, partial-result escape hatches, a system prompt that mentions the loop. Each piece is a few dozen lines. None of it will show up in a demo video.
+
+But this is the boring magic. The thing that makes an agent work next Tuesday and the Tuesday after, when traffic is weird and the model is having an off day and one of the upstream APIs is returning subtly different shapes. The loop is the part of an agent where engineering taste shows up most clearly, because the temptation to skip the bounds in the name of "letting the model be smart" is constant, and the cost of giving in is paid in real money, real latency, and real trust.
+
+Bound your loop. Detect no-progress. Always have an escape hatch. Tell the model it is in a loop. Start read-only. Do those five things and you will ship agents that survive contact with real users, and you will not have a forty-three-minute story of your own to tell.
+
+Or you will. I cannot guarantee anything. But at least it will be a different story.
+
+---
+
+*If you are designing a tool-use loop and want a second pair of eyes on the termination logic, [get in touch](/contact). Loop control is where the most preventable production incidents live, and it is much easier to spot in someone else's code than in your own.*

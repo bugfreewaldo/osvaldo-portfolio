@@ -1,0 +1,149 @@
+---
+title: "Shipping AI to Non-Technical Users: Five Things I Wish Someone Told Me"
+description: "Engineering AI features for people who don't know — and shouldn't have to know — what an LLM is. Five rules earned from MILA, voice agents for small businesses, and watching kids try AI tools at Waldo's Code Lab. Say what it can't do on the first screen, hand off every output, treat latency as a feature, suggest examples that prove the boundary, and never fail with the word 'model.'"
+date: 2026-05-28
+published: true
+category: "AI Product"
+tags: ["AI Product", "UX", "MILA", "Voice Agents", "Design"]
+author: "Osvaldo Restrepo"
+tldr: "Most AI products are designed by people who know how LLMs work for people who do not. The result is a class of avoidable failures: surprise at the limits, blind trust in confident outputs, panic at long latencies, and incomprehensible error messages. I have shipped AI to NICU nurses, to homeowners answering a phone call from a voice agent, and to kids at Waldo's Code Lab. Five rules keep falling out of all three: state what it cannot do on the first screen, give every output a 'this might be wrong' hand-off, treat latency as a feature and show progress, suggest examples that demonstrate the boundary instead of only the wins, and when it fails, fail in language the user already uses. Never with the word 'model.'"
+faqs:
+  - question: "Isn't telling users what the AI cannot do bad for marketing?"
+    answer: "It is great for marketing in the only way that matters, which is keeping users after the first surprise. The cost of a user discovering a limit by hitting it the wrong way — in front of a patient, on a sales call, on a homework assignment — is much higher than the cost of being upfront. Stating the limits is what turns an unpredictable tool into a trustworthy one, and trust is the entire long-term moat."
+  - question: "Won't constant 'this might be wrong' hand-offs annoy users?"
+    answer: "Only if you copy-paste the same disclaimer everywhere. The hand-off has to be specific, short, and proportional to the actual risk. A draft message for a parent gets a gentle 'review before sending,' a high-confidence factual answer might get nothing more than a small 'source' link, and a low-confidence answer says so plainly. The point is not constant disclaiming, it is matching the hand-off to the stakes."
+  - question: "Why is latency a UX feature instead of just a performance metric?"
+    answer: "Because non-technical users do not measure latency in milliseconds, they measure it in 'is this thing working or broken.' Two seconds of spinner with no signal feels broken. Two seconds with a 'searching your records' indicator and a small progress signal feels like work being done. Same latency, completely different experience. Treating latency as a UX surface — what the user sees and hears while waiting — is how slow products feel fast and fast products feel professional."
+relatedPosts: ["empathy-layer-ai-scared-parents", "first-ai-feature-should-be-read-only", "healthcare-software-ux"]
+---
+
+The first time I watched a NICU nurse use MILA, she did something I had not prepared the UI for. She read the AI-drafted message, nodded, started to hit "send," paused, looked back at the screen, and said — out loud, to no one — "wait, can it do bilirubin trends or not?"
+
+She did not know. The UI had not told her. I had documented every capability in a perfectly reasonable place that no human in a twelve-hour shift will ever read. She had to guess what the system could do based on what it had done so far, which is the worst possible way to learn a tool.
+
+I have been thinking about that moment for two years. It comes back to me when I am building voice agents at Shining Image for homeowners who do not know they are even talking to AI. It comes back when I watch a nine-year-old at Waldo's Code Lab type into a chatbot like it is a search engine and get frustrated when it does not behave like one. It comes back every time a polished AI product surprises a user with what it cannot do.
+
+There is a pattern. There are, in fact, five of them. These are the five rules I keep landing on when I ship AI to people who do not know — and should not have to know — what an LLM is.
+
+## 1. Say What It Cannot Do, Loudly, on the First Screen
+
+The single biggest UX mistake in AI products is hiding the limits.
+
+Every product team I have worked with wants the first screen to be magical. A clean input box, a friendly prompt, an implication that anything is possible. It is the cleanest possible design and it is a trap, because the user's first interaction will eventually hit a limit they did not know existed, and they will not interpret it as a limit. They will interpret it as the product being broken, or stupid, or worse, them being stupid.
+
+In MILA, the first screen a nurse sees for any new tool now states, in one line, what the tool *will not* do. "Drafts parent updates for routine and notable events. Does not handle critical-status messaging or end-of-life conversations." That is it. Twenty-something words. Before any input box.
+
+The first time I added that, I expected pushback. What I got was relief. Nurses told me they trusted the tool more because they knew its edges. The limit became part of the product, not a hidden cliff.
+
+<Callout type="tip" title="The limit is part of the product">
+A capability statement without a limit statement is incomplete. Say what it does and what it does not do, in the same breath, on the first screen. Users do not lose trust from limits. They lose trust from surprise.
+</Callout>
+
+For the Shining Image voice agent, this same principle lives in the opening line: "Hi, I'm the after-hours assistant for [business]. I can help with appointments, hours, and quotes — but for anything urgent I'll take a message and pass it to the owner." Twenty seconds of honesty buys the agent an enormous amount of patience for the rest of the call.
+
+## 2. Every Output Gets a "This Might Be Wrong" Hand-Off
+
+The second rule sounds, on paper, like a bad idea. Constantly telling users the AI might be wrong sounds like undermining your own product. It is not. It is what turns the output from "an answer" into "a draft a human owns."
+
+The trick is that the hand-off must be *proportional and specific*. A copy-pasted "AI may produce inaccurate information" footer everywhere is just noise; users stop seeing it within a day. What works is a hand-off that matches the stakes and the action:
+
+```
+high-confidence factual lookup    ──▶  small "source" link beside the answer
+medium-confidence draft message   ──▶  "review before sending" with edit cursor
+low-confidence summary            ──▶  "I'm not sure about X; please verify"
+out-of-domain request             ──▶  refuse with one clear sentence
+```
+
+In MILA, a draft for a parent never appears without an editable cursor and a soft "review before sending" beside the send button. The cursor itself is the hand-off — it says, in pure UI, *this is a draft for you, not a final message from us.* I have written about why that human-in-the-loop is non-negotiable for clinical communication in [the empathy layer](/blog/empathy-layer-ai-scared-parents); the rule here is about how to make that hand-off feel natural rather than nagging.
+
+For the voice agent, the hand-off is auditory: a small but noticeable pause and a phrase like "let me read that back to you" before the agent confirms anything that will actually book a slot. Same principle. Different medium.
+
+## 3. Latency Is a Feature — Show Progress, Don't Just Spin
+
+A spinner is what you ship when you have given up on UX. Non-technical users do not see a spinner as "the system is working." They see it as "the system is broken and I am not sure if it knows." Beyond about two seconds without a signal, they start clicking, refreshing, or in the voice agent case, talking over the silence and breaking the turn-taking.
+
+The fix is not to make the model faster. Sometimes you can; mostly you cannot, not enough to matter. The fix is to make the *wait* informative.
+
+```
+                 ┌────────────────────────────────────────┐
+   user input    │                                        │
+   ──────────▶   │   acknowledged immediately             │
+                 │   ("got it, looking into that")        │
+                 │                                        │
+                 │   then concrete progress markers       │
+                 │   ("checking patient records...")       │
+                 │   ("drafting message...")              │
+                 │   ("reviewing tone...")                │
+                 │                                        │
+                 │   result delivered                     │
+                 └────────────────────────────────────────┘
+```
+
+For MILA's draft generator, even though the underlying call takes a few seconds, the UI shows "pulling overnight notes," then "drafting," then "checking tone." Same total latency. Wildly different perceived quality. The user is not waiting on a black box, they are watching work happen.
+
+For the voice agent, this is even more critical. Silence on a phone call is panic. A short verbal acknowledgment — "let me check that, one second" — buys you the entire database call. Without it, you lose the user inside of two seconds.
+
+This is the same UX discipline I wrote about in [healthcare software UX](/blog/healthcare-software-ux): design for the conditions of use, not the ideal. A nurse with thirty seconds between rooms or a homeowner trying to book a window cleaning on a Tuesday evening does not have the patience for an uncommunicative spinner. Make the wait itself part of the product.
+
+<Callout type="info" title="Perceived latency is real latency">
+The actual time a model takes and the time it feels like it takes are different numbers. Concrete progress signals can cut perceived latency in half without changing the actual response time by a single millisecond. If your AI feature feels slow, the answer is usually not a faster model. It is a better wait.
+</Callout>
+
+## 4. Suggest Examples That Prove the Boundary, Not Only the Successes
+
+Every AI product ships with a row of suggested prompts on the empty state. Almost all of them are softball: things the product is great at, designed to make the first try feel impressive. This is well-intentioned and slightly dishonest, because the second thing the user tries — outside the curated suggestions — is where the actual product begins, and they have no map for it.
+
+I now build the suggestion strip to include at least one example that *demonstrates a limit*. Not a failure example. An example that shows the user the edge of the box.
+
+For MILA's parent-update tool, the suggestions include "draft an update for tonight's care plan" and "summarize this week's progress" — and also "what happens if I ask for an after-hours emergency message?" That last one, when tapped, shows the user the polite refusal and the escalation path, *before* they need it in a real moment. It is an inoculation. It also signals respect: the product trusts the user to handle knowing its limits.
+
+For the Waldo's Code Lab kids' tools, this is even more important. Kids will absolutely try to break a tool, joyfully, on purpose, within the first two minutes. The suggested examples that show "here is something I cannot help with, and here is what to do instead" teach the kids the shape of the system through play, not through frustration.
+
+The metric I watch is the second-try success rate. Most teams optimize for the first try; the first try succeeds because you designed the suggestion strip for it. The second try is the truth. Suggestions that prove the boundary lift the second-try rate more than any prompt-engineering work I have ever done.
+
+<Callout type="warning" title="A perfect first try is a misleading first impression">
+If your suggestion strip only shows the things your product is best at, you are setting users up to fail their second try in the worst possible way: by surprise. Include at least one example that demonstrates a limit gracefully. The user learns the edge of the box without paying for it.
+</Callout>
+
+## 5. When It Fails, Fail in Language They Already Use — Never "The Model Returned an Error"
+
+This is the rule that nearly every AI product gets wrong, and the one with the highest immediate payoff.
+
+A non-technical user does not know what a model is. They do not know what a token is. They do not know what "context length exceeded" means, and even if you translate it to "input too long," they will not know whether the fault is theirs, the system's, or just bad luck. Every minute they spend confused is a minute spent losing trust in the entire product.
+
+So I write every user-facing failure message in the language of the *user's task*, not the *system's failure*. Side by side:
+
+```
+bad:    "The model returned an error. Please try again."
+better: "I could not finish that draft. Try shortening it or
+         splitting it into two updates, and I'll have another go."
+
+bad:    "Request timed out after 30s."
+better: "This is taking longer than usual. Want me to keep
+         trying in the background and notify you, or stop?"
+
+bad:    "Tool execution failed: provider_lookup returned 503."
+better: "I couldn't reach the scheduling system right now.
+         The office number is on file if you'd like to call,
+         or I can try again in a moment."
+```
+
+Notice three things about the "better" versions. They never name a system component. They describe the situation in terms of the user's task. And they end with a concrete next step the user can actually take.
+
+For the voice agent, this rule is even more brutal: there is no screen to read, the user only has tone and content. An agent that says "I encountered an error" sounds broken. An agent that says "I'm having trouble reaching the calendar — would you like to leave a message for the team instead?" sounds professional and considerate. Same underlying failure. The first one loses the customer. The second one keeps them.
+
+I have watched kids at Waldo's Code Lab give up on a tool the moment it returned an error in technical language. Not because the error was bad. Because it spoke a language they had no access to, and the experience of being on the other side of a system that talks past you is, even at age ten, instantly recognizable as not-for-you.
+
+If your AI product has to fail — and it will — fail in the user's words.
+
+## The Throughline
+
+If I had to compress all five rules into one sentence: **non-technical users are not less capable, they are less interested in your system's internals, and they are right.**
+
+The product owes them clarity about what it does and does not do, ownership of every output it produces, an honest wait, examples that show the shape of the box, and failure modes that speak the language of their task. None of these are AI-specific in their underlying spirit; they are good product design. But AI products have a particular tendency to forget them, because the people building them are excited about the model and forget that the model is not the product. The model is the engine. The product is everything around it that makes a tired nurse, a busy homeowner, or a curious nine-year-old feel like they are working with a tool that respects them.
+
+That is the whole job. The five rules are just how I keep remembering it.
+
+---
+
+*If you are shipping AI to non-technical users and want a sanity check on your edges, your hand-offs, or your failure messages, [reach out](/contact). The cost of the second try is where products live or die, and it is much easier to design for in a conversation than alone.*

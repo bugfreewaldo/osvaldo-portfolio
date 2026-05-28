@@ -1,0 +1,112 @@
+---
+title: "Las Ventanas de Contexto Son un Presupuesto, No una Bandera"
+description: "Las ventanas de 200K tokens se sienten infinitas hasta que las mides. El contexto es un presupuesto real que gastas en cada llamada — cada token cuesta dinero, compite por atención y arriesga jalar al modelo hacia el hilo equivocado. Una guía práctica de eficiencia de contexto, poda y de qué pertenece al prompt en primer lugar."
+date: 2026-05-23
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "LLM", "Prompting", "Contexto", "Performance"]
+author: "Osvaldo Restrepo"
+translationOf: "context-windows-are-a-budget"
+tldr: "Las ventanas grandes de contexto no te liberan de la ingeniería de contexto — la vuelven más difícil, porque el costo de saturar el prompt ahora es invisible hasta que llega la factura o el modelo empieza a desviarse. Trata el contexto como un presupuesto por llamada. Decide qué pertenece al system prompt versus qué se recupera bajo demanda, qué debe resumirse, y qué debe descartarse por completo. Mide la eficiencia de contexto (tokens útiles divididos entre tokens totales) y poda sin piedad. El modelo con el prompt más pequeño y limpio casi siempre gana en precisión, latencia y precio."
+faqs:
+  - question: "Si la ventana es de 200K tokens, ¿por qué no usarla?"
+    answer: "Porque la atención no es uniforme a lo largo de la ventana. Los modelos pierden información en la mitad de contextos largos (el efecto lost-in-the-middle), la latencia crece con el tamaño del input, y pagas por cada token sin importar si cambió la respuesta. Un prompt limpio de 4K rutinariamente supera a uno ruidoso de 80K en la misma tarea."
+  - question: "¿Cómo mido eficiencia de contexto en la práctica?"
+    answer: "Loguea dos números por llamada: total de tokens de input y el subconjunto que realmente se necesitó para producir una respuesta correcta. El segundo es difuso — yo lo aproximo ablando secciones y volviendo a correr un eval set, preguntándome '¿bajó la precisión?'. Todo lo que pueda eliminarse sin afectar el score es peso muerto. Apunta a un ratio de eficiencia arriba de 0.6 en hot paths."
+  - question: "¿Qué es lo primero que cortas cuando un prompt es demasiado grande?"
+    answer: "El historial de conversación verboso. Casi toda app de chat que he auditado mantiene logs turn-by-turn completos para siempre. Reemplaza los turnos viejos con un resumen rodante que capture decisiones y restricciones, no transcripciones. Usualmente recuperas entre 40 y 70 por ciento del contexto gratis, y el modelo se vuelve más nítido porque deja de distraerse con charla vieja."
+relatedPosts: ["claude-md-token-management", "daily-prompt-audit-llm-cost-control", "prompt-caching-system-prompts"]
+---
+
+La primera vez que vi a un colega pegar un PDF entero de 60 páginas en un prompt y hacerle al modelo una pregunta de una línea, tuve dos reacciones en rápida sucesión. La primera fue envidia — la ventana realmente lo aguantó. La segunda fue la lenta y pesada constatación de que íbamos a pagar por ese pegado, en efectivo y en calidad, en cada llamada que viniera.
+
+Ese fue el momento en que las ventanas de contexto dejaron de sentirse como una bandera y empezaron a sentirse como un presupuesto.
+
+## La Ventana No Es Gratis
+
+El slide de marketing de cualquier modelo de frontera abre con la ventana. 200K. Un millón. "Mete tu codebase entero". El mensaje implícito es que la ingeniería de contexto es un problema resuelto — apílalo todo y que el modelo lo ordene.
+
+No está resuelto. Solo está escondido detrás de un número más grande.
+
+Cada token en tu prompt cuesta dinero al entrar. Cada token también compite con cada otro token por la atención del modelo. Y cada token irrelevante es una oportunidad más para que el modelo persiga el hilo equivocado y responda con confianza la pregunta equivocada. Las ventanas grandes no abolen esos costos. Solo te dejan ignorarlos más tiempo antes de que muerdan.
+
+```
+Los tres impuestos que pagas por cada token
+───────────────────────────────────────────
+  $$$  Precio de input (lineal en tokens, cada llamada, para siempre)
+   ms  Latencia (la atención escala peor que lineal)
+   ?   Dilución de señal (el modelo agarra el hilo equivocado)
+```
+
+El tercero es el más caro en la práctica. La factura puedes presupuestarla. El drift, tienes que debuggearlo.
+
+## Lost in the Middle Es Real
+
+Un hallazgo replicado ya en la mayoría de las familias de modelos: cuando el hecho relevante está enterrado en la mitad de un contexto largo, el recall baja notablemente comparado con cuando está al principio o al final. El modelo atiende con más fuerza la cabeza y la cola del prompt que la mitad.
+
+Esto significa que tu prompt de "pego todo" es silenciosamente peor que un prompt más chico que coloca el snippet correcto arriba. No ves la regresión porque el modelo sigue respondiendo con fluidez. Solo responde una pregunta ligeramente distinta, o pierde la restricción que mencionaste en la página 14.
+
+<Callout type="warning" title="Equivocarse con Fluidez Es el Modo de Falla">
+El peligro de un contexto inflado no es un rechazo. Es una respuesta confiada y pulida que deja caer una restricción o sustituye discretamente un valor parecido de otra sección. No lo cachas a menos que tengas evals que prueben exactamente el tipo de recall en documentos largos que estás pidiendo.
+</Callout>
+
+## Trátalo Como un Presupuesto Real
+
+Corro cada prompt de producción contra un libro mayor mental simple antes de que se lance. Cada token tiene que ganarse su asiento a través de uno de cuatro roles:
+
+- **Permanente**: pertenece al system prompt porque cambia cada respuesta (el rol, el formato, los límites de seguridad, las definiciones de tools).
+- **Recuperado**: pertenece como contexto fetched-on-demand porque solo algunas queries lo necesitan (un registro de cliente específico, un chunk de doc relevante).
+- **Resumido**: pertenece como representación comprimida porque la forma cruda es demasiado grande pero el gist importa (los últimos veinte turnos de una conversación larga, un overview arquitectural).
+- **Descartado**: no pertenece en absoluto. Se sintió relevante cuando alguien escribió el prompt; en la auditoría, nada dependía de él.
+
+La mayoría de prompts que reviso tienen todo en la categoría uno. Las victorias más rápidas vienen de bajar cosas en la lista.
+
+## El Ratio de Eficiencia
+
+Aquí va un número que vale la pena trackear en cada hot-path prompt: tokens útiles divididos entre tokens totales. Los tokens útiles son aquellos cuya eliminación dañaría tu eval score. Todo lo demás es overhead.
+
+Aproximo esto con un ritual bruto y efectivo: agarro el prompt, tomo un eval set con respuestas conocidas, ablo una sección a la vez, y vuelvo a correr. Si la precisión no cambia, la sección es peso muerto. La corto. Vuelvo a correr. Repito hasta que cortes adicionales cuesten precisión real.
+
+La primera vez que hice este ejercicio en un asistente de producción, el prompt pasó de 11,200 tokens a 3,400 sin caída medible en la calidad de la respuesta. La latencia cayó un tercio. La factura mensual de inferencia cayó aproximadamente lo mismo. Y las respuestas mejoraron ligeramente, porque el modelo tenía menos ruido por el cual vadear para encontrar la señal.
+
+```
+Ritual de poda (una tarde, cada trimestre)
+──────────────────────────────────────────
+  1. Saca el prompt vivo y un eval set de 50 filas
+  2. Score baseline de precisión
+  3. Para cada sección: borra, re-corre, registra delta
+  4. Mantén solo secciones cuyo borrado cueste > X puntos
+  5. Lanza la versión trimmed detrás de un flag por una semana
+  6. Observa telemetría real — promueve o haz rollback
+```
+
+Es el trabajo de performance más barato que hago en todo el año. Presupuesto una tarde por trimestre en cada prompt importante.
+
+## Qué Pertenece a Dónde
+
+La pregunta arquitectónica que se traga la mayoría de los presupuestos de contexto es la equivocada: "¿cómo meto más?". La correcta es: "¿cuál es el lugar más barato para que viva esta información?".
+
+Algunas reglas a las que he llegado:
+
+- **System prompt**: estable entre llamadas, cache-friendly, pagado una vez y reusado. Bueno para instrucciones, schemas, definiciones de tools, ejemplos de formato.
+- **Chunks recuperados**: altamente variables entre llamadas. Buenos para hechos que dependen del usuario, del documento o del momento. Pagas solo cuando la query los necesita.
+- **Resumen rodante**: historiales largos que no caben y no necesitan caber. Bueno para memoria conversacional, estado de proyecto, cualquier cosa que comprima con gracia.
+- **Tools externos**: cuando la respuesta es computable, barata o en vivo, no metas los datos en el prompt. Deja que el modelo salga a buscarlos.
+
+El último está subvalorado. Mucho del bloat de contexto son datos que el modelo podría simplemente consultar si le dieras una herramienta. Un prompt de 4K con una calculadora supera a un prompt de 80K con los números pre-pegados en la mayoría de tareas de razonamiento numérico, porque al modelo no se le está pidiendo leer y hacer aritmética al mismo tiempo.
+
+<Callout type="tip" title="El Prompt Caching Cambia el Cálculo">
+Si tu proveedor soporta prompt caching, el system prompt se vuelve dramáticamente más barato de reusar entre llamadas. Eso lo hace el hogar correcto para contenido estable y caro — sets largos de instrucciones, schemas grandes de tools — siempre que el prefijo sea genuinamente estable. Los cache misses en un prefijo de 30K son brutales; los cache hits son casi gratis.
+</Callout>
+
+## La Disciplina Compone
+
+Una vez que empiezas a tratar el contexto como un presupuesto, aparecen los efectos de segundo orden. Escribes system prompts más apretados porque cada línea tiene que defenderse. Diseñas retrieval con más cuidado porque dejas de usarlo como cajón de sastre. Metes resumización en tu loop conversacional más temprano, en vez de esperar el día en que un chat finalmente choque contra el muro.
+
+Y dejas de impresionarte con tu propio prompt. El system message de 12,000 tokens que a alguien le tomó tres semanas escribir no es una feature; es un impuesto que cada usuario paga en cada llamada. El buen prompt es el chico que aún gana en el eval.
+
+<Callout type="info" title="Un Hábito Sano">
+Corre un reporte diario que imprima el promedio de tokens de input por request, desglosado por feature. Observa la tendencia. Cualquier prompt que esté subiendo 10 por ciento semana a semana o está creciendo a propósito o creciendo porque nadie lo notó. De cualquier forma quieres saberlo antes de que la factura te lo diga.
+</Callout>
+
+El modelo con el contexto más limpio gana. No siempre en el demo — al demo le encanta el pegado gigante. Pero en la factura, en la gráfica de latencia, en el eval score, y en los días raros donde estar equivocado realmente cuesta algo. Gasta tus tokens como si fueran tuyos. Porque lo son.

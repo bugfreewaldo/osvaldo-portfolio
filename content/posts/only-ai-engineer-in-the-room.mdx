@@ -1,0 +1,103 @@
+---
+title: "On Being the Only AI Engineer in the Room"
+description: "A reflective essay on being the specialist among generalists — the one person stakeholders ask 'should we use AI for this?'. The leverage, the loneliness, the temptation to evangelize, the burnout that follows, and how I built a remote peer network when there wasn't a local one to lean on."
+date: 2026-05-24
+published: true
+category: "Career"
+tags: ["Career", "AI", "Leadership", "Mentorship", "Remote Work"]
+author: "Osvaldo Restrepo"
+tldr: "Being the only AI engineer in a room — at a small team, in a local market, or as the one specialist among capable generalists — is a double-edged role. You get enormous leverage and visibility, but you also get a lonely flavor of work: no peers nearby to sanity-check you, the temptation to be a one-person evangelist, and the responsibility to translate honestly without overselling. The job has its own discipline: cultivate a remote peer network deliberately, refuse the title of 'AI shaman' even when offered, and protect a small amount of energy for the people who are coming up behind you. It's worth it."
+faqs:
+  - question: "How do you sanity-check yourself when no one around you has built what you're building?"
+    answer: "You build the peer network on purpose, not by accident. I keep a small group — maybe eight engineers across four time zones — who I can drop a half-finished idea to and get a 'this smells off because…' inside a day. They're worth more than any conference. The mistake is waiting until you're stuck; the relationships have to be tended when there's no fire."
+  - question: "How do you keep stakeholders from treating you as the AI oracle?"
+    answer: "Refuse the role out loud, repeatedly, in the most boring way possible. 'I don't know yet — let me check' is a sentence I say several times a week on purpose. The moment they treat you as infallible, every overconfident answer you give compounds into a roadmap, and the day you're wrong it costs the whole org. Modeling uncertainty in front of them is part of the job."
+  - question: "What's the burnout pattern to watch for?"
+    answer: "It's the one where you start saying yes to every AI question that crosses your desk because saying no feels like letting the team down. Six months later you're the bottleneck on twelve projects, you have no time to actually build anything, and you're cynical about the technology you used to love. The fix isn't time management; it's a small, public list of what you're not doing this quarter, defended kindly but firmly."
+relatedPosts: ["ai-engineering-panama", "working-from-panama-building-global", "soft-skills-fast-paced-engineering"]
+---
+
+There's a particular moment that comes up in almost every meeting I've been in for the last few years. Someone — a founder, a product lead, a doctor, a client — turns to me and asks, with real hope in their voice, "should we use AI for this?" And every set of eyes in the room turns with them.
+
+That moment is the job. The leverage of it, the loneliness of it, the responsibility of it. All in one beat.
+
+I've been the only AI engineer in a lot of rooms. At a small US business automating their voice ops. At a hospital pitch on a neonatal LLM. At a multi-product SaaS where the rest of the team is brilliant but generalist. In a country where, on any given week, the number of senior AI engineers I bump into in person could be counted on one hand. This essay is about what that role actually feels like, and what I've learned from sitting in it.
+
+## The Leverage Is Real
+
+Let's start with the upside, because it's not small.
+
+When you're the only person in the room who can credibly say "we can do this, here's how, and here's what it'll cost," you have outsized influence on what gets built. Decisions that would normally take months of debate get resolved in a hallway. You shape strategy, not just tickets. Your output, even if you ship the same lines of code as a generalist, gets multiplied by the decisions you informed.
+
+That leverage is intoxicating, and it's a fair reward for the years of weird side projects, late-night papers, and learning-out-loud that got you here. I won't pretend it isn't part of why I love this work.
+
+But leverage is a double-sided coin. The same authority that lets you steer the ship to a better outcome lets you steer it confidently in the wrong direction, with nobody in the room qualified to call your bluff.
+
+<Callout type="warning" title="The Confidence Tax">
+When you're the only specialist, every wrong call costs more than it would in a peer-rich environment. There's no senior down the hall to say 'hey, are you sure?'. The org learns to trust you, and then a year of decisions rests on whether you stayed honest about what you didn't know. Discipline matters more here, not less.
+</Callout>
+
+## The Loneliness Nobody Warns You About
+
+This is the part that doesn't show up in the LinkedIn post.
+
+In a tech hub, an AI engineer has a peer group by accident. There are meetups every Tuesday, coworkers who've shipped a system you're about to ship, a friend-of-a-friend who already burned themselves on the exact retrieval bug you're staring at. The expertise is ambient.
+
+I don't have ambient expertise. For most of my career, the senior AI peer I needed to grab coffee with didn't live in my city. Sometimes didn't live in my country. The questions I most needed to ask — "is this how you'd structure the eval set?", "did you also see latency spike when you cached this way?", "am I overthinking the prompt injection surface here?" — had no obvious local recipient.
+
+You compensate. The internet is a great equalizer. I read papers, I follow practitioners, I lurk in Discords. But there is a difference between access and proximity, and that difference shows up most in the small moments — the half-formed idea you'd test on a friend before writing it up, the gut check before a big architectural call, the "is this normal or am I going crazy" feeling at 11pm.
+
+```
+What ambient expertise gives you (and what it costs to recreate)
+────────────────────────────────────────────────────────────────
+  Hallway sanity-check    →  intentional Slack with a trusted peer
+  Meetup pattern-matching →  scheduled async calls every few weeks
+  "I solved that already" →  a curated reading list and good Discords
+  The senior down the hall →  a mentor in another time zone, on purpose
+```
+
+The recreation is doable. It is also work, and it's work the engineer in the hub doesn't have to do. Naming that honestly is part of the job.
+
+## The Temptation to Evangelize (and the Burnout It Hides)
+
+Here's the failure mode I've fallen into more than once.
+
+When you're the only specialist, the org pulls you toward becoming a one-person evangelist. Every team wants fifteen minutes of your time. Every meeting wants the "AI take." You start saying yes to all of it because the asks are flattering, the impact feels real, and saying no feels like letting good people down.
+
+Six months later you've reviewed forty proposals, given a dozen lunch-and-learns, been on every architectural call that had a vector database within ten meters of it, and somewhere in there you stopped actually building. You're a roving consultant in a company that thought it was hiring an engineer.
+
+The burnout that follows is sneaky. It doesn't look like exhaustion at first. It looks like cynicism. You start rolling your eyes at "should we use AI for this" instead of being genuinely curious about the question. You start phoning in the reviews. You start to resent the technology you got into this work because you loved.
+
+<Callout type="danger" title="The Cynicism Signal">
+If you find yourself dreading questions you used to enjoy, that's the warning light. Not the workload, not the calendar — the loss of curiosity. The fix is to reclaim a small, defended block of actual building time, the kind where you're the apprentice and not the expert, and treat it as non-negotiable. The org will survive your saying no to the fourteenth pilot.
+</Callout>
+
+The fix that worked for me was making a small, public list of what I was *not* doing this quarter, and defending it kindly. "I'm not consulting on new pilots until June." "I'm not on the AI committee this cycle." "I'd love to help but X is closer to your problem space." Said clearly and early, those refusals are not a betrayal of the role. They are the role being done well.
+
+## Translation Is the Real Specialty
+
+The technical part of being the only AI engineer in the room is the easier part. The harder part is translation — turning a frothy idea into an honest scope, and turning a hard "no" into something the team can build on.
+
+A founder says, "I want the AI to handle support end-to-end." A doctor says, "Can it just read the chart and tell us what's wrong?" A small-business owner I've worked with for years says, "Can your bot just sound exactly like me?" Every one of those questions has a real, useful answer hiding inside a fantasy version. The job is to find the real one without crushing the spark.
+
+I've learned to translate in three steps, almost mechanically:
+
+1. Restate the dream charitably ("you want a system that handles tier-one tickets with the warmth of your best agent, and only escalates when it's actually stuck — yes?").
+2. Name the seam between the dream and what's real today ("we can get there for FAQ-class questions in two months; for account changes, we need read-only retrieval first, then human-in-the-loop, then maybe autonomy in six").
+3. Offer the first honest step ("here's the smallest version we can ship in three weeks that you'd actually be proud to put your name on").
+
+That sequence — charitable, specific, honest — is more of the job than the architecture diagram is. It's also the part nobody teaches you in a course.
+
+## Build the Peer Network Before You Need It
+
+The single most useful career investment I've made in the last few years is a deliberate, small remote peer network. Maybe eight engineers across four time zones. Some I met at conferences, some on Twitter back when that worked, some through clients, one through a paper. I keep the relationships warm with low-cost rituals — a short DM when their post lands well, a quarterly call, a generous review of their resume or their pitch deck.
+
+When I'm stuck, I have a place to send the half-finished idea. When they're stuck, they have me. None of us is each other's coworker. All of us are each other's sanity check.
+
+<Callout type="tip" title="Tend the Garden Before It Burns">
+You don't build a peer network in the moment you need it. You build it in the quiet months by being useful, available, and curious to people whose work you admire. The relationships are reliable later precisely because they were not transactional earlier.
+</Callout>
+
+If you are the only AI engineer in your room, the most important thing I can tell you is that the role is sustainable, but only if you treat the loneliness as a real, structural part of the job, not a personal failing. Make the network. Defend the building time. Refuse the oracle title. Translate honestly. Save a little energy for the next person coming up behind you — because that person, in five years, will be the colleague you wish you'd had when you started.
+
+The room turns to you and asks if AI should solve this. The answer is sometimes yes, often "not yet," occasionally a kind no. Whatever it is, it should be yours — clear, honest, and rested. That is the whole craft of being the only one. And, eventually, of not being the only one anymore.

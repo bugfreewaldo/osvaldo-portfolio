@@ -1,0 +1,150 @@
+---
+title: "Enviando IA a Usuarios No-Técnicos: Cinco Cosas que Desearía que Alguien Me Hubiera Dicho"
+description: "Diseñar funciones de IA para personas que no saben — y no deberían tener que saber — qué es un LLM. Cinco reglas ganadas con MILA, los agentes de voz para pequeños negocios, y viendo a niños probar herramientas de IA en Waldo's Code Lab. Di lo que no puede hacer en la primera pantalla, entrega cada salida, trata la latencia como una característica, sugiere ejemplos que muestren el borde, y nunca falles con la palabra 'modelo'."
+date: 2026-05-28
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "UX", "MILA", "Agentes de Voz", "Diseño"]
+author: "Osvaldo Restrepo"
+translationOf: "shipping-ai-to-non-technical-users"
+tldr: "La mayoría de los productos de IA están diseñados por personas que saben cómo funcionan los LLMs para personas que no. El resultado es una clase de fallas evitables: sorpresa frente a los límites, confianza ciega en salidas confiadas, pánico ante latencias largas, y mensajes de error incomprensibles. He enviado IA a enfermeras de UCIN, a dueños de casa contestando una llamada de un agente de voz, y a niños en Waldo's Code Lab. Cinco reglas salen una y otra vez de los tres: di lo que no puede hacer en la primera pantalla, dale a cada salida un traspaso de 'esto podría estar mal', trata la latencia como una característica y muestra progreso, sugiere ejemplos que demuestren el límite en vez de solo los aciertos, y cuando falle, falla en el lenguaje que el usuario ya usa. Nunca con la palabra 'modelo'."
+faqs:
+  - question: "¿No es malo para el marketing decirle a los usuarios lo que la IA no puede hacer?"
+    answer: "Es excelente para el marketing de la única manera que importa, que es mantener usuarios después de la primera sorpresa. El costo de que un usuario descubra un límite golpeándolo de la peor manera — frente a un paciente, en una llamada de ventas, en una tarea de la escuela — es mucho más alto que el costo de ser franco. Decir los límites es lo que convierte una herramienta impredecible en una confiable, y la confianza es todo el foso a largo plazo."
+  - question: "¿No molestará a los usuarios el traspaso constante de 'esto podría estar mal'?"
+    answer: "Solo si copias y pegas el mismo aviso en todos lados. El traspaso tiene que ser específico, corto y proporcional al riesgo real. Un borrador de mensaje para un padre recibe un suave 'revisa antes de enviar', una respuesta factual de alta confianza puede recibir nada más que un pequeño link de 'fuente', y una respuesta de baja confianza lo dice llanamente. El punto no es advertir constantemente, es hacer coincidir el traspaso con lo que está en juego."
+  - question: "¿Por qué la latencia es una característica de UX y no solo una métrica de rendimiento?"
+    answer: "Porque los usuarios no-técnicos no miden la latencia en milisegundos, la miden en 'esto está funcionando o está roto'. Dos segundos de spinner sin señal se sienten rotos. Dos segundos con un indicador de 'buscando en tus registros' y una pequeña señal de progreso se siente como trabajo siendo hecho. La misma latencia, una experiencia completamente distinta. Tratar la latencia como una superficie de UX — lo que el usuario ve y escucha mientras espera — es cómo los productos lentos se sienten rápidos y los productos rápidos se sienten profesionales."
+relatedPosts: ["empathy-layer-ai-scared-parents", "first-ai-feature-should-be-read-only", "healthcare-software-ux"]
+---
+
+La primera vez que vi a una enfermera de UCIN usar MILA, hizo algo para lo que no había preparado la UI. Leyó el mensaje redactado por IA, asintió, empezó a presionar "enviar," pausó, miró de vuelta a la pantalla, y dijo — en voz alta, a nadie — "espera, ¿puede manejar tendencias de bilirrubina o no?"
+
+No lo sabía. La UI no se lo había dicho. Yo había documentado cada capacidad en un lugar perfectamente razonable que ningún humano en un turno de doce horas leerá jamás. Tenía que adivinar lo que el sistema podía hacer basándose en lo que ya había hecho, que es la peor manera posible de aprender una herramienta.
+
+He estado pensando en ese momento durante dos años. Vuelve cuando estoy construyendo agentes de voz en Shining Image para dueños de casa que ni siquiera saben que están hablando con una IA. Vuelve cuando veo a un niño de nueve años en Waldo's Code Lab teclear en un chatbot como si fuera un motor de búsqueda y frustrarse cuando no se comporta como uno. Vuelve cada vez que un producto de IA pulido sorprende a un usuario con lo que no puede hacer.
+
+Hay un patrón. Hay, de hecho, cinco. Estas son las cinco reglas a las que sigo aterrizando cuando envío IA a personas que no saben — y no deberían tener que saber — qué es un LLM.
+
+## 1. Di lo que No Puede Hacer, en Voz Alta, en la Primera Pantalla
+
+El error de UX más grande en productos de IA es esconder los límites.
+
+Cada equipo de producto con el que he trabajado quiere que la primera pantalla sea mágica. Una caja de entrada limpia, un prompt amigable, una implicación de que cualquier cosa es posible. Es el diseño más limpio posible y es una trampa, porque la primera interacción del usuario eventualmente golpeará un límite del que no sabía, y no lo interpretará como un límite. Lo interpretará como que el producto está roto, o tonto, o peor, que él es tonto.
+
+En MILA, la primera pantalla que ve una enfermera para cualquier herramienta nueva ahora dice, en una línea, lo que la herramienta *no hará*. "Redacta actualizaciones para padres para eventos rutinarios y notables. No maneja mensajería de estado crítico ni conversaciones de fin de vida." Eso es. Algo así como veinte palabras. Antes de cualquier caja de entrada.
+
+La primera vez que agregué eso, esperaba resistencia. Lo que recibí fue alivio. Las enfermeras me dijeron que confiaban más en la herramienta porque conocían sus bordes. El límite se volvió parte del producto, no un acantilado oculto.
+
+<Callout type="tip" title="El límite es parte del producto">
+Una declaración de capacidad sin una declaración de límite está incompleta. Di lo que hace y lo que no hace, en la misma oración, en la primera pantalla. Los usuarios no pierden confianza por los límites. La pierden por la sorpresa.
+</Callout>
+
+Para el agente de voz de Shining Image, este mismo principio vive en la línea de apertura: "Hola, soy el asistente fuera de horario de [negocio]. Puedo ayudar con citas, horarios y cotizaciones — pero para cualquier cosa urgente, tomaré un mensaje y se lo pasaré al dueño." Veinte segundos de honestidad le compran al agente una cantidad enorme de paciencia para el resto de la llamada.
+
+## 2. Cada Salida Recibe un Traspaso de "Esto Podría Estar Mal"
+
+La segunda regla suena, en el papel, como una mala idea. Decirle constantemente a los usuarios que la IA podría estar mal suena como minar tu propio producto. No lo es. Es lo que convierte la salida de "una respuesta" en "un borrador del que un humano se hace cargo."
+
+El truco es que el traspaso debe ser *proporcional y específico*. Un pie de página copiado y pegado de "la IA puede producir información inexacta" en todos lados es solo ruido; los usuarios dejan de verlo en un día. Lo que funciona es un traspaso que coincide con lo que está en juego y la acción:
+
+```
+búsqueda factual de alta confianza   ──▶  link de "fuente" al lado
+borrador de mensaje conf. media      ──▶  "revisa antes de enviar"
+resumen de baja confianza            ──▶  "no estoy seguro sobre X"
+solicitud fuera de dominio           ──▶  rechaza con una oración clara
+```
+
+En MILA, un borrador para un padre nunca aparece sin un cursor editable y un suave "revisa antes de enviar" al lado del botón de enviar. El cursor en sí es el traspaso — dice, en UI pura, *esto es un borrador para ti, no un mensaje final de nosotros*. He escrito sobre por qué ese humano-en-el-bucle es innegociable para la comunicación clínica en [la capa de empatía](/es/blog/empathy-layer-ai-scared-parents); la regla aquí es sobre cómo hacer que ese traspaso se sienta natural en vez de fastidioso.
+
+Para el agente de voz, el traspaso es auditivo: una pausa pequeña pero perceptible y una frase como "déjame leerle eso de vuelta" antes de que el agente confirme cualquier cosa que vaya a agendar un slot real. El mismo principio. Diferente medio.
+
+## 3. La Latencia Es una Característica — Muestra Progreso, No Solo Gires
+
+Un spinner es lo que envías cuando te has rendido con UX. Los usuarios no-técnicos no ven un spinner como "el sistema está trabajando." Lo ven como "el sistema está roto y no estoy seguro de si lo sabe." Más allá de unos dos segundos sin señal, empiezan a hacer click, a refrescar, o en el caso del agente de voz, a hablar sobre el silencio rompiendo el turno conversacional.
+
+El arreglo no es hacer al modelo más rápido. A veces puedes; mayormente no, no lo suficiente para importar. El arreglo es hacer que la *espera* sea informativa.
+
+```
+                 ┌────────────────────────────────────────┐
+   entrada del   │                                        │
+   usuario       │   reconocida de inmediato              │
+   ──────────▶   │   ("entendido, lo estoy revisando")    │
+                 │                                        │
+                 │   luego marcadores concretos           │
+                 │   ("revisando registros del paciente") │
+                 │   ("redactando mensaje...")            │
+                 │   ("revisando tono...")                │
+                 │                                        │
+                 │   resultado entregado                  │
+                 └────────────────────────────────────────┘
+```
+
+Para el generador de borradores de MILA, aunque la llamada subyacente toma unos segundos, la UI muestra "trayendo notas nocturnas," luego "redactando," luego "revisando tono." La misma latencia total. Una calidad percibida salvajemente diferente. El usuario no está esperando una caja negra, está viendo el trabajo suceder.
+
+Para el agente de voz, esto es aún más crítico. El silencio en una llamada telefónica es pánico. Un reconocimiento verbal corto — "déjame revisar eso, un segundo" — te compra toda la llamada a la base de datos. Sin él, pierdes al usuario en menos de dos segundos.
+
+Esta es la misma disciplina de UX sobre la que escribí en [UX de software de salud](/es/blog/healthcare-software-ux): diseña para las condiciones de uso, no las ideales. Una enfermera con treinta segundos entre habitaciones o un dueño de casa intentando agendar una limpieza de ventanas un martes en la noche no tienen la paciencia para un spinner sin comunicación. Haz que la espera misma sea parte del producto.
+
+<Callout type="info" title="La latencia percibida es latencia real">
+El tiempo real que toma un modelo y el tiempo que se siente que toma son números distintos. Señales de progreso concretas pueden cortar la latencia percibida a la mitad sin cambiar el tiempo de respuesta real por un solo milisegundo. Si tu función de IA se siente lenta, la respuesta usualmente no es un modelo más rápido. Es una mejor espera.
+</Callout>
+
+## 4. Sugiere Ejemplos que Demuestren el Límite, No Solo los Aciertos
+
+Cada producto de IA envía con una fila de prompts sugeridos en el estado vacío. Casi todos son fáciles: cosas en las que el producto es excelente, diseñadas para hacer que el primer intento se sienta impresionante. Esto es bienintencionado y ligeramente deshonesto, porque la segunda cosa que el usuario intenta — fuera de las sugerencias curadas — es donde el producto real comienza, y no tiene mapa para ello.
+
+Ahora construyo la tira de sugerencias para incluir al menos un ejemplo que *demuestre un límite*. No un ejemplo de falla. Un ejemplo que muestre al usuario el borde de la caja.
+
+Para la herramienta de actualizaciones para padres de MILA, las sugerencias incluyen "redacta una actualización para el plan de cuidado de esta noche" y "resume el progreso de esta semana" — y también "¿qué pasa si pido un mensaje de emergencia fuera de horario?" Ese último, al ser tocado, muestra al usuario el rechazo cortés y el camino de escalación, *antes* de que lo necesite en un momento real. Es una inoculación. También señala respeto: el producto confía en que el usuario maneje conocer sus límites.
+
+Para las herramientas para niños de Waldo's Code Lab, esto es aún más importante. Los niños absolutamente intentarán romper una herramienta, con alegría, a propósito, en los primeros dos minutos. Los ejemplos sugeridos que muestran "esto es algo en lo que no puedo ayudar, y esto es qué hacer en vez" enseñan a los niños la forma del sistema a través del juego, no a través de la frustración.
+
+La métrica que vigilo es la tasa de éxito del segundo intento. La mayoría de los equipos optimizan para el primer intento; el primer intento tiene éxito porque diseñaste la tira de sugerencias para él. El segundo intento es la verdad. Las sugerencias que demuestran el límite suben la tasa del segundo intento más que cualquier trabajo de ingeniería de prompts que haya hecho.
+
+<Callout type="warning" title="Un primer intento perfecto es una primera impresión engañosa">
+Si tu tira de sugerencias solo muestra las cosas en las que tu producto es mejor, estás preparando a los usuarios para fallar su segundo intento de la peor manera posible: por sorpresa. Incluye al menos un ejemplo que demuestre un límite con gracia. El usuario aprende el borde de la caja sin pagar por ello.
+</Callout>
+
+## 5. Cuando Falle, Falla en el Lenguaje que Ya Usan — Nunca "El Modelo Devolvió un Error"
+
+Esta es la regla que casi todos los productos de IA hacen mal, y la que tiene el mayor retorno inmediato.
+
+Un usuario no-técnico no sabe qué es un modelo. No sabe qué es un token. No sabe qué significa "context length exceeded," y aunque lo traduzcas a "entrada demasiado larga," no sabrá si la falla es suya, del sistema, o solo mala suerte. Cada minuto que pasen confundidos es un minuto perdiendo confianza en todo el producto.
+
+Así que escribo cada mensaje de falla dirigido al usuario en el lenguaje de la *tarea del usuario*, no de la *falla del sistema*. Lado a lado:
+
+```
+malo:   "El modelo devolvió un error. Por favor intente de nuevo."
+mejor:  "No pude terminar ese borrador. Intenta acortarlo o
+         dividirlo en dos actualizaciones, y le doy otro intento."
+
+malo:   "Request timed out after 30s."
+mejor:  "Esto está tomando más de lo usual. ¿Quieres que siga
+         intentando en segundo plano y te avise, o detengo?"
+
+malo:   "Tool execution failed: provider_lookup returned 503."
+mejor:  "No pude alcanzar el sistema de agendamiento ahora.
+         El número de la oficina está en archivo si quieres
+         llamar, o puedo intentar de nuevo en un momento."
+```
+
+Nota tres cosas sobre las versiones "mejores." Nunca nombran un componente del sistema. Describen la situación en términos de la tarea del usuario. Y terminan con un próximo paso concreto que el usuario realmente puede tomar.
+
+Para el agente de voz, esta regla es aún más brutal: no hay pantalla que leer, el usuario solo tiene tono y contenido. Un agente que dice "encontré un error" suena roto. Un agente que dice "estoy teniendo problemas para alcanzar el calendario — ¿le gustaría dejar un mensaje para el equipo en su lugar?" suena profesional y considerado. La misma falla subyacente. La primera pierde al cliente. La segunda lo mantiene.
+
+He visto a niños en Waldo's Code Lab abandonar una herramienta en el momento que devolvió un error en lenguaje técnico. No porque el error fuera malo. Porque hablaba un idioma al que no tenían acceso, y la experiencia de estar al otro lado de un sistema que te habla por encima es, incluso a los diez años, instantáneamente reconocible como no-para-ti.
+
+Si tu producto de IA tiene que fallar — y lo hará — falla en las palabras del usuario.
+
+## El Hilo
+
+Si tuviera que comprimir las cinco reglas en una oración: **los usuarios no-técnicos no son menos capaces, son menos interesados en los internos de tu sistema, y tienen razón.**
+
+El producto les debe claridad sobre lo que hace y no hace, propiedad de cada salida que produce, una espera honesta, ejemplos que muestren la forma de la caja, y modos de falla que hablen el lenguaje de su tarea. Ninguna de estas es específica de la IA en su espíritu subyacente; es buen diseño de producto. Pero los productos de IA tienen una tendencia particular a olvidarlas, porque las personas construyéndolos están emocionadas con el modelo y olvidan que el modelo no es el producto. El modelo es el motor. El producto es todo lo que está alrededor que hace que una enfermera cansada, un dueño de casa ocupado, o un niño curioso de nueve años se sienta como si estuviera trabajando con una herramienta que lo respeta.
+
+Ese es todo el trabajo. Las cinco reglas son solo cómo lo sigo recordando.
+
+---
+
+*Si estás enviando IA a usuarios no-técnicos y quieres una revisión de cordura sobre tus bordes, tus traspasos o tus mensajes de falla, [contáctame](/contact). El costo del segundo intento es donde los productos viven o mueren, y es mucho más fácil de diseñar en una conversación que solo.*

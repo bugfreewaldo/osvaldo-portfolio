@@ -1,0 +1,111 @@
+---
+title: "Context Windows Are a Budget, Not a Brag"
+description: "200K-token windows feel infinite until you measure them. Context is a real budget you spend on every call — every token costs money, competes for attention, and risks pulling the model toward the wrong thread. A practical guide to context efficiency, pruning, and choosing what belongs in the prompt at all."
+date: 2026-05-23
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "LLM", "Prompting", "Context", "Performance"]
+author: "Osvaldo Restrepo"
+tldr: "Big context windows don't free you from context engineering — they make it harder, because the cost of stuffing the prompt is now invisible until the bill arrives or the model starts drifting. Treat context as a budget per call. Decide what belongs in the system prompt versus retrieved on demand, what should be summarized, and what should be dropped entirely. Measure context efficiency (useful tokens divided by total tokens) and prune ruthlessly. The model with the smaller, cleaner prompt almost always wins on accuracy, latency, and price."
+faqs:
+  - question: "If the window is 200K tokens, why not just use it?"
+    answer: "Because attention isn't uniform across the window. Models lose information in the middle of long contexts (the lost-in-the-middle effect), latency grows with input size, and you pay for every token regardless of whether it changed the answer. A clean 4K prompt routinely outperforms a noisy 80K one on the same task."
+  - question: "How do I actually measure context efficiency?"
+    answer: "Log two numbers per call: total input tokens and the subset that were genuinely required to produce a correct answer. The second is fuzzy — I approximate by ablating chunks and re-running on an eval set, asking 'did accuracy drop?'. Anything that can be removed without hurting eval scores is dead weight. Aim for an efficiency ratio above 0.6 on hot paths."
+  - question: "What's the first thing to cut when a prompt is too big?"
+    answer: "Verbose conversation history. Almost every chat app I've audited keeps full turn-by-turn logs forever. Replace the older turns with a rolling summary that captures decisions and constraints, not transcripts. You usually recover 40 to 70 percent of the context for free, and the model gets sharper because it stops being distracted by stale chatter."
+relatedPosts: ["claude-md-token-management", "daily-prompt-audit-llm-cost-control", "prompt-caching-system-prompts"]
+---
+
+The first time I watched a teammate paste an entire 60-page PDF into a prompt and ask the model a one-line question, I had two reactions in quick succession. The first was envy — the window really did fit it. The second was the slow, sinking realization that we were about to pay for that paste, in cash and in quality, on every single call.
+
+That was the moment context windows stopped feeling like a brag and started feeling like a budget.
+
+## The Window Is Not Free
+
+The marketing slide for any frontier model leads with the window. 200K. A million. "Drop in your whole codebase." The implicit message is that context engineering is a solved problem — pile it all in and let the model sort it out.
+
+It is not solved. It is just hidden behind a larger number.
+
+Every token in your prompt costs money on the way in. Every token also competes with every other token for the model's attention. And every irrelevant token is one more chance for the model to chase the wrong thread and confidently answer the wrong question. Big windows do not abolish those costs. They just let you ignore them longer before they bite.
+
+```
+The three taxes you pay on every token
+──────────────────────────────────────
+  $$$  Input price (linear in tokens, every call, forever)
+   ms  Latency (attention scales worse than linear)
+   ?   Signal dilution (model picks up the wrong thread)
+```
+
+The third one is the most expensive in practice. The bill you can budget for. The drift, you have to debug.
+
+## Lost in the Middle Is Real
+
+A finding that's now been replicated across most major model families: when the relevant fact is buried in the middle of a long context, recall drops noticeably compared to when it sits near the beginning or end. The model attends harder to the head and the tail of the prompt than to the middle.
+
+This means your "I'll just paste everything" prompt is silently worse than a smaller prompt that places the right snippet at the top. You don't see the regression because the model still answers fluently. It just answers a slightly off question, or misses the constraint you mentioned on page 14.
+
+<Callout type="warning" title="Fluent Wrong Is the Failure Mode">
+The danger of a bloated context isn't a refusal. It's a confident, polished answer that drops one constraint or quietly substitutes a similar-looking value from another section. You won't catch it unless you have evals that test exactly the kind of long-document recall you're asking for.
+</Callout>
+
+## Treat It Like a Real Budget
+
+I run every production prompt against a simple mental ledger before it ships. Each token in the prompt has to earn its seat through one of four roles:
+
+- **Permanent**: it belongs in the system prompt because it changes every answer (the role, the format, the safety boundaries, the tool definitions).
+- **Retrieved**: it belongs as fetched-on-demand context because only some queries need it (a specific customer record, a relevant doc chunk).
+- **Summarized**: it belongs as a compressed representation because the raw form is too big but the gist matters (the last twenty turns of a long conversation, a project's architectural overview).
+- **Dropped**: it doesn't belong at all. It felt relevant when someone wrote the prompt; on the audit, nothing depended on it.
+
+Most prompts I review have everything in category one. The fastest wins come from moving things down the list.
+
+## The Efficiency Ratio
+
+Here's a number worth tracking on every hot-path prompt: useful tokens divided by total tokens. Useful tokens are the ones whose removal would hurt your eval score. Everything else is overhead.
+
+I approximate this with a brute, effective ritual: pick the prompt, take an eval set with known-good answers, ablate one section at a time, and rerun. If the accuracy doesn't change, the section is dead weight. Cut it. Re-run. Repeat until further cuts cost real accuracy.
+
+The first time I did this exercise on a production assistant, the prompt went from 11,200 tokens to 3,400 with no measurable drop in answer quality. Latency dropped by a third. The monthly inference bill dropped by about the same. And the answers got slightly better, because the model had less noise to wade through to find the signal.
+
+```
+Pruning ritual (one afternoon, every quarter)
+─────────────────────────────────────────────
+  1. Pull the live prompt and a 50-row eval set
+  2. Score baseline accuracy
+  3. For each section: delete, rerun, record delta
+  4. Keep only sections whose deletion costs > X points
+  5. Ship the trimmed version behind a flag for a week
+  6. Watch real telemetry — promote or roll back
+```
+
+It is the cheapest performance work I do all year. I budget an afternoon a quarter for it on every important prompt.
+
+## What Belongs Where
+
+The architecture question that swallows most context budgets is the wrong one: "how do I fit more in?" The right one is: "what is the cheapest place for this information to live?"
+
+A few rules I've landed on:
+
+- **System prompt**: stable across calls, cache-friendly, paid for once and reused. Good for instructions, schemas, tool definitions, format examples.
+- **Retrieved chunks**: highly variable across calls. Good for facts that depend on the user, the document, or the moment. Pay only when the query needs them.
+- **Rolling summary**: long histories that don't fit and don't need to. Good for conversation memory, project state, anything that compresses gracefully.
+- **External tools**: when the answer is computable, cheap, or live, don't put the data in the prompt. Let the model call out for it.
+
+The last one is underrated. A lot of context bloat is data that the model could simply look up if you gave it a tool. A 4K prompt with a calculator tool will beat an 80K prompt with the numbers pre-pasted on most numeric-reasoning tasks, because the model isn't being asked to read and arithmetic at the same time.
+
+<Callout type="tip" title="Prompt Caching Changes the Calculus">
+If your provider supports prompt caching, the system prompt becomes dramatically cheaper to reuse across calls. That makes it the right home for stable, expensive content — long instruction sets, large tool schemas — provided the prefix is genuinely stable. Cache misses on a 30K prefix are brutal; cache hits are nearly free.
+</Callout>
+
+## The Discipline Compounds
+
+Once you start treating context as a budget, the second-order effects show up. You write tighter system prompts because every line has to defend itself. You design retrieval more carefully because you stop using it as a junk drawer. You build summarization into your conversation loop earlier, instead of waiting for the day a chat finally hits the wall.
+
+And you stop being impressed by your own prompt. The 12,000-token system message that took someone three weeks to write is not a feature; it is a tax that every user pays on every call. The good prompt is the small one that still wins on the eval.
+
+<Callout type="info" title="A Healthy Habit">
+Run a daily report that prints the average input tokens per request, broken down by feature. Watch the trend. Any prompt drifting up by 10 percent week-over-week is either growing on purpose or growing because nobody noticed. Either way you want to know before the invoice tells you.
+</Callout>
+
+The model with the cleaner context wins. Not always on the demo — the demo loves the giant paste. But on the bill, on the latency graph, on the eval score, and on the rare days where being wrong actually costs something. Spend your tokens like they're yours. Because they are.

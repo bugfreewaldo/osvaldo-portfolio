@@ -1,0 +1,128 @@
+---
+title: "El Costo Oculto de 'Con IA' en Tu Pricing Page"
+description: "Ponerle 'IA' a una feature cambia las expectativas del usuario de formas que tu equipo de finanzas no presupuestó: pasivo por hallucinations, una barra de confiabilidad más alta, carga de soporte, ciclos de venta más lentos y daño de marca cuando la magia falla. Un argumento honesto de que la etiqueta 'con IA' debe ganarse u omitirse — no usarse como decoración."
+date: 2026-05-25
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "Pricing", "Estrategia", "Branding", "SaaS"]
+author: "Osvaldo Restrepo"
+translationOf: "hidden-cost-of-ai-enabled-pricing"
+tldr: "Cuando etiquetas una feature como 'con IA', no solo describes la tecnología — cambias el contrato con el usuario. Las expectativas se desplazan hacia la magia, la tolerancia a errores baja, los tickets de soporte se vuelven más emocionales, los ciclos de venta se ralentizan por revisiones de compliance, y la marca paga un impuesto reputacional cada vez que la IA se siente rota. Ninguno de esos costos aparece en la factura de ingeniería. Aparecen en todas partes. La jugada correcta es etiquetar honestamente: llámalo 'IA' solo cuando la feature realmente justifique las nuevas expectativas, y omite la etiqueta cuando la IA está ayudando bajo el cofre pero el usuario no necesita saberlo."
+faqs:
+  - question: "¿No es 'con IA' solo buen marketing en 2026?"
+    answer: "Depende del público. Para inversores y analistas, la etiqueta sigue moviendo valuaciones. Para usuarios finales, el significado ha cambiado — ahora esperan una experiencia tipo magia y perdonan menos cuando se quiebra. La etiqueta que te ayudó a levantar capital puede dañarte con las personas que realmente usan el producto. Decide para qué público es la etiqueta, y asume el trade-off."
+  - question: "¿Cuándo NO deberías llamar 'con IA' a una feature aunque lo sea?"
+    answer: "Cuando la IA está haciendo trabajo de fondo que el usuario no percibe como magia — rankear resultados de búsqueda, deduplicar leads, sugerir categorías. Llamarlas 'con IA' invita escrutinio sin desbloquear valor. Deja que la feature se sienta competente. El review del usuario de 'simplemente funciona' es más duradero que su review de 'es IA y a veces miente'."
+  - question: "¿Cómo defiendes una feature etiquetada con IA en el pricing page?"
+    answer: "Tres compromisos antes del lanzamiento: un alcance claro ('esto es lo que hace, esto es lo que no'), una UX de falla con gracia (cuando no sabe, lo dice y hace un handoff limpio), y un SLA de respuesta publicado (cuando el modelo se equivoca, así de rápido lo arreglamos). Si no puedes firmar las tres, la etiqueta es un pasivo."
+relatedPosts: ["pricing-ai-features-usage-costs", "first-ai-feature-should-be-read-only", "build-buy-wrap-ai-features"]
+---
+
+Una founder a la que respeto me estaba mostrando su nuevo pricing page el trimestre pasado. Ahí estaba, en el tier intermedio, en una tipografía ligeramente más bold que el resto: "Reportes con IA". Estaba orgullosa. Ingeniería había lanzado algo genuinamente útil — un modelo que resumía el desempeño semanal en un párrafo que un exec podía realmente leer.
+
+Le pregunté cómo se veía la carga de soporte desde que reetiquetaron la feature. Parpadeó. "Más alta. Mucho más alta. Pero a la gente le encantaba antes — misma feature, mismo modelo. ¿Por qué es más trabajo ahora?"
+
+Esa es la pregunta. Y la respuesta es la cosa que nadie pone en el business case de "con IA".
+
+## La Etiqueta Es un Contrato
+
+En el momento en que escribes "IA" en un pricing page, cambias el trato que tienes con el usuario. No la tecnología. El trato.
+
+Antes de la etiqueta, el usuario juzgaba tu feature de reportes en una barra bastante mundana: ¿corría?, ¿estaban bien los números?, ¿cargaba rápido? Esa es la barra en la que vive la mayoría del software. El modelo mental del usuario es "esto es software que un equipo construyó; a veces tiene bugs; voy a abrir un ticket".
+
+Después de la etiqueta, el usuario juzga la misma feature en una barra mágica. El modelo mental ahora es "esto es IA; debería sentirse inteligente". Cuando responde una pregunta bien, dicen "wow". Cuando se equivoca en algo sutil, no dicen "bug". Dicen "la IA está alucinando". Esa frase no es solo una queja; es una reacción de marca. Y las reacciones de marca no se arreglan en el siguiente sprint.
+
+```
+La misma respuesta equivocada, antes y después de la etiqueta
+─────────────────────────────────────────────────────────────
+  Sin etiqueta "IA":  "Hay un bug en el reporte.
+                       ¿Pueden arreglar el número de Q3?"
+
+  Con etiqueta "IA":  "Tu IA está inventando cosas.
+                       Honestamente, ¿podemos confiar en este producto?"
+
+  Misma feature. Mismo defecto. Tickets muy diferentes.
+```
+
+El primer ticket es un fix de ingeniería de un martes en la tarde. El segundo es una escalación ejecutiva, a veces seguida de una conversación de churn. El defecto no cambió. La etiqueta sí.
+
+## Cinco Costos Que Nadie Presupuesta
+
+Cuando ayudo a founders a pensar si aplicar la etiqueta "IA", los camino por cinco costos que no aparecen en la factura de ingeniería pero absolutamente aparecen en el P&L.
+
+### 1. Pasivo por reembolsos por hallucinations
+
+Si tu IA le da a un cliente información incorrecta que lleva a una acción incorrecta, vas a comerte el costo de esa acción más seguido de lo que quisieras. A veces es chico — un crédito de goodwill. A veces es un reembolso por una renovación que el cliente dice no haber aceptado. A veces es una carta regulatoria, dependiendo de tu sector.
+
+Puedes hacer disclaimers. Puedes poner "la IA puede cometer errores" debajo del input. La realidad es que el día que el cliente está molesto, tu equipo de CS va a reembolsar de todas formas, porque la alternativa es una review pública. La etiqueta establece la expectativa de que una respuesta equivocada es tuya, no del usuario.
+
+### 2. Una barra de confiabilidad más alta
+
+Una feature sin IA puede tener una latencia P95 de 800 ms y nadie lo nota. Una feature con IA con la misma latencia se siente lenta porque el usuario está esperando magia. Una feature sin IA que ocasionalmente regresa "no hay resultados" está bien. Una feature con IA que dice "no estoy seguro" se siente rota — aunque decir "no estoy seguro" es exactamente el comportamiento que quieres.
+
+La barra interna para una feature etiquetada con IA no es la barra que pusiste en tu engineering doc. Es la barra que el usuario imaginó cuando vio la etiqueta, que usualmente es más alta y menos perdonadora.
+
+<Callout type="warning" title="La Magia Que Falla Es Imperdonable">
+Los usuarios son generosos con software ordinario que se rompe. Tienen años de práctica perdonando spinners, bugs y caídas menores. Son notablemente menos generosos con IA que se rompe — porque la promesa de inteligencia hace que la falla se sienta como deshonestidad. Planea tu presupuesto de confiabilidad para esa asimetría, no para la que conoces.
+</Callout>
+
+### 3. La carga de soporte sube — y se vuelve más emocional
+
+Los tickets sobre features con IA suenan diferentes a los tickets sobre features regulares. Contienen más frustración, más preguntas retóricas, más "no entiendo cómo se supone que funciona esto". Toman más tiempo resolverse porque la resolución frecuentemente no es un fix — es una explicación de lo que la IA puede y no puede hacer.
+
+Tu equipo de CS necesita nuevos scripts, nuevas rutas de escalación y frecuentemente nuevo staffing. Si no lo presupuestaste antes de mover la etiqueta, vas a descubrir el presupuesto a la mala durante el siguiente trimestre.
+
+### 4. Los ciclos de venta se ralentizan por revisión de compliance
+
+En el momento en que "IA" está en el contrato, tus prospects enterprise rutean el deal a través de un reviewer diferente. Legal quiere los diagramas de flujo de datos. Seguridad quiere el model card. Procurement quiere saber si los datos del cliente entrenan al modelo. Riesgo quiere un plan de fallback para cuando la IA no esté disponible.
+
+Ninguna de estas son preguntas equivocadas, y una shop de IA madura tiene las respuestas listas. Pero las respuestas no se materializan a demanda. Son documentos que tienen que existir, mantenerse y defenderse. Los deals se atrasan mientras los escribes. Los deals se atrasan más si tus respuestas se sienten improvisadas.
+
+### 5. Costo de marca cuando la IA "se siente rota"
+
+Esta es la que más me asusta como builder, porque es la más difícil de cuantificar y la más larga de recuperar. Un usuario que prueba tu feature con IA en un mal día y se va pensando "la IA está sobrehyepada" frecuentemente no la volverá a probar en un año. También se lo dirá a su red. Esas reseñas informales componen en silencio.
+
+La etiqueta "con IA" pone ese riesgo en cada pantalla que el usuario ve. La feature tiene que ser lo suficientemente buena para justificar la insignia cada vez, porque la insignia es lo que el usuario va a recordar.
+
+```
+Lo que cambias por la insignia
+──────────────────────────────
+  +  Prensa, valuación, diferenciación de titular
+  +  Historia para inversores y analistas
+  +  Energía interna y atractivo de recruiting
+
+  −  Pasivo por reembolsos en hallucinations
+  −  Barra de confiabilidad más alta (latencia, errores, "se siente mal")
+  −  Carga de CS más pesada y más emocional
+  −  Ciclos de venta enterprise más lentos
+  −  Impuesto de marca si cualquier uso se siente roto
+```
+
+Para algunas features, el upside vale la pena. Para muchas, no. El punto no es que las etiquetas de IA sean malas. El punto es que son caras en lugares que el presupuesto de ingeniería no ve, y el precio se paga te hayas dado cuenta o no.
+
+## Tres Barras Para Ganar la Etiqueta
+
+A los founders les digo que con gusto lanzo una feature etiquetada como "IA" una vez que podamos firmar tres compromisos en voz alta, antes de que la etiqueta entre en vivo.
+
+**Alcance claro.** Una descripción corta y en lenguaje sencillo de lo que la IA hace y lo que explícitamente no hace. No enterrada en un help doc — visible en la feature misma. Si no podemos describir los bordes con nitidez, estamos preparando al usuario para descubrirlos por accidente.
+
+**UX de falla con gracia.** Cuando el modelo no sabe, lo dice claramente y entrega al usuario a la siguiente mejor cosa — un buscador, un humano, un link de documentación. "No estoy seguro" no es una falla del modelo; es un comportamiento exitoso, y la UI tiene que tratarlo así. La mayoría de los tickets "la IA está rota" que he debuggeado en realidad son "el modelo dijo que no sabía y la UI mostró una carita triste".
+
+**SLA de respuesta publicado.** Cuando el modelo se equivoca en un caso específico, así es como lo arreglamos, así de rápido, este es el canal. Este es el compromiso que convierte "la IA está mintiendo" en "lanzaron un fix en una semana". Un equipo que responde bien a los errores de la IA construye confianza más rápido que un equipo cuya IA rara vez se equivoca pero es lenta para reparar.
+
+<Callout type="tip" title="Omite la Etiqueta Cuando Puedas">
+Algo del trabajo de IA de más alto leverage en tu producto es el trabajo que nadie ve. Rankeo, deduplicación, defaults inteligentes, flags de anomalías. Llamar a esos 'con IA' invita escrutinio sin desbloquear valor. Deja que las features competentes sigan calladamente competentes. Guarda la etiqueta para los momentos que son genuinamente mágicos — y solo cuando te has ganado el derecho de usarla.
+</Callout>
+
+## El Pricing Page Honesto
+
+Lo que me encantaría ver más en más pricing pages es la versión honesta de la insignia de IA. No "con IA" como un sticker en cada tier. En su lugar, dos tipos de lenguaje usados con cuidado:
+
+- Para las features donde la IA es genuinamente el punto, un claim confiado y específico: "Genera un resumen semanal de un párrafo que puedes reenviar a tu junta. Cita cada número a su fila fuente".
+- Para las features donde la IA es un ayudante detrás de escena, ninguna insignia — solo una gran experiencia que pasa a usar el modelo donde corresponde.
+
+El primero es un contrato que puedes firmar. El segundo es un producto que silenciosamente funciona.
+
+La peor versión de un pricing page con IA es aquella donde cada tier tiene un sticker "con IA" y nadie dentro de la empresa puede decir qué promete cada insignia. Esa página es un pasivo disfrazado de marketing. Se va a comer tu presupuesto de soporte, ralentizar tus ventas e impuestar tu marca en los días malos, y va a hacer todo eso esté o no buena la ingeniería subyacente.
+
+Sé deliberado. Gana la etiqueta u omítela. Tus clientes, tu equipo de CS y tu yo-CFO futuro te lo agradecerán.

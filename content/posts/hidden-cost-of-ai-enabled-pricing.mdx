@@ -1,0 +1,127 @@
+---
+title: "The Hidden Cost of 'AI-Enabled' on Your Pricing Page"
+description: "Slapping 'AI' on a feature changes user expectations in ways your finance team didn't price in: refund liability, a higher reliability bar, support load, sales-cycle slowdowns, and brand damage when magic fails. An honest argument that the 'AI-enabled' label should be earned or skipped — not used as decoration."
+date: 2026-05-25
+published: true
+category: "AI Product"
+tags: ["AI Product", "Pricing", "Strategy", "Branding", "SaaS"]
+author: "Osvaldo Restrepo"
+tldr: "When you label a feature 'AI-enabled,' you don't just describe the technology — you change the contract with the user. Expectations shift toward magic, the tolerance for errors drops, support tickets get more emotional, sales cycles slow down for compliance review, and the brand pays a reputational tax whenever the AI feels broken. None of those costs show up on the engineering invoice. They show up everywhere else. The right move is to label honestly: only call it 'AI' when the feature genuinely justifies the new expectations, and skip the label when the AI is helping under the hood but the user doesn't need to know."
+faqs:
+  - question: "Isn't 'AI-enabled' just good marketing in 2026?"
+    answer: "It depends on the audience. For investors and analysts, the label still moves valuations. For end users, the meaning has shifted — they now expect a magic-tier experience and forgive less when it cracks. The label that helped you raise money can hurt you with the people actually using the product. Decide which audience the label is for, and own the trade-off."
+  - question: "When should you NOT call a feature 'AI-enabled' even though it is?"
+    answer: "When the AI is doing background work that the user doesn't perceive as magic — ranking search results, deduplicating leads, suggesting categories. Calling those 'AI-enabled' invites scrutiny without unlocking value. Let the feature feel competent. The user's review of 'it just works' is more durable than their review of 'it's AI and sometimes it lies'."
+  - question: "How do you defend an AI-labeled feature on the pricing page?"
+    answer: "Three commitments before launch: a clear scope ('this is what it does, this is what it doesn't'), a graceful failure UX (when it doesn't know, it says so and hands off cleanly), and a published responsiveness SLA (when the model is wrong, this is how fast we fix it). If you can't sign all three, the label is a liability."
+relatedPosts: ["pricing-ai-features-usage-costs", "first-ai-feature-should-be-read-only", "build-buy-wrap-ai-features"]
+---
+
+A founder I respect was showing me her new pricing page last quarter. There it was, on the middle tier, in a slightly bolder font than the rest: "AI-Enabled Reporting." She was proud of it. Engineering had shipped something genuinely useful — a model that summarized weekly performance into a paragraph an exec could actually read.
+
+I asked her what the support load looked like since they relabeled the feature. She blinked. "Higher. Way higher. But people loved it before — same feature, same model. Why is it more work now?"
+
+That is the question. And the answer is the thing nobody puts in the business case for "AI-enabled."
+
+## The Label Is a Contract
+
+The moment you write "AI" on a pricing page, you change the deal you have with the user. Not the technology. The deal.
+
+Before the label, the user judged your reporting feature on a fairly mundane bar: did it run, were the numbers right, did it load fast. That's the bar most software lives at. The user's mental model is "this is software a team built; sometimes it has bugs; I'll file a ticket."
+
+After the label, the user judges the same feature on a magic bar. The mental model is now "this is AI; it should feel intelligent." When it answers a question well, they say "wow." When it gets something subtly wrong, they don't say "bug." They say "the AI is hallucinating." That sentence is not just a complaint; it's a brand reaction. And brand reactions don't get fixed in the next sprint.
+
+```
+The same wrong answer, before and after the label
+──────────────────────────────────────────────────
+  No "AI" label:    "There's a bug in the report.
+                     Can you fix the number for Q3?"
+
+  "AI" label:       "Your AI is making things up.
+                     Honestly, can we even trust this product?"
+
+  Same feature. Same defect. Very different ticket.
+```
+
+The first ticket is a Tuesday-afternoon engineering fix. The second is an executive escalation, sometimes followed by a churn conversation. The defect didn't change. The label did.
+
+## Five Costs Nobody Prices In
+
+When I help founders think through whether to apply the "AI" label, I walk them through five costs that don't show up on the engineering invoice but absolutely show up on the P&L.
+
+### 1. Refund liability for hallucinations
+
+If your AI gives a customer wrong information that leads to a wrong action, you are going to eat the cost of that action more often than you'd like. Sometimes it's small — a goodwill credit. Sometimes it's a refund for a renewal a customer claims they didn't agree to. Sometimes it's a regulatory letter, depending on your sector.
+
+You can disclaim. You can put "AI may make mistakes" under the input. The reality is that on the day the customer is upset, your CS team will refund anyway, because the alternative is a public review. The label sets the expectation that a wrong answer is on you, not on them.
+
+### 2. A higher reliability bar
+
+A non-AI feature can have a P95 latency of 800 ms and nobody notices. An AI feature with the same latency feels slow because the user is waiting on magic. A non-AI feature that occasionally returns "no results" is fine. An AI feature that says "I'm not sure" feels broken — even though saying "I'm not sure" is exactly the behavior you want.
+
+The internal bar for an AI-labeled feature is not the bar you set in your engineering doc. It is the bar the user imagined when they saw the label, which is usually higher and less forgiving.
+
+<Callout type="warning" title="Magic That Fails Is Unforgivable">
+Users are generous to ordinary software that breaks. They have years of practice forgiving spinners, bugs, and minor outages. They are noticeably less generous to AI that breaks — because the promise of intelligence makes failure feel like dishonesty. Plan your reliability budget for that asymmetry, not for the one you're used to.
+</Callout>
+
+### 3. Support load goes up — and gets more emotional
+
+Tickets about AI features sound different from tickets about regular features. They contain more frustration, more rhetorical questions, more "I don't understand how this is supposed to work." They take longer to resolve because the resolution often isn't a fix — it's an explanation of what the AI can and cannot do.
+
+Your CS team needs new scripts, new escalation paths, and often new staffing. If you didn't budget for it before you flipped the label, you will discover the budget the hard way over the following quarter.
+
+### 4. Sales cycles slow for compliance review
+
+The moment "AI" is on the contract, your enterprise prospects route the deal through a different reviewer. Legal wants the data flow diagrams. Security wants the model card. Procurement wants to know if customer data trains the model. Risk wants a fallback plan for when the AI is unavailable.
+
+None of these are wrong questions, and a mature AI shop has the answers ready. But the answers don't materialize on demand. They are documents that have to exist, be maintained, and be defended. Deals slip while you write them. Deals slip more if your answers feel improvised.
+
+### 5. Brand cost when the AI "feels broken"
+
+This is the one that scares me most as a builder, because it's the hardest to quantify and the longest to recover from. A user who tries your AI feature on a bad day and walks away thinking "AI is overhyped" will often not try it again for a year. They will also tell their network. Those informal reviews compound silently.
+
+The "AI-enabled" label puts that risk on every screen the user sees. The feature has to be good enough to justify the badge every single time, because the badge is what the user will remember.
+
+```
+What you trade for the badge
+────────────────────────────
+  +  Press, valuation, headline differentiation
+  +  Investor and analyst storyline
+  +  Internal energy and recruiting pull
+
+  −  Refund liability on hallucinations
+  −  Higher reliability bar (latency, errors, "feels off")
+  −  Heavier and more emotional CS load
+  −  Slower enterprise sales cycles
+  −  Brand tax if any uses feel broken
+```
+
+For some features, the upside is worth it. For many, it is not. The point isn't that AI labels are bad. The point is that they're expensive in places the engineering budget doesn't see, and the price gets paid whether or not you noticed it.
+
+## Three Bars to Earn the Label
+
+I tell founders that I'm happy to ship a feature labeled "AI" once we can sign three commitments out loud, before the label goes live.
+
+**Clear scope.** A short, plain-English description of what the AI does and what it explicitly does not do. Not buried in a help doc — surfaced in the feature itself. If we can't describe the edges crisply, we are setting the user up to discover them by accident.
+
+**Graceful failure UX.** When the model doesn't know, it says so clearly and hands the user to the next-best thing — a search box, a human, a doc link. "I'm not sure" is not a failure of the model; it's a successful behavior, and the UI has to treat it that way. Most "the AI is broken" tickets I've debugged are actually "the model said it didn't know and the UI showed a sad face."
+
+**Published responsiveness SLA.** When the model is wrong about a specific case, here is how we fix it, here is how fast, here is the channel. This is the commitment that turns "the AI is lying" into "they shipped a fix in a week." A team that responds to AI mistakes well builds trust faster than a team whose AI is rarely wrong but slow to repair.
+
+<Callout type="tip" title="Skip the Label When You Can">
+Some of the highest-leverage AI work in your product is the work nobody sees. Ranking, deduplication, smart defaults, anomaly flags. Calling those 'AI-enabled' invites scrutiny without unlocking value. Let competent features stay quietly competent. Save the label for the moments that are genuinely magical — and only when you've earned the right to wear it.
+</Callout>
+
+## The Honest Pricing Page
+
+What I'd love to see more of, on more pricing pages, is the honest version of the AI badge. Not "AI-Enabled" as a sticker on every tier. Instead, two kinds of language used carefully:
+
+- For the features where the AI is genuinely the point, a confident, specific claim: "Generates a one-paragraph weekly summary you can forward to your board. Cites every number to its source row."
+- For the features where the AI is a behind-the-scenes helper, no badge at all — just a great experience that happens to use the model where appropriate.
+
+The first is a contract you can sign. The second is a product that quietly works.
+
+The worst version of an AI pricing page is the one where every tier has an "AI-Enabled" sticker and no one inside the company can quite say what each badge promises. That page is a liability disguised as marketing. It will eat your support budget, slow your sales, and tax your brand on bad days, and it will do all of that whether or not the underlying engineering is good.
+
+Be deliberate. Earn the label or skip it. Your customers, your CS team, and your future-self CFO will thank you.
