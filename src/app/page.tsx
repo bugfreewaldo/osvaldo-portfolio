@@ -325,6 +325,14 @@ const featuredProjects = [
     metric: "Free",
     external: "https://waldoscodelab.com",
   },
+  {
+    slug: "fundraise9",
+    title: "Fundraise9",
+    subtitle: "LP/GP DDQ Portal",
+    description: "ILPA DDQ 2.0 platform for PE fundraising — Claude-backed answers, real-time LP/GP collaboration, anchored to the firm's source documents.",
+    tags: ["TGM Ecosystem", "PE", "Claude AI"],
+    metric: "ILPA DDQ 2.0",
+  },
 ];
 
 export default function Home() {

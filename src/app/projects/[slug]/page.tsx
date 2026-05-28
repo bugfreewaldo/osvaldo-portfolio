@@ -641,6 +641,33 @@ const DATA: Record<string, Project> = {
     ],
   },
 
+  "fundraise9": {
+    title: "Fundraise9",
+    subtitle: "LP/GP DDQ Portal for PE Fundraising",
+    gradient: "from-amber-500 to-rose-500",
+    summary:
+      "ILPA DDQ 2.0 management for PE fundraising — GPs complete structured due diligence questionnaires backed by Claude, LPs review and annotate in real time.",
+    story:
+      "Capital-raise paperwork is one of the most expensive coordination problems in private equity. Every LP wants the same answers in slightly different formats; every GP rewrites the same content quarter after quarter. Fundraise9 turns that into a structured workflow with LP and GP in the same room, AI doing the boilerplate, and every answer anchored to the firm's source documents instead of someone's email thread.",
+    problem:
+      "ILPA DDQ 2.0 is a 200+ question standard for institutional due diligence. GPs answer the same content for every LP — manually, by copy/paste, with no consistency across raises. LPs receive PDFs out of band, ask follow-ups by email, and lose audit trail. Both sides spend weeks on coordination that should take days.",
+    approach: [
+      "Structured DDQ workflow: GPs answer once; LPs review, annotate, and submit follow-up questions in the same UI",
+      "Claude-backed drafting that grounds every answer in the firm's source documents (audited financials, LPAs, prior raises)",
+      "Cross-referenced to the 9Vectors taxonomy so answers stay consistent across raises and across the ecosystem",
+      "Live progress, presence, and notifications via Socket.io — both sides see the raise advance in real time",
+      "JWT-federated identity with the rest of the TGM platform: same login, same file service, same audit trail",
+    ],
+    impact: [
+      "DDQ completion measured in days, not weeks of email coordination",
+      "Answer consistency across raises and LPs because the source is the document corpus, not an inbox",
+      "Audit-friendly: every answer carries provenance to a source document and a change log",
+      "LPs get a real portal instead of a PDF inbox; GPs get a single source of truth for the raise",
+    ],
+    stack: ["React", "TypeScript", "Vite", "Node.js", "Express", "Socket.io", "Azure Cosmos DB", "Claude AI", "JWT", "Stripe"],
+    links: [],
+  },
+
   "nps9": {
     title: "NPS9.ai",
     subtitle: "NPS & Customer Sentiment",

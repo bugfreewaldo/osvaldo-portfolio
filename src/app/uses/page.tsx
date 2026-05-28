@@ -76,7 +76,7 @@ const toolCategories: ToolCategory[] = [
   },
   {
     title: "AI Engineering & LLMs",
-    description: "The model providers, frameworks, and protocols I build agents on",
+    description: "The model providers, protocols, and frameworks I build agents on",
     tools: [
       {
         name: "Anthropic Claude",
@@ -91,6 +91,39 @@ const toolCategories: ToolCategory[] = [
         logo: "openai",
         url: "https://openai.com",
         invertInDark: true,
+      },
+      {
+        name: "Google Gemini",
+        description: "Long-context and multimodal model for specific evaluation lanes",
+        logo: "googlegemini",
+        url: "https://ai.google.dev",
+      },
+      {
+        name: "DeepSeek",
+        description: "Strong open-source reasoning model — good for benchmarking and self-hosting",
+        logo: "deepseek",
+        url: "https://www.deepseek.com",
+      },
+      {
+        name: "Kimi",
+        description: "Moonshot's long-context model — useful when context budget is the bottleneck",
+        logo: "kimi",
+        url: "https://kimi.moonshot.cn",
+        useFallback: true,
+      },
+      {
+        name: "Ollama",
+        description: "Local LLM inference for private, offline, and dev-loop workflows",
+        logo: "ollama",
+        url: "https://ollama.com",
+        invertInDark: true,
+      },
+      {
+        name: "OpenClaw",
+        description: "Open-source LLM tooling in the local-inference workflow",
+        logo: "openclaw",
+        url: "#",
+        useFallback: true,
       },
       {
         name: "Model Context Protocol",
@@ -111,11 +144,65 @@ const toolCategories: ToolCategory[] = [
         logo: "huggingface",
         url: "https://huggingface.co",
       },
+    ],
+  },
+  {
+    title: "Voice AI & Real-time",
+    description: "Speech in, speech out, phone agents that sound human",
+    tools: [
       {
-        name: "Twilio Voice + Whisper + ElevenLabs",
-        description: "Real-time voice AI: STT, conversation, TTS, phone agents",
+        name: "Twilio Voice",
+        description: "Production telephony — inbound/outbound calls, SIP, media streams",
         logo: "twilio",
-        url: "https://www.twilio.com",
+        url: "https://www.twilio.com/voice",
+      },
+      {
+        name: "Whisper",
+        description: "Speech-to-text for real-time transcription and async call analysis",
+        logo: "openai",
+        url: "https://openai.com/research/whisper",
+        useFallback: true,
+      },
+      {
+        name: "ElevenLabs",
+        description: "Text-to-speech that sounds like a person, not a robocall",
+        logo: "elevenlabs",
+        url: "https://elevenlabs.io",
+        useFallback: true,
+      },
+    ],
+  },
+  {
+    title: "LLM Evaluation & Tracing",
+    description: "How I keep agent quality visible and regressions catchable",
+    tools: [
+      {
+        name: "Langfuse",
+        description: "Open-source LLM observability, tracing, and prompt management",
+        logo: "langfuse",
+        url: "https://langfuse.com",
+        useFallback: true,
+      },
+      {
+        name: "Giskard",
+        description: "Open-source testing for LLMs and ML — robustness, bias, hallucination probes",
+        logo: "giskard",
+        url: "https://www.giskard.ai",
+        useFallback: true,
+      },
+      {
+        name: "Arize",
+        description: "LLM observability and evaluation in production at scale",
+        logo: "arize",
+        url: "https://arize.com",
+        useFallback: true,
+      },
+      {
+        name: "Confident AI",
+        description: "DeepEval-powered evaluation suites tied to release gates",
+        logo: "confidentai",
+        url: "https://www.confident-ai.com",
+        useFallback: true,
       },
     ],
   },
@@ -459,6 +546,13 @@ const toolCategories: ToolCategory[] = [
         url: "https://www.gnu.org/software/make/",
         useFallback: true,
       },
+      {
+        name: "browserless",
+        description: "Headless Chrome as a service — powers automated scanning, PDF, and screenshot pipelines",
+        logo: "browserless",
+        url: "https://www.browserless.io",
+        useFallback: true,
+      },
     ],
   },
   {
@@ -518,6 +612,7 @@ const toolCategories: ToolCategory[] = [
         description: "Bank linking for personal-finance projects",
         logo: "plaid",
         url: "https://plaid.com",
+        useFallback: true,
       },
       {
         name: "jsPDF + pdfkit",

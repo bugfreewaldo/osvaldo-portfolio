@@ -384,6 +384,16 @@ const projects = [
     external: "https://nps9.thegreymatter.ai",
   },
   {
+    slug: "fundraise9",
+    title: "Fundraise9",
+    subtitle: "LP/GP DDQ Portal for PE Fundraising",
+    description:
+      "Part of TheGreyMatter.ai ecosystem. ILPA DDQ 2.0 management for PE fundraising — GPs complete structured due diligence questionnaires backed by Claude, LPs review and annotate in real time, all anchored to the firm's source documents via 9Vectors tagging.",
+    icon: ClipboardList,
+    gradient: "from-amber-500 to-rose-500",
+    stack: ["React", "TypeScript", "Vite", "Node.js", "Express", "Socket.io", "Azure Cosmos DB", "Claude AI", "JWT", "Stripe"],
+  },
+  {
     slug: "budgetcopilot",
     title: "BudgetCopilot",
     subtitle: "AI Financial Agent",
