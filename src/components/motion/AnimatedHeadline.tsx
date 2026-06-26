@@ -20,26 +20,29 @@ export default function AnimatedHeadline({ text, className, delay = 150 }: Props
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (typeof window === "undefined") return;
 
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
 
-    const split = splitText(el, { chars: true });
-    animate(split.chars, {
-      opacity: [0, 1],
-      translateY: ["0.4em", "0em"],
-      rotateZ: [6, 0],
-      duration: 750,
-      delay: stagger(34, { start: delay }),
-      ease: "out(3)",
-    });
+    let split: ReturnType<typeof splitText> | null = null;
+    try {
+      split = splitText(el, { chars: true });
+      animate(split.chars, {
+        opacity: [0, 1],
+        translateY: ["0.4em", "0em"],
+        rotateZ: [6, 0],
+        duration: 750,
+        delay: stagger(34, { start: delay }),
+        ease: "out(3)",
+      });
+    } catch {
+      // If splitText or animate threw, restore the plain text.
+      try { split?.revert(); } catch { /* noop */ }
+    }
 
     return () => {
-      try {
-        split.revert();
-      } catch {
-        /* noop */
-      }
+      try { split?.revert(); } catch { /* noop */ }
     };
   }, [text, delay]);
 

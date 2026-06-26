@@ -82,8 +82,10 @@ export default function Header() {
           <ThemeToggle />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 rounded-lg text-muted hover:bg-surface-2 transition-colors"
-            aria-label="Toggle menu"
+            className="p-2.5 rounded-lg text-muted hover:bg-surface-2 transition-colors"
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="mobile-menu"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -98,6 +100,7 @@ export default function Header() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
+            id="mobile-menu"
             className="md:hidden overflow-hidden bg-background/95 backdrop-blur-xl border-t border-line/70"
           >
             <div className="px-4 py-4 space-y-1">

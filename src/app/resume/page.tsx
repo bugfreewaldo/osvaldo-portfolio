@@ -206,7 +206,7 @@ export default function ResumePage() {
                   </ul>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {exp.skills.map((skill) => (
-                      <span key={skill} className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded">
+                      <span key={skill} className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded">
                         {skill}
                       </span>
                     ))}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { motion, AnimatePresence, useMotionValue, useTransform } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, useTransform, useReducedMotion } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Database, Globe, Shield, BarChart3, Code2, Workflow, Smartphone, Activity, FileText, KeyRound } from "lucide-react";
 import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
@@ -30,7 +30,7 @@ function RotatingText() {
   }, []);
 
   return (
-    <div className="relative h-14 sm:h-8 overflow-hidden">
+    <div className="relative h-16 sm:h-8 overflow-hidden">
       <AnimatePresence mode="wait">
         <motion.span
           key={currentIndex}
@@ -49,23 +49,24 @@ function RotatingText() {
 
 // Animated background with floating gradient orbs and grid
 function GridBackground() {
+  const reduce = useReducedMotion();
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
       <motion.div
         className="absolute top-0 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl"
-        animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
-        transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+        animate={reduce ? undefined : { x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={reduce ? undefined : { duration: 15, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"
-        animate={{ x: [0, -30, 0], y: [0, 20, 0] }}
-        transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+        animate={reduce ? undefined : { x: [0, -30, 0], y: [0, 20, 0] }}
+        transition={reduce ? undefined : { duration: 18, repeat: Infinity, ease: "easeInOut" }}
       />
       <motion.div
         className="absolute top-1/3 right-1/3 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl"
-        animate={{ x: [0, 20, 0], y: [0, 30, 0] }}
-        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+        animate={reduce ? undefined : { x: [0, 20, 0], y: [0, 30, 0] }}
+        transition={reduce ? undefined : { duration: 12, repeat: Infinity, ease: "easeInOut" }}
       />
     </div>
   );
@@ -91,6 +92,7 @@ const connections = [
 ];
 
 function ParticleNetwork() {
+  const reduce = useReducedMotion();
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       {/* Connecting lines */}
@@ -105,9 +107,9 @@ function ParticleNetwork() {
             stroke="currentColor"
             className="text-[#FF8A5B]/10 dark:text-[#FF8A5B]/[0.07]"
             strokeWidth="1"
-            initial={{ pathLength: 0, opacity: 0 }}
+            initial={reduce ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
             animate={{ pathLength: 1, opacity: 1 }}
-            transition={{ duration: 2, delay: 1 + i * 0.15, ease: "easeOut" }}
+            transition={reduce ? { duration: 0 } : { duration: 2, delay: 1 + i * 0.15, ease: "easeOut" }}
           />
         ))}
       </svg>
@@ -122,12 +124,9 @@ function ParticleNetwork() {
             width: `${p.size}px`,
             height: `${p.size}px`,
           }}
-          initial={{ scale: 0, opacity: 0 }}
-          animate={{
-            scale: [1, 1.5, 1],
-            opacity: [0.3, 0.7, 0.3],
-          }}
-          transition={{
+          initial={reduce ? { scale: 1, opacity: 0.5 } : { scale: 0, opacity: 0 }}
+          animate={reduce ? { scale: 1, opacity: 0.5 } : { scale: [1, 1.5, 1], opacity: [0.3, 0.7, 0.3] }}
+          transition={reduce ? { duration: 0 } : {
             scale: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
             opacity: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
           }}
@@ -140,12 +139,14 @@ function ParticleNetwork() {
 // Parallax mouse-tracking wrapper for the hero profile
 function ParallaxProfile({ children }: { children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
   const rotateX = useTransform(mouseY, [-0.5, 0.5], [5, -5]);
   const rotateY = useTransform(mouseX, [-0.5, 0.5], [-5, 5]);
 
   useEffect(() => {
+    if (reduce) return; // skip parallax when reduced motion is requested
     function handleMouse(e: MouseEvent) {
       if (!ref.current) return;
       const rect = ref.current.getBoundingClientRect();
@@ -156,12 +157,12 @@ function ParallaxProfile({ children }: { children: React.ReactNode }) {
     }
     window.addEventListener("mousemove", handleMouse);
     return () => window.removeEventListener("mousemove", handleMouse);
-  }, [mouseX, mouseY]);
+  }, [mouseX, mouseY, reduce]);
 
   return (
     <motion.div
       ref={ref}
-      style={{ rotateX, rotateY, transformPerspective: 800 }}
+      style={reduce ? undefined : { rotateX, rotateY, transformPerspective: 800 }}
       className="will-change-transform"
     >
       {children}
@@ -364,13 +365,14 @@ const featuredProjects = [
 ];
 
 export default function Home() {
+  const reduceHero = useReducedMotion();
   return (
     <main className="relative min-h-screen">
       <GridBackground />
       <ParticleNetwork />
 
       {/* Hero */}
-      <section className="relative min-h-[70vh] flex items-center justify-center px-4">
+      <section className="relative min-h-[70vh] flex items-center justify-center px-4 overflow-hidden">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
           {/* Text Content */}
           <motion.div
@@ -444,7 +446,7 @@ export default function Home() {
                   href={social.href}
                   target={social.href.startsWith("mailto") ? undefined : "_blank"}
                   rel={social.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
-                  className="p-2 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  className="p-2.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                   whileHover={{ scale: 1.15, y: -2 }}
                   whileTap={{ scale: 0.95 }}
                   initial={{ opacity: 0, y: 10 }}
@@ -474,17 +476,17 @@ export default function Home() {
                   transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                 />
 
-                {/* Spinning ring */}
+                {/* Spinning ring — suppressed under reduced motion */}
                 <motion.div
                   className="absolute -inset-3 rounded-full border border-dashed border-[#FF6A3D]/20 dark:border-[#FF6A3D]/10"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+                  animate={reduceHero ? undefined : { rotate: 360 }}
+                  transition={reduceHero ? undefined : { duration: 30, repeat: Infinity, ease: "linear" }}
                 />
 
                 {/* Gradient border */}
                 <div className="relative p-1 rounded-full bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF]">
                   <div className="p-1 rounded-full bg-white dark:bg-slate-950">
-                    <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 lg:w-72 lg:h-72">
+                    <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72">
                       <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#1c1410] to-slate-900 opacity-60">
                         <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
@@ -579,7 +581,7 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <Reveal staggerMs={70} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <Reveal staggerMs={70} className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
             {capabilities.map((cap) => (
               <div
                 key={cap.title}
@@ -601,7 +603,7 @@ export default function Home() {
                   {cap.tech.map((t) => (
                     <span
                       key={t}
-                      className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md"
+                      className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md"
                     >
                       {t}
                     </span>

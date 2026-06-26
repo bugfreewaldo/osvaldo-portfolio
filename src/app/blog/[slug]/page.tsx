@@ -295,7 +295,7 @@ export default async function BlogPostPage({ params }: PageProps) {
                       {rp!.frontmatter.tags && (
                         <div className="mt-3 flex flex-wrap gap-1.5">
                           {rp!.frontmatter.tags.slice(0, 3).map((tag) => (
-                            <span key={tag} className="px-2 py-0.5 text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded">
+                            <span key={tag} className="px-2 py-0.5 text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded">
                               {tag}
                             </span>
                           ))}

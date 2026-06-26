@@ -19,7 +19,7 @@ export default function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <span className="w-9 h-9 inline-block" aria-hidden />;
+    return <span className="w-11 h-11 inline-block" aria-hidden />;
   }
 
   function toggle() {
@@ -38,8 +38,8 @@ export default function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      aria-label="Toggle dark mode"
-      className="grid place-items-center w-9 h-9 rounded-lg border border-line text-muted hover:text-accent hover:border-accent/50 transition-colors"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      className="grid place-items-center w-11 h-11 rounded-lg border border-line text-muted hover:text-accent hover:border-accent/50 transition-colors"
     >
       {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
     </button>

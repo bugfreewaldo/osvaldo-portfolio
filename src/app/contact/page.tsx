@@ -124,6 +124,8 @@ export default function ContactPage() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
+            role="status"
+            aria-live="polite"
             className="text-center"
           >
             <motion.div
@@ -262,7 +264,7 @@ export default function ContactPage() {
                 </h2>
               </div>
 
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form onSubmit={handleSubmit} className="space-y-5" aria-busy={status === "sending"}>
                 {/* Name */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -352,6 +354,8 @@ export default function ContactPage() {
                   <motion.p
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
+                    role="alert"
+                    aria-live="polite"
                     className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg"
                   >
                     {error}

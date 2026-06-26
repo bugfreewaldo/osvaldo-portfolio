@@ -241,7 +241,7 @@ export default function AIEngineerPanama() {
                     {service.tech.map((t) => (
                       <span
                         key={t}
-                        className="px-2 py-0.5 text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-md"
+                        className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md"
                       >
                         {t}
                       </span>

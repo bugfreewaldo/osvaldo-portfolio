@@ -430,7 +430,7 @@ export default function AboutPage() {
       {/* Skills Overview */}
       <section className="relative py-8 px-4">
         <div className="max-w-4xl mx-auto">
-          <Reveal staggerMs={60} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Reveal staggerMs={60} className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
             {skills.map((skill) => (
               <div
                 key={skill.label}

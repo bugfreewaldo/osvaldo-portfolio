@@ -18,37 +18,48 @@ export default function SiteBackground() {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduce) return;
 
-    const scope = createScope({ root: el }).add(() => {
-      animate(".bg-glow-a", {
-        translateX: [0, 60, 0],
-        translateY: [0, -40, 0],
-        scale: [1, 1.12, 1],
-        opacity: [0.5, 0.7, 0.5],
-        duration: 16000,
-        ease: "inOutSine",
-        loop: true,
+    let scope: ReturnType<typeof createScope> | null = null;
+    try {
+      scope = createScope({ root: el }).add(() => {
+        try {
+          animate(".bg-glow-a", {
+            translateX: [0, 60, 0],
+            translateY: [0, -40, 0],
+            scale: [1, 1.12, 1],
+            opacity: [0.5, 0.7, 0.5],
+            duration: 16000,
+            ease: "inOutSine",
+            loop: true,
+          });
+          animate(".bg-glow-b", {
+            translateX: [0, -50, 0],
+            translateY: [0, 50, 0],
+            scale: [1, 1.18, 1],
+            opacity: [0.4, 0.62, 0.4],
+            duration: 19000,
+            ease: "inOutSine",
+            loop: true,
+          });
+          animate(".bg-dot", {
+            opacity: [0.15, 0.9, 0.15],
+            scale: [1, 1.6, 1],
+            duration: 3200,
+            delay: stagger(180, { from: "center" }),
+            ease: "inOutQuad",
+            loop: true,
+            alternate: true,
+          });
+        } catch {
+          /* decorative only — fail silently */
+        }
       });
-      animate(".bg-glow-b", {
-        translateX: [0, -50, 0],
-        translateY: [0, 50, 0],
-        scale: [1, 1.18, 1],
-        opacity: [0.4, 0.62, 0.4],
-        duration: 19000,
-        ease: "inOutSine",
-        loop: true,
-      });
-      animate(".bg-dot", {
-        opacity: [0.15, 0.9, 0.15],
-        scale: [1, 1.6, 1],
-        duration: 3200,
-        delay: stagger(180, { from: "center" }),
-        ease: "inOutQuad",
-        loop: true,
-        alternate: true,
-      });
-    });
+    } catch {
+      /* createScope itself failed — decoration is just static. */
+    }
 
-    return () => scope.revert();
+    return () => {
+      try { scope?.revert(); } catch { /* noop */ }
+    };
   }, []);
 
   // Sparse, deterministic dot field (no layout work, purely decorative).
