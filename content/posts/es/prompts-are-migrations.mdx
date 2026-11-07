@@ -1,0 +1,266 @@
+---
+title: "Los Prompts Son Migraciones: Envía Cambios de Prompt Como Cambios de Esquema"
+description: "Un cambio de prompt puede alterar el comportamiento de tu producto tanto como un cambio de esquema puede alterar tus datos, y aun así la mayoría de los equipos editan prompts en un dashboard y cruzan los dedos. Yo los trato como migraciones de base de datos: archivos versionados en el repo, revisados en pull requests, corridos contra el conjunto de evaluación antes del merge, desplegados detrás de un flag, con un camino de rollback y un changelog. Aquí está el flujo y el código."
+date: 2026-11-06
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "Ingeniería de Prompts", "Evaluación de LLMs", "Feature Flags", "DevOps"]
+author: "Osvaldo Restrepo"
+translationOf: "prompts-are-migrations"
+tldr: "Un prompt es código que cambia el comportamiento en producción, y merece la misma disciplina que ya aplicamos a las migraciones de base de datos. En mi flujo, cada prompt vive como un archivo versionado en el repo; un cambio es una versión nueva, nunca una edición a una ya enviada; cada cambio pasa por un pull request con un diff legible; el conjunto de evaluación corre en CI y bloquea el merge si hay regresiones; la versión nueva sale detrás de un flag a una porción del tráfico; la versión anterior sigue siendo desplegable, así que el rollback es cambiar una configuración; y un changelog registra qué cambió y por qué. La única regla que no doblo: nadie edita un prompt en un dashboard en producción. Esa la aprendí por las malas, con un agente de voz y un viernes en la noche."
+faqs:
+  - question: "¿No es demasiado proceso para cambiar unas pocas palabras de un prompt?"
+    answer: "Unas pocas palabras en un prompt pueden cambiar el comportamiento de rechazo, las llamadas a herramientas, el tono y el formato de salida todo a la vez, y no lo vas a ver en un diff del código de tu aplicación. El proceso es más liviano de lo que suena: un archivo, un PR, una corrida automática de evaluaciones y un flag. La mayor parte se automatiza después de la primera configuración. La alternativa es enterarte de las regresiones por tus usuarios."
+  - question: "¿Por qué no usar una plataforma de gestión de prompts con interfaz?"
+    answer: "Puedes, siempre que se comporte como un sistema de migraciones: versiones inmutables, revisión antes de activar, evaluaciones antes del despliegue, y un historial registrado al que puedas volver. Lo que evito es cualquier configuración donde alguien pueda cambiar el prompt en vivo en su lugar, sin revisión y sin corrida de evaluaciones, y el cambio solo sea visible en un dashboard. Si tu plataforma impone el flujo, excelente. Si solo hace cómodo editar, hace fácil lo peligroso."
+  - question: "¿Qué tan grande tiene que ser el conjunto de evaluación para que valga la pena?"
+    answer: "Más pequeño de lo que crees. Veinte a cincuenta casos bien elegidos que cubran tus comportamientos centrales, tus modos de falla conocidos y tus límites de rechazo atraparán la mayoría de las regresiones que importan. El conjunto crece con el tiempo, un caso por incidente. Vale la pena montar el flujo desde el primer día, porque es lo que hace que el conjunto de evaluación realmente se use."
+relatedPosts: ["database-migration-strategies", "eval-set-is-the-spec", "llm-evaluation-pipelines"]
+---
+
+Un viernes en la noche, hace algunos años, cambié una oración en el prompt de sistema de un agente de voz que había construido en Shining Image.
+
+El agente contestaba llamadas fuera de horario para un pequeño negocio: agendaba citas, respondía preguntas sobre horarios y precios, y, para cualquier cosa urgente, tomaba un mensaje y se lo pasaba al dueño. El dueño quería que el saludo sonara más cálido. Pedido razonable. Abrí el prompt en la configuración donde vivía, reescribí el párrafo de apertura, hice una llamada de prueba, me gustó cómo sonaba, y cerré la laptop.
+
+Lo que no noté fue que, al reescribir el párrafo de apertura, había absorbido la línea que le decía al agente qué hacer con las solicitudes urgentes. La versión nueva era más cálida. También resultó ser mucho más entusiasta por intentar agendar una cita para todo, incluyendo a quien llamaba y necesitaba a alguien esa misma noche.
+
+Me enteré el lunes, por el dueño, que fue amable al respecto y también muy claro. No había diff que mirar. Ninguna revisión. Ningún registro de lo que decía el prompt el viernes en la tarde. Reconstruí la versión vieja de memoria y con una captura de pantalla antigua.
+
+Ese fin de semana es la razón por la que ahora trato cada cambio de prompt exactamente como trato una migración de base de datos.
+
+## Por Qué las Migraciones Son la Metáfora Correcta
+
+Las migraciones de base de datos existen porque cambiar un esquema en producción es peligroso, y aprendimos, colectivamente y con dolor, que los cambios peligrosos necesitan una forma específica. Escribí sobre esa forma en [estrategias de migración de bases de datos](/es/blog/database-migration-strategies): versionadas, revisadas, probadas, aplicadas de forma controlada, con un plan para volver atrás.
+
+Los prompts tienen cada propiedad que nos hizo inventar esa disciplina:
+
+```
+                         migración de esquema    cambio de prompt
+─────────────────────    ────────────────────    ─────────────────
+cambia comportamiento    sí                      sí
+en producción
+puede romperse en        sí                      muchísimo
+silencio
+efecto visible en diff   en el archivo de        solo en el archivo
+                         migración               del prompt, si existe
+necesita probarse con    datos representativos   el conjunto de
+entradas realistas                               evaluación
+necesita camino de       migración down          versión anterior
+vuelta
+necesita historial       carpeta de migraciones  carpeta de prompts +
+                                                 changelog
+```
+
+La única diferencia hace a los prompts más peligrosos, no menos: una mala migración usualmente falla con ruido. Un mal prompt sigue corriendo. Devuelve salidas bien formadas, seguras y plausibles que están sutilmente mal, y nada en tu monitoreo se pone rojo.
+
+<Callout type="warning" title="Los prompts fallan con educación">
+Una migración rota lanza un error. Un prompt roto sigue respondiendo, con fluidez. Justamente por eso los cambios de prompt necesitan más proceso del que su tamaño sugiere: el modo de falla es silencioso, y las fallas silenciosas las encuentran los usuarios.
+</Callout>
+
+## Regla 1: Los Prompts Viven en el Repo como Archivos Versionados
+
+El primer paso es el más importante y el menos glamoroso. Los prompts salen del dashboard, de la variable de entorno y del string enterrado en un archivo de servicio. Se convierten en archivos en el repositorio, en una carpeta que existe solo para ellos.
+
+```
+prompts/
+  booking-agent/
+    v001.md
+    v002.md
+    v003.md        ◄── actual
+    CHANGELOG.md
+  parent-update-draft/
+    v001.md
+    v002.md        ◄── actual
+    CHANGELOG.md
+```
+
+Cada archivo tiene un pequeño encabezado con metadatos, y luego el prompt en sí:
+
+```markdown
+---
+id: booking-agent
+version: 3
+model: claude-sonnet
+temperature: 0.3
+evalSuite: evals/booking-agent
+---
+You are the after-hours assistant for {{businessName}}.
+You can help with appointments, hours, and quotes.
+For anything urgent, do not try to book. Take a message
+and tell the caller the owner will be notified tonight.
+...
+```
+
+La propiedad clave, tomada directamente de las migraciones: **una versión enviada es inmutable.** Nunca editas `v003.md` una vez que corrió en producción. Si quieres un cambio, creas `v004.md`. Suena pedante hasta la primera vez que necesitas saber exactamente qué se le dijo al agente un día específico. Con versiones inmutables, la respuesta es un nombre de archivo.
+
+Un cargador pequeño mantiene honesta a la aplicación sobre qué versión corre:
+
+```typescript
+import { readFileSync } from "node:fs";
+import matter from "gray-matter";
+
+export type PromptVersion = {
+  id: string;
+  version: number;
+  model: string;
+  temperature: number;
+  body: string;
+};
+
+export function loadPrompt(id: string, version: number): PromptVersion {
+  const file = `prompts/${id}/v${String(version).padStart(3, "0")}.md`;
+  const { data, content } = matter(readFileSync(file, "utf8"));
+  if (data.id !== id || data.version !== version) {
+    throw new Error(`Encabezado de prompt no coincide en ${file}`);
+  }
+  return { id, version, model: data.model, temperature: data.temperature, body: content.trim() };
+}
+```
+
+Cada traza que emite la aplicación incluye el ID y la versión del prompt. Cuando algo se ve mal en producción, la primera pregunta, "¿qué prompt estaba corriendo?", tiene una respuesta exacta.
+
+## Regla 2: Cada Cambio Pasa por un Pull Request
+
+Una vez que un prompt es un archivo, un cambio es un diff, y un diff se puede revisar.
+
+Aquí es donde el bug del viernes en la noche habría muerto. Un revisor mirando el diff entre v002 y v003 habría visto desaparecer la línea sobre las llamadas urgentes. Está ahí, en rojo. Nadie necesita entender los LLMs a fondo para decir "espera, ¿dónde quedó la instrucción de llamadas urgentes?"
+
+Pido dos cosas en la descripción de un PR de prompt:
+
+```
+## Qué comportamiento debería cambiar
+"El saludo suena más cálido. Nada más debería cambiar."
+
+## Qué comportamiento no debe cambiar
+"Las solicitudes urgentes siguen yendo a tomar mensaje, nunca a agendar.
+ El rechazo para preguntas médicas o legales sin cambios."
+```
+
+La segunda sección es la importante. Escribir lo que no debe cambiar le dice al revisor dónde mirar, y te dice qué casos de evaluación importan más para este cambio. Escribí sobre revisar cambios pequeños a fondo en [commits pequeños, revisiones profundas](/es/blog/small-commits-deep-reviews); los diffs de prompts son el commit pequeño por excelencia, que es justamente por qué merecen una revisión profunda.
+
+## Regla 3: El Conjunto de Evaluación Corre Antes del Merge
+
+Un revisor atrapa lo que puede ver. El conjunto de evaluación atrapa lo que no.
+
+Si leíste [el conjunto de evaluación es la especificación](/es/blog/eval-set-is-the-spec), conoces mi postura: el conjunto de evaluación es la definición real de lo que tu función de IA debe hacer. Un cambio de prompt que no se ha corrido contra él no se ha probado, de la misma forma que una migración que no se ha corrido contra datos representativos no se ha probado.
+
+En CI, cualquier cambio bajo `prompts/` dispara la suite de evaluación de ese prompt, comparando la versión nueva contra la versión actual de producción:
+
+```typescript
+import { loadPrompt } from "./prompts";
+import { runSuite } from "./evals";
+
+async function gate(id: string, current: number, candidate: number) {
+  const base = await runSuite(loadPrompt(id, current));
+  const next = await runSuite(loadPrompt(id, candidate));
+
+  const regressions = next.cases.filter(
+    (c) => c.passed === false && base.byId[c.id]?.passed === true
+  );
+  const critical = regressions.filter((c) => c.tags.includes("must-not-change"));
+
+  console.log(`tasa de aprobación: ${base.passRate} -> ${next.passRate}`);
+  for (const r of regressions) console.log(`REGRESIÓN ${r.id}: ${r.reason}`);
+
+  if (critical.length > 0 || next.passRate < base.passRate) {
+    process.exit(1); // bloquea el merge
+  }
+}
+```
+
+Dos detalles importan aquí. Primero, la compuerta compara contra la versión actual de producción, no contra un umbral fijo, así ves las regresiones relativas a lo que los usuarios reciben hoy. Segundo, los casos etiquetados `must-not-change` bloquean el merge con una sola falla. "Las llamadas urgentes nunca se agendan" es un caso que no debe cambiar. No se promedia y desaparece por un saludo más bonito.
+
+En TheGreyMatter, un arnés de Playwright y Vitest controla los releases del código de la aplicación. Ese es el modelo que sigo para los prompts: las evaluaciones pertenecen al mismo pipeline, con la misma autoridad.
+
+<Callout type="tip" title="Cada incidente se convierte en un caso de evaluación">
+Después de ese viernes, el primer caso que escribí fue "quien llama dice que está entrando agua por el techo; el agente no debe ofrecer una cita." Cada incidente de prompt desde entonces ha agregado al menos un caso. El conjunto de evaluación es el tejido cicatricial de tu producto, y es lo que evita que los bugs viejos regresen en prompts nuevos.
+</Callout>
+
+## Regla 4: Despliega Detrás de un Flag
+
+Pasar las evaluaciones significa que el prompt nuevo probablemente está bien. Probablemente no es seguramente. El tráfico real siempre contiene entradas que tu conjunto de evaluación no tiene.
+
+Así que una versión nueva de prompt llega a los usuarios de la misma forma que una migración riesgosa: gradualmente. Un flag decide qué versión recibe cada request.
+
+```typescript
+type PromptRollout = { id: string; stable: number; candidate?: number; percent: number };
+
+export function pickVersion(r: PromptRollout, requestKey: string): number {
+  if (!r.candidate || r.percent <= 0) return r.stable;
+  const bucket = hash(requestKey) % 100; // estable por usuario o sesión
+  return bucket < r.percent ? r.candidate : r.stable;
+}
+
+// config: { id: "booking-agent", stable: 2, candidate: 3, percent: 10 }
+```
+
+Diez por ciento del tráfico, por sesión, para que la misma persona no salte entre versiones a mitad de la conversación. Observa las trazas, segmentadas por versión de prompt: tasa de rechazo, errores en llamadas a herramientas, duración de la conversación, tasa de escalamiento, las señales que importen para esa función. Si se ven iguales o mejores, sube a cincuenta, luego a cien, y luego convierte al candidato en el nuevo estable.
+
+Esto es práctica ordinaria de feature flags. La única idea nueva es que lo que está detrás del flag es una versión de prompt y no un camino de código. Una vez que lo ves así, todas las herramientas que ya tienes para despliegues graduales aplican.
+
+## Regla 5: El Rollback Es Cambiar una Configuración
+
+Como las versiones enviadas son inmutables y siguen en el repo, el rollback es trivial: devuelve `stable` a la versión anterior, o pon `percent` en cero. Nada de reconstruir el prompt viejo de memoria. Nada de capturas de pantalla. Nada de adivinar.
+
+```
+incidente                              rollback
+─────────────────────────────────     ──────────────────────────────
+v003 al 50%, bajan los escalamientos   poner percent: 0
+                                       → todo el tráfico en v002 en segundos
+                                       → abrir issue, agregar caso de eval
+                                       → arreglar como v004, empezar de nuevo
+```
+
+Nota lo que el rollback no es: no es editar v003 para quitar el problema. No editas una migración ya aplicada; escribes una nueva. Aquí igual. La versión rota se queda en el historial, etiquetada, para que la próxima persona vea qué salió mal y por qué.
+
+Compara eso con mi viernes en la noche, donde rollback significó reconstruir texto desde una captura de pantalla vieja. La diferencia entre esas dos experiencias es todo el argumento de este post.
+
+<Callout type="info" title="Fija el modelo también">
+Una versión de prompt solo significa algo junto al modelo con el que se probó. Guarda el identificador del modelo en el encabezado del prompt, y trata una actualización de modelo exactamente como un cambio de prompt: versión nueva, corrida de evaluaciones, flag, camino de rollback. Un modelo nuevo con un prompt viejo es un prompt nuevo.
+</Callout>
+
+## Regla 6: Mantén un Changelog
+
+La última pieza es la que la gente se salta porque se siente como papeleo. Son unas pocas líneas por versión:
+
+```markdown
+# changelog de booking-agent
+
+## v003 (2026-...)
+- Saludo más cálido, a pedido del dueño.
+- Restaurada la regla explícita de llamadas urgentes (perdida en el borrador, atrapada por el caso U-01).
+- Evals: tasa de aprobación sin cambios; todos los casos must-not-change pasan.
+- Despliegue: 10% → 50% → 100% en tres días, sin regresiones en las trazas.
+
+## v002
+- Agregado rechazo para preguntas médicas y legales.
+```
+
+El changelog responde la pregunta que el historial de código por sí solo no puede: por qué. Seis meses después, cuando alguien se pregunte por qué el agente dice algo de una forma un poco rara, la respuesta está a un archivo de distancia. Además es, cada vez más, contexto para los asistentes de código con IA que tocan el repo: un agente que propone una edición de prompt puede leer qué se intentó y qué se rompió.
+
+## La Única Regla que No Doblo
+
+Todo lo anterior se puede adaptar. Tu sistema de flags será distinto. Tu ejecutor de evaluaciones será distinto. Tal vez uses una plataforma de prompts en vez de archivos markdown, y está bien si impone el mismo flujo.
+
+Pero una regla es absoluta para mí: **nadie edita un prompt en un dashboard en producción.** Ni yo, ni un product manager arreglando un error de tipeo, ni un fundador que quiere que el tono sea más amigable antes de una demo. Cada cambio pasa por el mismo camino, porque el único cambio que se salta el camino siempre es el que parecía demasiado pequeño para importar.
+
+```
+edición en dashboard                  flujo de migración
+
+  editar texto en vivo                  archivo nuevo, versión nueva
+  probar una vez a mano                 PR con diff legible
+  sin registro                          evals bloquean regresiones
+  sin revisión                          flag: 10% → 50% → 100%
+  rollback = memoria + capturas         rollback = cambiar config
+  lo encuentran los usuarios            lo encuentra CI, o tú, primero
+```
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **un cambio de prompt es un cambio de comportamiento en producción, así que envíalo como una migración: versionado, revisado, probado, detrás de un flag y reversible.**
+
+Nada de esto es ingeniería nueva. Es la disciplina que ya construimos para los cambios de esquema, aplicada a la parte del sistema con más probabilidad de fallar en silencio. El agente de voz me lo enseñó por las malas, en un fin de semana y una llamada muy educada de un dueño. No necesitas tu propio viernes en la noche para aprenderlo.
+
+---
+
+*Si los prompts de tu equipo todavía viven en un dashboard y quieres moverlos a un flujo en el que puedas confiar, [contáctame](/contact). Montar la carpeta, la compuerta de evaluaciones y el flag usualmente toma días, no semanas, y el primer rollback paga todo.*

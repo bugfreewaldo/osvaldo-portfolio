@@ -1,0 +1,246 @@
+---
+title: "Webhooks Are Promises: Signing, Retries, and Idempotency Done Right"
+description: "A webhook is not a fire-and-forget HTTP call. It is a promise to tell another system that something happened, exactly as it happened, eventually. Lessons from building HMAC-signed webhooks for a central file service: signatures with timestamps to stop replays, retries with backoff and jitter, idempotency keys on the receiver, a dead-letter queue you actually replay, and why you should never assume order."
+date: 2026-08-11
+published: true
+category: "Backend Engineering"
+tags: ["Webhooks", "HMAC", "Idempotency", "Distributed Systems", "TypeScript"]
+author: "Osvaldo Restrepo"
+tldr: "The first version of the webhooks in our central file service was a single HTTP POST after each event, and it worked right up until a receiving app was mid-deploy and missed an 'extraction complete' event, leaving a document stuck in 'processing' forever. A webhook is a promise: this happened, it really came from us, and you will hear about it even if you are down right now. Keeping that promise takes five things. Sign every payload with HMAC-SHA256 over a timestamp plus the raw body, and reject stale timestamps to stop replays. Retry with exponential backoff and jitter. Make receivers idempotent using the event ID. Send what cannot be delivered to a dead-letter queue that you actually replay. And never promise order; send thin events and let receivers fetch the current state."
+faqs:
+  - question: "Why include a timestamp in the webhook signature?"
+    answer: "Without a timestamp, a valid signed request can be captured and replayed later, and the signature will still check out because the body has not changed. Signing the timestamp together with the body, and rejecting requests whose timestamp is more than a few minutes old, shrinks the replay window to that tolerance. Pair it with idempotency on the event ID and a replay inside the window becomes harmless."
+  - question: "Why use timingSafeEqual instead of comparing signature strings with ===?"
+    answer: "A normal string comparison stops at the first mismatching character, so how long it takes leaks how much of the signature was correct. With enough requests, an attacker can use that timing difference to guess a valid signature byte by byte. A constant-time comparison like Node's crypto.timingSafeEqual takes the same time regardless of where the mismatch is, which removes that side channel."
+  - question: "Should webhook events be delivered in order?"
+    answer: "You should design as if they will not be. Retries, parallel delivery, and network delays all reorder events, and guaranteeing strict ordering across a distributed system is expensive and fragile. The robust pattern is to send thin events that say 'this resource changed' with an ID and a version, and have the receiver fetch the current state from the API, ignoring any event older than what it has already processed."
+relatedPosts: ["event-driven-data-pipelines", "envelope-encryption-documents-ai-reads", "api-design-lessons-learned"]
+---
+
+The bug report said a document had been "processing" for two days.
+
+Nothing was processing. The file had been uploaded, encrypted, extracted, and analyzed within a couple of minutes of arriving. The file service had done its whole job and then, at the end, sent a webhook to the app that owned the document, saying "extraction complete." One HTTP POST. The receiving app happened to be in the middle of a deploy at that moment. The POST got a 503. My code logged the failure, shrugged, and moved on.
+
+The receiving app never heard about it. Its UI kept showing a spinner. The user, reasonably, uploaded the same document again, which kicked off a second full extraction and AI analysis on a file we had already processed. Nobody was harmed, but it was the kind of quiet failure that makes a platform feel flaky, and it was entirely my fault.
+
+What I had built was not a webhook system. It was a hope. I had treated the webhook as a notification I sent, when the receiving app was treating it as a guarantee it could build on.
+
+That is the thing I want to argue in this post: **a webhook is a promise.** Specifically, it is three promises at once.
+
+```
+   A WEBHOOK PROMISES:
+
+   1. AUTHENTICITY   this really came from us, and nobody changed it
+   2. DELIVERY       you will hear about it, even if you are down right now
+   3. TRUTH          what we tell you reflects what actually happened
+                     (even if we tell you twice, or out of order)
+```
+
+Everything below is how I keep those promises in the file service that sits underneath the GreyMatter apps. None of it is novel. All of it is easy to skip, and I skipped most of it the first time.
+
+## 1. Sign Everything, Including the Time
+
+The receiver of a webhook has an uncomfortable problem: its webhook endpoint is a public URL that accepts POSTs. Anyone who discovers the URL can send it a fake "file ready" event. So the first promise, authenticity, has to be provable, not assumed.
+
+The standard answer is an HMAC signature. The sender and receiver share a secret per subscription. The sender computes HMAC-SHA256 of the payload with that secret and puts it in a header. The receiver recomputes it and compares.
+
+But signing only the body leaves a hole. If an attacker captures one legitimate signed request, they can replay it next week, and the signature will still be perfectly valid, because nothing in it has changed. So we sign the timestamp together with the body, and the receiver rejects anything too old.
+
+Our header looks like this:
+
+```
+X-Signature: t=1754900000,v1=5f2b9c...e41a
+```
+
+The signed string is the timestamp, a dot, and the raw request body. Here is the receiver-side verification we ship in our TypeScript SDK, more or less verbatim:
+
+```typescript
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const TOLERANCE_SECONDS = 300; // 5 minutes
+
+export function verifyWebhook(
+  rawBody: string,          // the exact bytes received, NOT re-serialized JSON
+  signatureHeader: string,  // "t=1754900000,v1=5f2b9c..."
+  secret: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): boolean {
+  const parts = Object.fromEntries(
+    signatureHeader.split(",").map((kv) => kv.split("=", 2) as [string, string]),
+  );
+  const timestamp = Number(parts.t);
+  const received = parts.v1;
+  if (!Number.isFinite(timestamp) || !received) return false;
+
+  // Reject stale or far-future timestamps: this is the replay window.
+  if (Math.abs(nowSeconds - timestamp) > TOLERANCE_SECONDS) return false;
+
+  const expected = createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(received, "hex");
+  // timingSafeEqual throws on length mismatch, so check first.
+  if (a.length !== b.length) return false;
+
+  return timingSafeEqual(a, b);
+}
+```
+
+Three details in there have each bitten someone I know.
+
+**Use the raw body.** If your framework parses the JSON and you re-serialize it before verifying, key order or whitespace can change and the signature will fail on perfectly legitimate requests. Capture the raw bytes before any parsing. This is the single most common "webhooks are broken" ticket I have seen.
+
+**Compare in constant time.** A plain `===` on two strings stops at the first differing character. That timing difference is small, but it is measurable with enough requests, and it lets an attacker discover a valid signature one byte at a time. `timingSafeEqual` takes the same time no matter where the mismatch is.
+
+**The tolerance window is a tradeoff.** Five minutes covers ordinary clock drift between servers without leaving a wide replay window. And since the receiver is also idempotent (rule 3), a replay inside those five minutes is a duplicate, not a disaster.
+
+<Callout type="warning" title="Secrets rotate, so support two">
+At some point you will need to rotate a webhook secret. If the receiver only accepts one secret, rotation means a window of failed deliveries. Let subscriptions hold a current and a previous secret, sign with the current one, and have the SDK accept either during the overlap. Rotation becomes a non-event instead of an incident.
+</Callout>
+
+## 2. Retry Like You Mean It
+
+The second promise is delivery. A receiver being down, deploying, rate-limited, or just slow is not an exceptional event. It is Tuesday. If the sender gives up on the first failure, the promise is worth nothing.
+
+So every delivery attempt that does not get a 2xx back is retried on a schedule with exponential backoff and jitter:
+
+```
+attempt   max delay (jitter shortens it)   cumulative (worst case)
+───────   ──────────────────────────────   ───────────────────────
+   1      immediate                        0
+   2      30s                              ~30s
+   3      2m                               ~2.5m
+   4      8m                               ~10m
+   5      32m                              ~45m
+   6      ~2h                              ~3h
+   7      ~8.5h                            ~11h
+   8      24h (capped)                     ~35h      ──▶  then dead-letter
+```
+
+The backoff gives a struggling receiver room to recover instead of being hammered. The jitter matters more than people expect: without it, when a receiver comes back after an outage, every queued event retries at the same instant and knocks it right back over. A little randomness spreads the herd out.
+
+```typescript
+function nextDelayMs(attempt: number): number {
+  const base = 30_000;                       // 30s
+  const cap = 24 * 60 * 60 * 1000;           // 24h
+  const exp = Math.min(cap, base * 4 ** (attempt - 2));
+  return Math.floor(exp / 2 + Math.random() * (exp / 2)); // "equal jitter"
+}
+```
+
+Two more rules on the sender side. First, a short timeout per attempt. If the receiver has not answered in ten seconds or so, count it as a failure and move on; a hung connection should never stall the queue. Second, treat 4xx and 5xx differently. A 500 or 503 means "try again later." A 400 or 401 usually means "this will never work," often a bad signature or a deleted endpoint. We still retry 4xx a couple of times, because receivers occasionally return the wrong status code during deploys, but we do not burn the full schedule on them.
+
+The same instinct applies to calling an LLM, by the way. I wrote about [retries and fallbacks for model calls](/blog/designing-llm-retry-fallbacks), and the shape is almost identical: assume failure is normal, back off, add jitter, and know when to stop.
+
+## 3. The Receiver Must Be Idempotent
+
+Here is the uncomfortable consequence of rule 2: if you retry, you will sometimes deliver the same event twice.
+
+It happens more often than you would think. The receiver processes the event, starts writing its 200 response, and the connection drops. From the sender's side, that attempt failed, so it retries. The receiver now sees an event it already handled. No amount of cleverness on the sender can prevent this. It is the nature of networks.
+
+So we deliver **at least once**, and the receiver is responsible for making "at least once" behave like "exactly once." The tool for that is an idempotency key, and the event ID is the natural one. Every event we send has a unique, stable ID that stays the same across every retry.
+
+```typescript
+export async function handleFileEvent(event: FileEvent, store: EventStore) {
+  // Atomically record the event ID. If it already exists, we've seen it.
+  const firstTime = await store.claim(event.id, { ttlDays: 7 });
+  if (!firstTime) return; // duplicate delivery, already handled — still return 200
+
+  switch (event.type) {
+    case "file.extraction.completed":
+      await markDocumentReady(event.data.fileId);
+      break;
+    // ...
+  }
+}
+```
+
+The `claim` must be atomic — an insert with a unique constraint, or a conditional write — not a "check, then insert" pair, which lets two concurrent deliveries both think they are first. And the handler should return a 2xx for duplicates. A duplicate is not an error; it is the system working as designed. If you return an error, the sender retries again, and you have built a tiny loop.
+
+<Callout type="tip" title="Make the handler idempotent too, not just the gate">
+The event-ID check is your first line of defense. Your second is writing handlers whose effects are naturally idempotent: "set status to ready" instead of "increment counter," upserts instead of inserts. When the gate fails for some unforeseen reason, idempotent effects mean a duplicate still does no harm.
+</Callout>
+
+## 4. Dead-Letter Is a Queue, Not a Trash Can
+
+Eventually some deliveries exhaust every retry. The receiver was down for two days, or its endpoint was deleted, or a bug is rejecting every event of one type. Those events go to a dead-letter queue.
+
+Most teams build the dead-letter queue and then never look at it. That turns the promise into "you will hear about it, unless you were down for a while, in which case good luck."
+
+What makes a dead-letter queue useful:
+
+- **Alert on it.** Not on every event, but on the rate. A sudden pile-up for one subscription is the earliest possible signal that a consuming app is broken.
+- **Make replay a button, not a script.** Anyone on the team should be able to replay all dead-lettered events for a subscription after the receiver is fixed. Because the receiver is idempotent, replaying generously is safe.
+- **Disable, don't delete, dead endpoints.** If an endpoint has failed everything for days, pause the subscription and tell its owner. Events keep accumulating in the dead-letter queue and can be replayed when someone turns it back on.
+
+The document stuck in "processing" from the opening would have been fixed by any one of these. With alerting, we would have seen the failure. With replay, we would have resent it. With retries, it would never have dead-lettered at all.
+
+## 5. Never Promise Order
+
+This is the one that surprises people most. With retries, parallel delivery workers, and ordinary network jitter, events arrive out of order. A `file.updated` can arrive before the `file.created` it depends on. A `file.deleted` can arrive and then, thirty seconds later, a retried `file.extraction.completed` for the same file.
+
+You can try to guarantee order. It requires per-resource queues, serialized delivery, and a lot of care, and it makes one stuck event block every event behind it. I tried a version of it once and backed it out.
+
+What works better is to stop sending state in the event, and send the fact that state changed:
+
+```
+FAT EVENT (fragile)                        THIN EVENT (robust)
+───────────────────                        ───────────────────
+{                                          {
+  "type": "file.updated",                    "id": "evt_01J9...",
+  "data": {                                  "type": "file.updated",
+    "fileId": "f_123",                       "data": {
+    "status": "ready",                         "fileId": "f_123",
+    "pages": 42,                               "version": 7
+    "title": "Q3 board deck",                }
+    ...                                    }
+  }
+}                                          receiver: if version older than
+                                           what I have, ignore; else GET /files/f_123
+receiver applies whatever arrives,
+possibly stale state over fresh
+```
+
+A thin event carries an ID, a type, the resource ID, and a version number. The receiver compares the version with what it already has, ignores anything older, and otherwise fetches the current state from the API. Order stops mattering, because the receiver always ends up with the latest truth, no matter how the events arrived.
+
+Thin events have a second benefit that matters a lot in our platform: they do not carry content. Our rule is that webhook payloads contain IDs and event types, never file contents or personal data. The receiver fetches the actual data through an authenticated API call, which goes through the same access checks and audit log as everything else. The webhook becomes a doorbell, not a delivery truck. That fits the same [event-driven ingestion shape](/blog/event-driven-data-pipelines) we use everywhere else, and it means a leaked webhook payload leaks almost nothing.
+
+<Callout type="info" title="The webhook is a doorbell">
+Treat the event as 'something changed, come look' rather than 'here is the new state.' Thin events with versions survive reordering, duplication, and replay without special handling, and they keep sensitive data behind your API's access controls instead of in someone's request logs.
+</Callout>
+
+## 6. Respond Fast, Work Later
+
+One last rule for receivers, because it causes a surprising number of retries. Your webhook handler should verify the signature, record the event, enqueue the work, and return 200, fast. It should not run the AI analysis, call three other services, and then respond.
+
+If the handler takes thirty seconds, the sender's timeout fires, the sender counts it as a failure, and it retries, while the first attempt is still running. Now you are processing the same event twice in parallel, and your idempotency gate is the only thing standing between you and a duplicate. Acknowledge quickly and do the heavy lifting asynchronously.
+
+## The Contract, Written Down
+
+All of this is useless if it lives only in my head, so the file service publishes it as part of its event docs. This is the summary every consuming team gets:
+
+```
+DELIVERY      at least once. Duplicates will happen.
+ORDER         not guaranteed. Use data.version; fetch current state.
+SIGNATURE     X-Signature: t=..,v1=.. — HMAC-SHA256 over "t.rawBody".
+              Reject if |now - t| over 300s. Constant-time compare.
+RETRIES       exponential backoff + jitter, 8 attempts over ~1.5 days.
+TIMEOUT       respond 2xx within 10s or the attempt counts as failed.
+PAYLOAD       IDs and types only. No file contents. No PII.
+DEAD-LETTER   after final retry. Replayable per subscription.
+VERSIONING    breaking payload changes ship as a new event version.
+```
+
+Every line there is a promise the sender makes or an expectation the receiver must meet. Writing it down forced me to notice which promises I was actually keeping, and which ones I had only been hoping for.
+
+## The Throughline
+
+If I had to compress this post into one sentence: **a webhook is a promise that something happened, made by a sender who will keep trying and received by someone who must expect to hear it twice, late, and out of order.**
+
+Signing proves who made the promise. Retries and dead-letter queues keep it. Idempotency and thin events make it safe to keep it imperfectly. None of these are hard on their own. The hard part is accepting, before the first bug report, that a single POST was never a promise at all. It was a hope with a status code.
+
+---
+
+*If you are designing webhooks for a platform, or you are on the receiving end of someone else's and wondering why things go missing, [reach out](/contact). It is almost always one of these five, and it is much cheaper to fix before the first document gets stuck in "processing."*

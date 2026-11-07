@@ -1,0 +1,189 @@
+---
+title: "Etiquetar Es Trabajo Clínico: Lo que Mi Doctorado Me Enseñó Sobre la Verdad de Referencia en Medicina"
+description: "En medicina, la verdad de referencia no se encuentra, se decide, usualmente por expertos cansados que no están del todo de acuerdo. Lecciones de mi investigación doctoral sobre soporte a la decisión clínica: por qué los clínicos discrepan en las etiquetas, por qué ese desacuerdo es dato y no ruido, cómo funciona la adjudicación, por qué etiquetar merece el tiempo real y el respeto de los clínicos, y cómo todo eso le dio forma a la manera en que construyo MILA."
+date: 2026-06-30
+published: true
+category: "IA en Salud"
+tags: ["IA en Salud", "Etiquetado de Datos", "Soporte a la Decisión Clínica", "Investigación Doctoral", "MILA"]
+author: "Osvaldo Restrepo"
+translationOf: "labeling-is-clinical-work"
+tldr: "Empecé mi investigación doctoral sobre soporte a la decisión clínica pensando que las etiquetas eran una tarea pendiente antes de que empezara el trabajo real. La primera vez que dos clínicos experimentados etiquetaron los mismos casos y discreparon, lo traté como ruido y fui directo al voto de mayoría. Eso estuvo mal. En medicina, la verdad de referencia es un juicio, y el desacuerdo entre clínicos frecuentemente carga la información más importante del dataset: dónde el caso es genuinamente ambiguo, dónde la guía no es clara, o dónde falta contexto. Ahora guardo la etiqueta de cada evaluador, registro por qué discreparon, adjudico en vez de promediar, mido el acuerdo antes de medir cualquier modelo, y trato el tiempo de etiquetado de los clínicos como trabajo clínico que merece respeto. Esos hábitos pasaron directamente a MILA, donde el set de evaluación marca los casos disputados y el sistema nunca tiene permitido sonar más seguro de lo que los propios clínicos estuvieron."
+faqs:
+  - question: "¿Por qué no usar simplemente el voto de mayoría para resolver desacuerdos de etiquetado?"
+    answer: "Porque el voto de mayoría tira exactamente la información que más necesitas. Cuando dos clínicos cuidadosos discrepan, usualmente significa que el caso es ambiguo, que la guía de etiquetado tiene un hueco, o que falta algo en el expediente. Un voto de mayoría esconde todo eso detrás de una etiqueta limpia, y tu modelo luego aprende a estar seguro sobre casos donde los expertos no lo estaban. La adjudicación, una conversación estructurada que produce una etiqueta final y una razón registrada, conserva la señal."
+  - question: "¿Qué es el acuerdo entre evaluadores, y por qué medirlo antes de entrenar un modelo?"
+    answer: "El acuerdo entre evaluadores mide qué tan seguido expertos independientes le dan la misma etiqueta al mismo caso, usualmente ajustado por azar con un estadístico como el kappa de Cohen. Importa porque establece un techo aproximado de lo que cualquier modelo puede lograr de forma significativa contra esas etiquetas. Si los clínicos solo concuerdan moderadamente entre sí, un modelo que parece superar ese acuerdo probablemente está aprendiendo las mañas de un etiquetador, no medicina."
+  - question: "¿Cómo logras que clínicos ocupados dediquen tiempo a etiquetar datos?"
+    answer: "Tratando su tiempo como el recurso más escaso del proyecto. Sesiones cortas y enfocadas en vez de hojas de cálculo maratónicas. Herramientas que muestren el caso como lo verían clínicamente. Una guía escrita con ellos, no entregada a ellos. Mostrarles qué cambiaron sus etiquetas. Y darle el crédito apropiado al trabajo. Los clínicos son generosos con su tiempo cuando se respeta, y tacaños, con razón, cuando se desperdicia."
+relatedPosts: ["two-tones-of-wrong-clinical-ai", "eval-set-is-the-spec", "why-i-built-mila"]
+---
+
+Al principio de mi doctorado, armé lo que creía que era un sistema de etiquetado muy eficiente. Una hoja de cálculo. Una fila por caso. Una columna para la etiqueta, una columna para notas, un menú desplegable para que nadie pudiera escribir nada creativo. Se la envié a dos clínicos experimentados que amablemente habían aceptado ayudar, y bloqueé una tarde para entrenar mi primer modelo cuando volvieran las etiquetas.
+
+Las etiquetas volvieron. No coincidían.
+
+No por completo, no de forma salvaje, pero lo suficiente para que la tarde se convirtiera en una semana. Mi primera reacción, y no estoy orgulloso de ella, fue fastidio. Tenía un pipeline limpio, y los humanos estaban introduciendo ruido. Hice lo que muchos ingenieros hacen: empecé a leer sobre voto de mayoría y suavizado de etiquetas, y agendé a un tercer clínico como desempate.
+
+Luego me senté con una de las dos originales para entender un puñado de los casos donde discreparon. En el primero, me explicó su razonamiento en unos treinta segundos. Después dijo, casi como un comentario al margen: "Pero entiendo por qué alguien se iría para el otro lado. Depende de lo que asumas sobre el estado basal del paciente, y eso no está en el expediente."
+
+Esa oración acabó con mi plan del voto de mayoría. El desacuerdo no era ruido. Era lo más honesto del dataset.
+
+## La Verdad de Referencia en Medicina Es una Decisión
+
+En la mayoría de los tutoriales de ML, la verdad de referencia es un hecho del mundo que consultas. La imagen contiene un gato o no. La transacción fue fraude o no lo fue, y eventualmente el contracargo te lo dice.
+
+Las etiquetas clínicas rara vez son así. "¿Debió este caso marcarse para escalación?" "¿Es preocupante esta tendencia?" "¿Fue este un evento notable que una familia debería escuchar hoy?" Esos son juicios. Juicios experimentados, entrenados, razonables, hechos por personas que miran el mismo expediente y lo ponderan distinto, porque la medicina está llena de casos donde expertos razonables ponderan las cosas distinto.
+
+Así que en IA clínica, la verdad de referencia no se encuentra. Se *decide*, por personas, bajo una guía, con información incompleta. Lo que significa que el proceso de etiquetado no es un paso de captura de datos antes de la ciencia. Es parte de la ciencia. Y, de forma más incómoda, es una forma de trabajo clínico.
+
+<Callout type="info" title="Tu modelo solo puede estar tan seguro como lo estuvieron tus etiquetadores">
+Si los clínicos discrepan en un conjunto de casos, un modelo entrenado con una sola etiqueta "verdadera" para esos casos aprenderá a estar seguro donde los expertos no lo estaban. Esa seguridad no vino de la medicina. Vino de que tu pipeline borró el desacuerdo.
+</Callout>
+
+## 1. Guarda Cada Etiqueta, No Solo la Ganadora
+
+El primer cambio que hice fue estructural, y es el que le recomendaría a cualquiera construyendo un dataset clínico: nunca guardes solo la etiqueta final. Guarda la etiqueta de cada evaluador, quién la dio, y por qué.
+
+Esta es más o menos la forma a la que migraron los datos de mi investigación:
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class RaterLabel:
+    rater_id: str            # seudónimo, nunca un nombre
+    label: str               # ej. "escalate" | "monitor" | "no_action"
+    confidence: str          # "sure" | "leaning" | "unsure"
+    rationale: str           # una o dos oraciones, en sus palabras
+    missing_context: Optional[str] = None  # lo que desearían que tuviera el expediente
+
+@dataclass
+class LabeledCase:
+    case_id: str
+    guideline_version: str
+    rater_labels: list[RaterLabel] = field(default_factory=list)
+    adjudicated_label: Optional[str] = None
+    adjudication_note: Optional[str] = None
+    disputed: bool = False   # true si los evaluadores discreparon antes de adjudicar
+```
+
+Tres campos ahí hicieron más por mi investigación que cualquier cambio de modelo que hice ese año.
+
+`confidence` es autoreportada, y está bien. Un clínico diciendo "me inclino, no estoy seguro" es información clínica. `rationale` es lo que hizo posible la adjudicación después, porque no puedes reconciliar dos etiquetas si no conoces el razonamiento detrás de ellas. Y `missing_context` resultó ser oro: es una lista, escrita por expertos, de lo que el expediente no te dice. Esa lista me dijo más sobre los límites de cualquier modelo que pudiera construir que cualquier análisis de errores.
+
+La bandera `disputed` se queda en el caso para siempre, incluso después de la adjudicación. Un caso en el que dos expertos discreparon es un tipo de caso distinto a uno en el que concordaron al instante, y esa diferencia debería seguirlo al entrenamiento, a la evaluación y al análisis de errores.
+
+## 2. Escribe la Guía con los Clínicos, y Espera que Cambie
+
+Mi primera guía de etiquetado fue un párrafo que escribí yo mismo. Sonaba razonable y era clínicamente ingenua, y los desacuerdos expusieron cada hueco que tenía.
+
+Algunos desacuerdos eran ambigüedad clínica genuina. Pero un número sorprendente eran ambigüedad de la guía: dos clínicos leyendo la misma instrucción e interpretándola distinto. "Marcar si es preocupante" significa cosas distintas para distintos especialistas. "Notable" depende de si estás pensando en el equipo clínico o en la familia.
+
+Así que la guía se volvió un documento vivo, escrito con los clínicos, versionado, y revisado después de cada ronda. Cada caso registra bajo qué versión de la guía fue etiquetado, porque una etiqueta bajo la versión uno y una etiqueta bajo la versión tres no son la misma medición.
+
+```
+ronda 1 ──▶ etiquetar un lote pequeño de forma independiente
+              │
+              ▼
+          medir acuerdo, recolectar desacuerdos
+              │
+              ▼
+          discutir juntos los casos disputados
+              │
+       ┌──────┴───────────────────────┐
+       ▼                              ▼
+  ambigüedad clínica             la guía no era clara
+  genuina                        o estaba incompleta
+       │                              │
+       ▼                              ▼
+  mantener como disputado,      revisar la guía,
+  adjudicar, registrar por qué  subir versión, re-etiquetar
+       │                              │
+       └──────────────┬───────────────┘
+                      ▼
+               siguiente ronda
+```
+
+Este ciclo es lento. También es la única versión del proceso que convergió. La tasa de desacuerdo bajó a lo largo de las rondas, no porque se presionara a nadie a estar de acuerdo, sino porque la guía por fin decía lo que queríamos decir. Los casos que siguieron disputados después de que la guía se estabilizó eran los genuinamente difíciles, que es exactamente el conjunto que quieres conocer.
+
+## 3. Adjudica, No Promedies
+
+Cuando los evaluadores discrepan, hay algunas cosas que puedes hacer. Puedes tomar un voto de mayoría. Puedes promediar en una etiqueta suave. O puedes adjudicar: llevar el desacuerdo de vuelta a los clínicos, discutir el caso, y producir una etiqueta final junto con una razón escrita.
+
+Las etiquetas suaves tienen su lugar en el modelado, y las uso. Pero para construir el set de referencia contra el que evalúo, la adjudicación ganó cada vez, por una razón simple: produce una explicación. Un voto de mayoría te dice que dos personas dijeron A y una dijo B. La adjudicación te dice que el caso depende de una suposición sobre el estado basal, que la guía ahora lo aborda, y que el caso debe quedarse marcado como disputado.
+
+La adjudicación también es donde más aprendí sobre medicina, lo cual no es poca cosa para un ingeniero trabajando en IA clínica. Escuchar a dos clínicos experimentados razonar un caso en el que discrepan es lo más cercano a una clase magistral que tuve en todo el proceso de investigación.
+
+<Callout type="tip" title="La nota de adjudicación es la columna más valiosa">
+Una etiqueta final sin razón es un número. Una etiqueta final con razón es conocimiento que puedes reutilizar: en la guía, en el set de evaluación, en el análisis de errores, y para explicarle a los clínicos por qué el modelo se comporta como se comporta. Siempre escribe la nota.
+</Callout>
+
+## 4. Mide el Acuerdo Antes de Medir el Modelo
+
+Esta es la versión estadística de la misma lección, y es la que desearía que alguien me hubiera grabado en la cabeza desde el primer día.
+
+Antes de entrenar cualquier cosa, mide qué tanto concuerdan los clínicos entre sí en etiquetas independientes. Para dos evaluadores, el kappa de Cohen es el punto de partida usual porque ajusta por el acuerdo que obtendrías por azar:
+
+```python
+from sklearn.metrics import cohen_kappa_score
+
+def pairwise_agreement(cases: list[LabeledCase], a: str, b: str) -> float:
+    pairs = []
+    for case in cases:
+        labels = {r.rater_id: r.label for r in case.rater_labels}
+        if a in labels and b in labels:
+            pairs.append((labels[a], labels[b]))
+    if not pairs:
+        raise ValueError("no hay casos en común para estos evaluadores")
+    left, right = zip(*pairs)
+    return cohen_kappa_score(left, right)
+```
+
+Ese número hace dos trabajos. Te dice si tu guía está funcionando, ya que el acuerdo debería subir a lo largo de las rondas a medida que la guía mejora. Y te da una idea aproximada del techo. Si clínicos experimentados solo concuerdan moderadamente en una etiqueta, entonces un modelo que parece coincidir con un evaluador mucho mejor de lo que los evaluadores coinciden entre sí es una señal de alerta, no un triunfo. Probablemente aprendió los hábitos de ese evaluador, no la medicina.
+
+Ahora reporto el acuerdo justo al lado del desempeño del modelo, en la misma tabla, cada vez. Una métrica de modelo sin el acuerdo humano al lado le falta su denominador.
+
+## 5. El Tiempo de Etiquetado Es Tiempo Clínico. Respétalo.
+
+Esta es la parte que tiene menos que ver con estadística y más con modales.
+
+Los clínicos que etiquetaron datos para mi investigación lo hicieron encima de sus trabajos reales. Cada hora que me dieron fue una hora no pasada con pacientes, con familia, o durmiendo. Mi primera hoja de cálculo trataba esa hora como barata: sesiones largas, un menú desplegable diminuto, el expediente pegado como un bloque de texto sin formato, ninguna explicación de para qué era todo.
+
+Lo que cambié, lentamente, porque lo aprendí lentamente:
+
+- **Sesiones cortas.** Lotes pequeños que alguien pueda terminar entre otras obligaciones, no un maratón. La fatiga cambia las etiquetas, y las etiquetas fatigadas son ruido que tú mismo creaste.
+- **Muestra el caso como lo lee un clínico.** Estructurado, en un orden sensato, con la información que verían primero realmente primero. Una herramienta de etiquetado que pelea con el lector es una fuente de error.
+- **Haz de "no estoy seguro" una respuesta de primera clase.** Forzar una etiqueta confiada en un caso del que alguien no está seguro es pedirle que mienta por la conveniencia de tu dataset.
+- **Cierra el ciclo.** Diles qué cambió gracias a sus etiquetas: una guía revisada, un error del modelo que atraparon, un caso disputado que se convirtió en una decisión de diseño.
+- **Dale crédito al trabajo.** En la investigación, en las conversaciones, en cómo describes el dataset. Las etiquetas son contribuciones expertas, no tareas administrativas.
+
+Nada de esto es sofisticado. Todo mejoró la calidad de las etiquetas más que cualquier truco técnico que intenté. Las personas que se sienten respetadas piensan más sus respuestas.
+
+<Callout type="warning" title="Las etiquetas baratas salen caras">
+Si tu proceso de etiquetado trata el tiempo de los clínicos como gratis, obtendrás etiquetas que lo reflejan: apresuradas, forzadas en categorías que no encajan, sin el razonamiento que vas a necesitar después. El costo aparece meses más tarde como un modelo que está equivocado con seguridad de formas que nadie puede explicar.
+</Callout>
+
+## Lo que Me Enseñó para MILA
+
+Cuando empecé a construir MILA, me traje todo esto casi sin cambios, porque resultó que el problema era el mismo con otra ropa.
+
+MILA redacta actualizaciones para familias de la UCIN, y cada borrador es revisado por una enfermera antes de que algo llegue a un padre. Evaluar esos borradores significa decidir cómo se ve una buena actualización. ¿Es este evento lo suficientemente "notable" para mencionarlo hoy? ¿Esta redacción tranquiliza o minimiza? ¿Es este el nivel de detalle correcto para un padre asustado en la noche?
+
+Esos son juicios, y las enfermeras no siempre concuerdan en ellos. El "vale la pena mencionarlo" de una enfermera es la "preocupación innecesaria" de otra. Así que el set de evaluación de MILA está construido como lo estaban los datos de mi investigación: múltiples revisoras en los casos difíciles, razonamientos registrados, casos disputados marcados y conservados, y una guía que ha sido revisada varias veces con las enfermeras que realmente la usan. He escrito sobre cómo [el set de evals es la especificación](/es/blog/eval-set-is-the-spec); en un producto clínico, el proceso de etiquetado es cómo esa especificación se escribe con honestidad.
+
+Los casos disputados también le dieron forma al producto directamente. Cuando el set de referencia muestra que las propias enfermeras se dividen ante un tipo de situación, MILA no tiene permitido sonar más segura de lo que ellas estuvieron. Esos son los lugares donde el borrador matiza, marca o difiere, lo que conecta directamente con lo que escribí sobre [el tono de estar equivocado en IA clínica](/es/blog/two-tones-of-wrong-clinical-ai). La calibración empieza en las etiquetas. Si las etiquetas borraron la duda, el modelo nunca tuvo oportunidad de aprenderla.
+
+Y la parte del respeto también pasó. Las enfermeras que dan retroalimentación sobre los borradores de MILA están haciendo trabajo de etiquetado, lo llame alguien así o no. Sus ediciones, sus rechazos, su "yo nunca lo diría así" son los datos más valiosos que tiene el producto. La pantalla de revisión está diseñada para que esa retroalimentación les cueste segundos, no minutos, y les cuento qué cambió gracias a ella.
+
+## El Hilo
+
+Si tuviera que comprimirlo todo en una oración: **en medicina, una etiqueta es una opinión clínica, y el desacuerdo entre opiniones es parte de la verdad que estás tratando de modelar.**
+
+Guarda la etiqueta de cada evaluador. Escribe la guía con los clínicos y déjala cambiar. Adjudica y anota por qué. Mide su acuerdo antes de presumir tu modelo. Y trata las horas que te dan como trabajo clínico, porque eso es lo que son.
+
+Empecé mi doctorado pensando que etiquetar era la tarea pendiente antes de la investigación. Resultó ser la investigación.
+
+---
+
+*Si estás construyendo un dataset clínico o evaluando un sistema de IA en salud y las etiquetas se sienten más frágiles que el modelo, [contáctame](/contact). Usualmente significa que estás mirando el problema correcto, y es una conversación mucho mejor de tener antes de entrenar que después.*

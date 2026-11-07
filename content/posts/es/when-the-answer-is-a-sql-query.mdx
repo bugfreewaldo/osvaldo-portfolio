@@ -1,0 +1,242 @@
+---
+title: "Cuando la Respuesta Es una Consulta SQL: Decirle que No al Modelo"
+description: "Muchas 'funciones de IA' son en realidad una consulta, una regla o una expresión regular disfrazadas. Una lista práctica para decidir cuándo usar un LLM y cuándo escribir código determinístico, una comparación de costo, latencia y facilidad de prueba, y el patrón híbrido que más uso: deja que el modelo traduzca la intención, y deja que el código aburrido haga la ejecución."
+date: 2026-10-20
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "LLMs", "SQL", "Diseño de Sistemas", "Arquitectura"]
+author: "Osvaldo Restrepo"
+translationOf: "when-the-answer-is-a-sql-query"
+tldr: "Una cantidad sorprendente de solicitudes de funciones de IA son problemas determinísticos disfrazados: una consulta SQL, una regla de negocio, o una expresión regular. Enviar un LLM para eso hace la función más lenta, más cara, más difícil de probar, y ocasionalmente incorrecta, sin ningún beneficio. La señal es simple: si puedes escribir la salida correcta exacta para cada entrada, no necesitas un modelo. Uso una lista corta antes de recurrir a un LLM, y cuando la entrada realmente es lenguaje natural desordenado, uso un patrón híbrido: el modelo traduce la intención del usuario a una estructura pequeña y validada, y el código determinístico la ejecuta. El modelo maneja la ambigüedad. El código maneja la verdad. Decirle que no al modelo, en los lugares correctos, es lo que hace confiables los lugares donde dices que sí."
+faqs:
+  - question: "¿No es más simple usar un LLM para todo, ya que una sola herramienta maneja todos los casos?"
+    answer: "Se siente más simple el primer día y se vuelve más complicado cada día después. Una función respaldada por un LLM necesita prompts, evals, reintentos, respaldos, monitoreo de costos y presupuestos de latencia. Una consulta SQL necesita una prueba. Cuando el problema es determinístico, la versión con LLM no es una herramienta manejando todos los casos — es una aproximación probabilística de una función que podrías simplemente haber escrito, más toda la infraestructura necesaria para mantener honesta esa aproximación."
+  - question: "¿Cómo dejo que los usuarios hagan preguntas en lenguaje natural sin dejar que el modelo escriba SQL crudo?"
+    answer: "Haz que el modelo produzca una descripción pequeña y estructurada de lo que el usuario quiere — qué métrica, qué filtros, qué rango de tiempo — validada contra un esquema estricto con campos y operadores en lista permitida. Luego el código determinístico convierte esa estructura en una consulta parametrizada. El modelo nunca toca la base de datos directamente, cada consulta es segura por construcción, y puedes probar la traducción y la ejecución por separado."
+  - question: "¿Cuándo es un LLM claramente la elección correcta sobre el código determinístico?"
+    answer: "Cuando la entrada es genuinamente no estructurada y variada — texto libre, voz, documentos desordenados — y la salida correcta no se puede enumerar por completo de antemano: resumir, redactar, extraer significado de lenguaje que la gente escribió para otra gente, o mapear una intención difusa a una estructura conocida. Si no puedes escribir la regla porque la regla sería todo el lenguaje humano, ese es el trabajo del modelo."
+relatedPosts: ["build-buy-wrap-ai-features", "structured-outputs-are-a-contract", "first-ai-feature-should-be-read-only"]
+---
+
+Hace unos años en Shining Image, me pidieron una función de IA. La solicitud, más o menos: "Queremos que la IA nos diga qué clientes estamos a punto de perder, para contactarlos antes de que se vayan a otro lado."
+
+Me emocioné. Empecé a bosquejar. Sacar el historial de clientes del CRM, generar embeddings de las notas, recuperar clientes similares que se habían ido, hacer que un modelo razonara sobre el riesgo y escribiera una explicación corta para cada uno. Al final de la tarde tenía un diagrama con cajas y flechas. Estaba, si soy honesto, un poco orgulloso del diagrama.
+
+Luego hice la pregunta que debí haber hecho primero: "¿Cómo saben hoy cuándo un cliente se está alejando?"
+
+La respuesta: "Si alguien que agenda cada par de meses no ha agendado en un tiempo, lo llamamos."
+
+Eso no es una función de IA. Eso es una cláusula `WHERE`.
+
+```sql
+SELECT c.id, c.name, c.phone, MAX(j.completed_at) AS last_job
+FROM customers c
+JOIN jobs j ON j.customer_id = c.id
+GROUP BY c.id, c.name, c.phone
+HAVING COUNT(j.id) >= 3
+   AND MAX(j.completed_at) < NOW() - INTERVAL '90 days'
+ORDER BY last_job ASC;
+```
+
+Entregué eso, como una lista semanal con un botón de "llamarlos," en menos tiempo del que había pasado en el diagrama. Era instantáneo, gratis de correr, perfectamente explicable, y exactamente lo que el negocio quería. El diagrama se fue a una carpeta que no abro.
+
+He pensado en ese momento muchas veces desde entonces, porque sigo viendo versiones de él — en mi propio trabajo, en otros equipos, a toda escala. Mucho de lo que se etiqueta como "IA" es una consulta, una regla o una regex con disfraz. Este post es sobre reconocer el disfraz, y sobre qué hacer cuando el problema realmente es mitad lenguaje y mitad lógica.
+
+## La Señal: ¿Puedes Escribir la Respuesta Correcta?
+
+Esta es la pregunta más útil que conozco para esta decisión:
+
+**Para cada entrada posible, ¿puedes escribir exactamente cuál es la salida correcta?**
+
+Si sí, tienes una función. Escribe la función. Un modelo solo la va a aproximar, y aproximar una función que podrías haber escrito es pagar extra por un resultado peor.
+
+Si no — porque las entradas son lenguaje libre, o la salida "correcta" es un juicio, o el espacio de entradas es demasiado amplio y extraño para enumerarlo — entonces un modelo puede estar ganándose su lugar.
+
+"Clientes que no han agendado en 90 días" tiene una respuesta correcta para cada cliente. "Resume por qué este cliente parece descontento según sus últimos cinco correos" no la tiene. El primero es una consulta. El segundo es una tarea de lenguaje. El error es tratarlos como el mismo tipo de problema porque ambos se pidieron con la palabra "IA."
+
+<Callout type="tip" title="La prueba de la salida">
+Si puedes escribir la salida esperada para cualquier entrada sin dudar, es código determinístico. Si escribir la salida esperada requiere juicio, leer entre líneas, o entender lenguaje que la gente escribió para otra gente, puede ser un modelo. Pregúntalo antes de abrir un editor de prompts.
+</Callout>
+
+## La Lista que Reviso Antes de Recurrir a un Modelo
+
+Tengo una lista corta. No es sofisticada. Está ahí principalmente para interrumpir mi propia emoción, que sigue siendo el mayor riesgo en estas decisiones.
+
+```
+ANTES DE USAR UN LLM, PREGUNTA:
+
+[ ] ¿La entrada son datos estructurados (filas, campos, números, fechas)?
+      → sí: probablemente es una consulta o una regla.
+
+[ ] ¿Puedo enumerar la salida correcta para cada entrada?
+      → sí: escribe la función.
+
+[ ] ¿El patrón es fijo y bien definido (IDs, fechas, correos, códigos)?
+      → sí: probablemente es una regex o un parser.
+
+[ ] ¿Involucra aritmética, dinero, conteos o comparaciones?
+      → sí: esas partes deben ser determinísticas, pase lo que pase.
+
+[ ] ¿Debe ser exactamente reproducible (auditoría, cumplimiento, cobros)?
+      → sí: determinístico, o determinístico con un modelo solo en el borde.
+
+[ ] ¿La entrada es lenguaje humano libre, voz, o documentos desordenados?
+      → sí: un modelo puede ser la herramienta correcta, al menos para ese paso.
+
+[ ] ¿Es aceptable una respuesta fluida pero equivocada, o la atrapa un humano?
+      → no: mantén el modelo fuera del camino crítico.
+```
+
+Si la mayoría de las respuestas apuntan al código determinístico, escribo código determinístico. Si solo un paso involucra lenguaje real, el modelo recibe ese paso y nada más. Ese último patrón es el que más uso, y volveré a él.
+
+## Tres Disfraces que le Gusta Usar a la "IA"
+
+En la práctica, los problemas determinísticos escondidos dentro de solicitudes de IA caen en tres formas.
+
+**La consulta.** "Muéstrame qué negocios están estancados." "Encuentra los clientes que probablemente se van a ir." "¿Qué facturas están vencidas?" Cuando la definición de "estancado," "probablemente," o "vencida" se puede expresar en términos de campos y fechas, es una consulta. A menudo la parte difícil no es el código, es lograr que la persona interesada te diga la definición que ya usa en su cabeza. Una vez que lo hace, la base de datos responde en milisegundos.
+
+**La regla.** "Enruta los tickets urgentes al equipo senior." "Señala gastos por encima del límite de la política." "Escala cualquier llamada que mencione una fuga de gas." Estas son tablas de decisión. Pueden necesitar unas cuantas docenas de ramas, y pueden cambiar cada trimestre, pero son explícitas, y la lógica explícita pertenece en código o en una tabla de configuración donde una persona pueda leerla, probarla y cambiarla.
+
+**La regex.** "Saca el número de orden del correo." "Detecta números de teléfono en la transcripción." "Encuentra fechas en este documento." Cuando lo que estás extrayendo tiene un formato fijo, un patrón o un parser es más rápido, más barato, y acierta cada vez. Un modelo extrayendo un número de orden en un formato conocido es una expresión regular muy cara con una pequeña probabilidad de alucinar dígitos.
+
+```typescript
+// Regla: una tabla de decisión, no un prompt.
+const ROUTING_RULES = [
+  { when: (t: Ticket) => /gas leak|carbon monoxide/i.test(t.body), route: "emergency" },
+  { when: (t: Ticket) => t.customerTier === "enterprise" && t.priority === "high", route: "senior" },
+  { when: (t: Ticket) => t.category === "billing", route: "billing" },
+] as const;
+
+function routeTicket(t: Ticket): string {
+  return ROUTING_RULES.find((r) => r.when(t))?.route ?? "general";
+}
+
+// Regex: un formato fijo, no un modelo.
+const ORDER_ID = /\bORD-\d{6}\b/g;
+const orderIds = email.body.match(ORDER_ID) ?? [];
+```
+
+Cada una de estas líneas se puede probar con pruebas unitarias, revisar en un pull request, explicar a un auditor, y cuesta prácticamente nada por llamada.
+
+## La Comparación Honesta
+
+Cuando defiendo el código determinístico ante un equipo emocionado con un modelo, lo pongo en una tabla. No para decir que los modelos son malos, sino para hacer visibles los costos y beneficios.
+
+| Dimensión | Consulta, regla o regex | Llamada a un LLM |
+|---|---|---|
+| **Costo por llamada** | Prácticamente cero | Real, y crece con el tamaño de la entrada |
+| **Latencia** | Milisegundos | A menudo segundos, y variable |
+| **Exactitud** | Exacta, si la lógica es correcta | Probabilística, incluso con el prompt correcto |
+| **Reproducibilidad** | Misma entrada, misma salida, siempre | Puede variar entre llamadas y versiones del modelo |
+| **Facilidad de prueba** | Pruebas unitarias estándar | Necesita sets de evaluación y umbrales estadísticos |
+| **Explicabilidad** | Lee el código | Infiere a partir de la salida |
+| **Maneja lenguaje desordenado** | Mal | Muy bien |
+| **Costo de cambio** | Edita código o config, redespliega | Edita el prompt, re-corre evals, vigila regresiones |
+| **Modo de falla** | Ruidoso: error o resultado vacío | Silencioso: fluido y equivocado |
+
+La fila que más me importa es la última. El código determinístico tiende a fallar de forma ruidosa — una excepción, una lista vacía, una prueba que se pone roja. Los modelos tienden a fallar en silencio — una respuesta segura, bien formateada, que resulta estar equivocada. Las fallas silenciosas son mucho más caras, porque nadie las nota hasta que lo hace un cliente.
+
+<Callout type="warning" title="Fluido y equivocado es la falla cara">
+Cuando una consulta está mal, usualmente se rompe de forma visible. Cuando un modelo está mal, usualmente suena bien. Cada lugar donde pones un modelo donde el código determinístico habría funcionado es un lugar donde cambiaste fallas ruidosas por fallas silenciosas.
+</Callout>
+
+## El Patrón Híbrido: El Modelo Traduce, el Código Ejecuta
+
+Aquí es donde se pone interesante. Muchas funciones reales no son puramente determinísticas ni puramente de lenguaje. Son una solicitud humana desordenada en el frente y una operación precisa atrás.
+
+"Muéstrame las facturas vencidas del trimestre pasado de clientes en Texas por más de cinco mil dólares." La *intención* es lenguaje natural. La *ejecución* es absolutamente una consulta. La peor versión de esta función deja que un modelo escriba SQL crudo y lo ejecute. La mejor versión divide el trabajo por la mitad:
+
+```
+   palabras del usuario
+        │
+        ▼
+ ┌──────────────┐     estructura pequeña y validada
+ │     LLM      │ ──▶ { métrica, filtros, rango }
+ │  (traduce)   │
+ └──────────────┘
+        │
+        ▼
+ ┌──────────────┐     esquema estricto, campos y
+ │  validador   │     operadores en lista permitida
+ └──────────────┘
+        │
+        ▼
+ ┌──────────────┐     SQL parametrizado,
+ │ constructor  │     construido por código, no por el modelo
+ │ de consultas │
+ └──────────────┘
+        │
+        ▼
+   base de datos ──▶ resultado exacto ──▶ (opcional) el LLM lo narra
+```
+
+El modelo hace la única cosa en la que es excepcionalmente bueno: convertir lenguaje humano ambiguo en una descripción estructurada de lo que la persona quiere. Luego el modelo termina. Un validador revisa la estructura contra un esquema estricto. El código determinístico construye una consulta parametrizada a partir de ella. La base de datos devuelve una respuesta exacta.
+
+```typescript
+import { z } from "zod";
+
+// El modelo solo puede producir esta forma. Nada más pasa.
+const InvoiceQuery = z.object({
+  status: z.enum(["open", "paid", "overdue"]),
+  filters: z.array(
+    z.object({
+      field: z.enum(["customer_state", "amount_cents", "issued_at"]),
+      op: z.enum(["eq", "gt", "lt", "between"]),
+      value: z.union([z.string(), z.number(), z.tuple([z.string(), z.string()])]),
+    })
+  ).max(5),
+  limit: z.number().int().min(1).max(500).default(100),
+});
+
+type InvoiceQuery = z.infer<typeof InvoiceQuery>;
+
+// 1. El modelo traduce la intención a estructura (salida estructurada).
+const raw = await llm.extract(userText, InvoiceQuery);
+const q = InvoiceQuery.parse(raw); // lanza error si el modelo se puso creativo
+
+// 2. El código construye el SQL. Los campos vienen de la lista permitida, los valores van como parámetros.
+const OPS = { eq: "=", gt: ">", lt: "<" } as const;
+const where: string[] = ["status = $1"];
+const params: unknown[] = [q.status];
+
+for (const f of q.filters) {
+  if (f.op === "between" && Array.isArray(f.value)) {
+    params.push(f.value[0], f.value[1]);
+    where.push(`${f.field} BETWEEN $${params.length - 1} AND $${params.length}`);
+  } else if (f.op !== "between") {
+    params.push(f.value);
+    where.push(`${f.field} ${OPS[f.op]} $${params.length}`);
+  }
+}
+
+const sql = `SELECT * FROM invoices WHERE ${where.join(" AND ")} LIMIT ${q.limit}`;
+const rows = await db.query(sql, params);
+```
+
+Mira lo que esto te compra. El modelo nunca toca la base de datos. La inyección es imposible por construcción, porque los nombres de campo vienen de un enum y los valores son parámetros enlazados. Puedes probar el constructor de consultas con fixtures simples. Puedes evaluar el paso de traducción por sí solo, con un set de solicitudes de ejemplo y sus estructuras esperadas. Y cuando algo sale mal, puedes ver exactamente cuál mitad falló: ¿el modelo malinterpretó la intención, o el código la ejecutó mal?
+
+Es la misma idea detrás de tratar [las salidas estructuradas como un contrato](/es/blog/structured-outputs-are-a-contract): la salida del modelo no es prosa en la cual confiar, es una carga tipada que hay que validar. Y es la misma división que uso en [BudgetCopilot](/es/blog/personal-finance-agents-helpful-with-money), donde cada número viene de código determinístico y al modelo solo se le permite narrarlo.
+
+<Callout type="info" title="Traduce, luego ejecuta">
+Deja que el modelo convierta la intención difusa en una estructura pequeña validada por un esquema. Deja que el código determinístico convierta esa estructura en acción. El modelo maneja la ambigüedad. El código maneja la verdad. Cada mitad se puede probar por sí sola, y ninguna puede corromper a la otra en silencio.
+</Callout>
+
+## Cuando el Modelo Se Gana su Lugar
+
+Nada de esto es un argumento contra los LLMs. Paso la mayor parte de mi vida laboral construyendo con ellos, y algunos problemas simplemente son suyos.
+
+Un modelo es la herramienta correcta cuando la entrada es lenguaje que la gente escribió para otra gente y la salida requiere entenderlo: resumir un hilo largo, redactar una respuesta en el tono correcto, extraer significado de un contrato que nadie formateó de forma consistente, convertir una llamada de voz divagante en un mensaje estructurado, o mapear una pregunta difusa a un esquema conocido como el ejemplo de arriba. En esos lugares, un enfoque basado en reglas necesitaría codificar todo el lenguaje humano, y fallaría más seguido que el modelo.
+
+Incluso entonces, mantengo la huella del modelo tan pequeña como el problema lo permita. Lenguaje que entra, estructura que sale, y luego pasarle el control al código lo más rápido posible. Mientras menos del camino crítico ocupe un modelo, menos lugares hay donde se puede esconder una respuesta fluida y equivocada. Escribí sobre la versión más amplia de este balance en [construir, comprar o envolver funciones de IA](/es/blog/build-buy-wrap-ai-features) — la función de IA más barata a menudo es aquella donde la parte de IA es muy pequeña.
+
+## El Hilo
+
+Si lo comprimo en una oración: **usa el modelo para lo que es ambiguo, usa código para lo que es verdad, y sé honesto sobre cuál de los dos estás mirando.**
+
+La mayoría de las "funciones de IA" son determinísticas en el núcleo. Una consulta, una regla, una regex. Escribirlas como código es más rápido, más barato, se puede probar, y acierta cada vez. Cuando la entrada realmente es lenguaje desordenado, deja que el modelo la traduzca a una estructura pequeña y validada, y deja que el código aburrido siga desde ahí.
+
+Decirle que no al modelo no es estar en contra de la IA. Es lo que hace que los lugares donde dices que sí merezcan confianza. Y a veces, lo más impresionante que puedes entregar es la cláusula `WHERE` que casi enterraste bajo un diagrama.
+
+---
+
+*Si tu equipo tiene una "función de IA" en el roadmap y sospechas que parte de ella podría ser una consulta disfrazada, [contáctame](/contact). Con gusto te ayudo a trazar la línea entre lo que debería hacer el modelo y lo que debería hacer el código — usualmente es la hora más valiosa del proyecto.*

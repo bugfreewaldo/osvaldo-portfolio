@@ -1,0 +1,240 @@
+---
+title: "When the Answer Is a SQL Query: Saying No to the Model"
+description: "Many 'AI features' are really a query, a rule, or a regex wearing a costume. A practical checklist for deciding when to use an LLM and when to write deterministic code, a cost, latency, and testability comparison, and the hybrid pattern I reach for most: let the model translate intent, and let boring code do the execution."
+date: 2026-10-20
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "LLMs", "SQL", "System Design", "Architecture"]
+author: "Osvaldo Restrepo"
+tldr: "A surprising number of AI feature requests are deterministic problems in disguise: a SQL query, a business rule, or a regular expression. Shipping an LLM for those makes the feature slower, more expensive, harder to test, and occasionally wrong, for no benefit. The tell is simple: if you can write down the exact correct output for every input, you do not need a model. I use a short checklist before reaching for an LLM, and when the input really is messy natural language, I use a hybrid pattern: the model translates the user's intent into a small, validated structure, and deterministic code executes it. The model handles ambiguity. The code handles truth. Saying no to the model, in the right places, is what makes the places where you say yes trustworthy."
+faqs:
+  - question: "Isn't using an LLM for everything simpler, since one tool handles all cases?"
+    answer: "It feels simpler on day one and gets more complicated every day after. An LLM-backed feature needs prompts, evals, retries, fallbacks, cost monitoring, and latency budgets. A SQL query needs a test. When the problem is deterministic, the LLM version is not one tool handling every case — it is a probabilistic approximation of a function you could have just written, plus all the infrastructure needed to keep that approximation honest."
+  - question: "How do I let users ask questions in natural language without letting the model write raw SQL?"
+    answer: "Have the model produce a small, structured description of what the user wants — which metric, which filters, which time range — validated against a strict schema with allowlisted fields and operators. Then deterministic code turns that structure into a parameterized query. The model never touches the database directly, every query is safe by construction, and you can unit-test the translation and the execution separately."
+  - question: "When is an LLM clearly the right choice over deterministic code?"
+    answer: "When the input is genuinely unstructured and varied — free-form text, speech, messy documents — and the correct output cannot be fully enumerated in advance: summarizing, drafting, extracting meaning from language people wrote for other people, or mapping fuzzy intent onto a known structure. If you cannot write the rule because the rule would be the whole of human language, that is the model's job."
+relatedPosts: ["build-buy-wrap-ai-features", "structured-outputs-are-a-contract", "first-ai-feature-should-be-read-only"]
+---
+
+A few years ago at Shining Image, I was asked for an AI feature. The request, roughly: "We want the AI to tell us which customers we're about to lose, so we can reach out before they go somewhere else."
+
+I got excited. I started sketching. Pull the customer history out of the CRM, embed the notes, retrieve similar churned customers, have a model reason about risk and write a short explanation for each one. I had a diagram with boxes and arrows by the end of the afternoon. I was, if I am honest, a little proud of the diagram.
+
+Then I asked the question I should have asked first: "How do you know today when a customer is slipping?"
+
+The answer: "If someone who books every couple of months hasn't booked in a while, we call them."
+
+That is not an AI feature. That is a `WHERE` clause.
+
+```sql
+SELECT c.id, c.name, c.phone, MAX(j.completed_at) AS last_job
+FROM customers c
+JOIN jobs j ON j.customer_id = c.id
+GROUP BY c.id, c.name, c.phone
+HAVING COUNT(j.id) >= 3
+   AND MAX(j.completed_at) < NOW() - INTERVAL '90 days'
+ORDER BY last_job ASC;
+```
+
+I shipped that, as a weekly list with a "call them" button, in less time than I had spent on the diagram. It was instant, free to run, perfectly explainable, and exactly what the business wanted. The diagram went into a folder I do not open.
+
+I have thought about that moment many times since, because I keep seeing versions of it — in my own work, in other teams, at every scale. A lot of what gets labeled "AI" is a query, a rule, or a regex wearing a costume. This post is about recognizing the costume, and about what to do when the problem really is half-language and half-logic.
+
+## The Tell: Can You Write Down the Right Answer?
+
+Here is the single most useful question I know for this decision:
+
+**For every possible input, can you write down exactly what the correct output is?**
+
+If yes, you have a function. Write the function. A model will only ever approximate it, and approximating a function you could have written is paying extra for a worse result.
+
+If no — because the inputs are free-form language, or the "correct" output is a judgment call, or the space of inputs is too wide and weird to enumerate — then a model may be earning its place.
+
+"Customers who haven't booked in 90 days" has a correct answer for every customer. "Summarize why this customer seems unhappy based on their last five emails" does not. The first is a query. The second is a language task. The mistake is treating them as the same kind of problem because both were requested with the word "AI."
+
+<Callout type="tip" title="The output test">
+If you can write the expected output for any input without hesitation, it is deterministic code. If writing the expected output requires judgment, reading between the lines, or understanding language people wrote for other people, it may be a model. Ask this before you open a prompt editor.
+</Callout>
+
+## The Checklist I Run Before Reaching for a Model
+
+I keep a short checklist. It is not sophisticated. It is mostly there to interrupt my own excitement, which is still the biggest risk in these decisions.
+
+```
+BEFORE USING AN LLM, ASK:
+
+[ ] Is the input structured data (rows, fields, numbers, dates)?
+      → yes: it's probably a query or a rule.
+
+[ ] Can I enumerate the correct output for every input?
+      → yes: write the function.
+
+[ ] Is the pattern fixed and well-defined (IDs, dates, emails, codes)?
+      → yes: it's probably a regex or a parser.
+
+[ ] Does it involve arithmetic, money, counts, or comparisons?
+      → yes: those parts must be deterministic, no matter what.
+
+[ ] Must it be exactly reproducible (audit, compliance, billing)?
+      → yes: deterministic, or deterministic with a model only at the edge.
+
+[ ] Is the input free-form human language, speech, or messy documents?
+      → yes: a model may be the right tool, at least for that step.
+
+[ ] Is a wrong-but-fluent answer acceptable, or caught by a human?
+      → no: keep the model out of the critical path.
+```
+
+If most answers point toward deterministic code, I write deterministic code. If only one step involves real language, the model gets that step and nothing else. That last pattern is the one I use most, and I will come back to it.
+
+## Three Costumes "AI" Likes to Wear
+
+In practice, the deterministic problems hiding inside AI requests fall into three shapes.
+
+**The query.** "Show me which deals are stuck." "Find the customers who are likely to churn." "Which invoices are overdue?" When the definition of "stuck," "likely," or "overdue" can be expressed in terms of fields and dates, it is a query. Often the hard part is not the code, it is getting the stakeholder to tell you the definition they already use in their head. Once they do, the database answers in milliseconds.
+
+**The rule.** "Route urgent tickets to the senior team." "Flag expenses over the policy limit." "Escalate any call that mentions a gas leak." These are decision tables. They may need a few dozen branches, and they may change every quarter, but they are explicit, and explicit logic belongs in code or a configuration table where a person can read, test, and change it.
+
+**The regex.** "Pull the order number out of the email." "Detect phone numbers in the transcript." "Find dates in this document." When the thing you are extracting has a fixed format, a pattern or a parser is faster, cheaper, and right every time. A model extracting an order number in a known format is a very expensive regular expression with a small chance of hallucinating digits.
+
+```typescript
+// Rule: a decision table, not a prompt.
+const ROUTING_RULES = [
+  { when: (t: Ticket) => /gas leak|carbon monoxide/i.test(t.body), route: "emergency" },
+  { when: (t: Ticket) => t.customerTier === "enterprise" && t.priority === "high", route: "senior" },
+  { when: (t: Ticket) => t.category === "billing", route: "billing" },
+] as const;
+
+function routeTicket(t: Ticket): string {
+  return ROUTING_RULES.find((r) => r.when(t))?.route ?? "general";
+}
+
+// Regex: a fixed format, not a model.
+const ORDER_ID = /\bORD-\d{6}\b/g;
+const orderIds = email.body.match(ORDER_ID) ?? [];
+```
+
+Every one of these lines is unit-testable, reviewable in a pull request, explainable to an auditor, and costs effectively nothing per call.
+
+## The Honest Comparison
+
+When I make the case for deterministic code to a team that is excited about a model, I put it in a table. Not to say models are bad, but to make the tradeoffs visible.
+
+| Dimension | Query, rule, or regex | LLM call |
+|---|---|---|
+| **Cost per call** | Effectively zero | Real, and grows with input size |
+| **Latency** | Milliseconds | Often seconds, and variable |
+| **Correctness** | Exact, if the logic is right | Probabilistic, even when the prompt is right |
+| **Reproducibility** | Same input, same output, always | Can vary between calls and model versions |
+| **Testability** | Standard unit tests | Needs eval sets and statistical thresholds |
+| **Explainability** | Read the code | Infer from the output |
+| **Handles messy language** | Poorly | Very well |
+| **Cost of change** | Edit code or config, redeploy | Edit prompt, re-run evals, watch for regressions |
+| **Failure mode** | Loud: error or empty result | Quiet: fluent and wrong |
+
+The row I care about most is the last one. Deterministic code tends to fail loudly — an exception, an empty list, a test that goes red. Models tend to fail quietly — a confident, well-formatted answer that happens to be wrong. Quiet failures are far more expensive, because nobody notices them until a customer does.
+
+<Callout type="warning" title="Fluent and wrong is the expensive failure">
+When a query is wrong, it usually breaks visibly. When a model is wrong, it usually sounds right. Every place you put a model where deterministic code would have worked is a place you have traded loud failures for quiet ones.
+</Callout>
+
+## The Hybrid Pattern: The Model Translates, Code Executes
+
+Here is where it gets interesting. Many real features are not purely deterministic or purely language. They are a messy human request on the front end and a precise operation on the back end.
+
+"Show me last quarter's overdue invoices from customers in Texas over five thousand dollars." The *intent* is natural language. The *execution* is absolutely a query. The worst version of this feature lets a model write raw SQL and run it. The best version splits the job down the middle:
+
+```
+   user's words
+        │
+        ▼
+ ┌──────────────┐     small, validated structure
+ │     LLM      │ ──▶ { metric, filters, range }
+ │  (translate) │
+ └──────────────┘
+        │
+        ▼
+ ┌──────────────┐     strict schema, allowlisted
+ │  validator   │     fields and operators
+ └──────────────┘
+        │
+        ▼
+ ┌──────────────┐     parameterized SQL,
+ │ query builder│     built by code, not the model
+ └──────────────┘
+        │
+        ▼
+     database ──▶ exact result ──▶ (optional) LLM narrates it
+```
+
+The model does the one thing it is uniquely good at: turning ambiguous human language into a structured description of what the person wants. Then the model is done. A validator checks the structure against a strict schema. Deterministic code builds a parameterized query from it. The database returns an exact answer.
+
+```typescript
+import { z } from "zod";
+
+// The model may only produce this shape. Nothing else gets through.
+const InvoiceQuery = z.object({
+  status: z.enum(["open", "paid", "overdue"]),
+  filters: z.array(
+    z.object({
+      field: z.enum(["customer_state", "amount_cents", "issued_at"]),
+      op: z.enum(["eq", "gt", "lt", "between"]),
+      value: z.union([z.string(), z.number(), z.tuple([z.string(), z.string()])]),
+    })
+  ).max(5),
+  limit: z.number().int().min(1).max(500).default(100),
+});
+
+type InvoiceQuery = z.infer<typeof InvoiceQuery>;
+
+// 1. Model translates intent into structure (structured output).
+const raw = await llm.extract(userText, InvoiceQuery);
+const q = InvoiceQuery.parse(raw); // throws if the model got creative
+
+// 2. Code builds the SQL. Field names come from the allowlist, values are bound.
+const OPS = { eq: "=", gt: ">", lt: "<" } as const;
+const where: string[] = ["status = $1"];
+const params: unknown[] = [q.status];
+
+for (const f of q.filters) {
+  if (f.op === "between" && Array.isArray(f.value)) {
+    params.push(f.value[0], f.value[1]);
+    where.push(`${f.field} BETWEEN $${params.length - 1} AND $${params.length}`);
+  } else if (f.op !== "between") {
+    params.push(f.value);
+    where.push(`${f.field} ${OPS[f.op]} $${params.length}`);
+  }
+}
+
+const sql = `SELECT * FROM invoices WHERE ${where.join(" AND ")} LIMIT ${q.limit}`;
+const rows = await db.query(sql, params);
+```
+
+Look at what this buys you. The model never touches the database. Injection is impossible by construction, because field names come from an enum and values are bound parameters. You can unit-test the query builder with plain fixtures. You can evaluate the translation step on its own, with a set of example requests and their expected structures. And when something goes wrong, you can see exactly which half failed: did the model misread the intent, or did the code mis-execute it?
+
+This is the same idea behind treating [structured outputs as a contract](/blog/structured-outputs-are-a-contract): the model's output is not prose to be trusted, it is a typed payload to be validated. And it is the same split I use in [BudgetCopilot](/blog/personal-finance-agents-helpful-with-money), where every number comes from deterministic code and the model is only allowed to narrate it.
+
+<Callout type="info" title="Translate, then execute">
+Let the model turn fuzzy intent into a small, schema-validated structure. Let deterministic code turn that structure into action. The model handles ambiguity. The code handles truth. Each half can be tested on its own, and neither can quietly corrupt the other.
+</Callout>
+
+## When the Model Earns Its Place
+
+None of this is an argument against LLMs. I spend most of my working life building with them, and some problems are simply theirs.
+
+A model is the right tool when the input is language people wrote for other people and the output requires understanding it: summarizing a long thread, drafting a reply in the right tone, extracting meaning from a contract nobody formatted consistently, turning a rambling voice call into a structured message, or mapping a fuzzy question onto a known schema like the example above. In those places, a rule-based approach would need to encode the whole of human language, and it would fail more often than the model does.
+
+Even then, I keep the model's footprint as small as the problem allows. Language in, structure out, and then hand off to code as fast as possible. The less of the critical path a model sits on, the fewer places a fluent wrong answer can hide. I wrote about the broader version of this tradeoff in [build, buy, or wrap AI features](/blog/build-buy-wrap-ai-features) — the cheapest AI feature is often the one where the AI part is very small.
+
+## The Throughline
+
+If I compress this into one sentence: **use the model for what is ambiguous, use code for what is true, and be honest about which one you are looking at.**
+
+Most "AI features" are deterministic at the core. A query, a rule, a regex. Writing those as code is faster, cheaper, testable, and right every time. When the input really is messy language, let the model translate it into a small validated structure and let boring code take it from there.
+
+Saying no to the model is not anti-AI. It is what makes the places where you say yes worth trusting. And sometimes, the most impressive thing you can ship is the `WHERE` clause you almost buried under a diagram.
+
+---
+
+*If your team has an "AI feature" on the roadmap and you suspect part of it might be a query in disguise, [reach out](/contact). I am happy to help draw the line between what the model should do and what code should do — it is usually the most valuable hour of the project.*

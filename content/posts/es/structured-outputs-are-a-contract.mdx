@@ -1,0 +1,242 @@
+---
+title: "Las Salidas Estructuradas Son un Contrato: Trata el JSON de un LLM Como una API, No Como una Sugerencia"
+description: "El JSON del modelo no es dato hasta que algo lo ha verificado. Por qué trato cada salida estructurada de un LLM como un payload entrante de una API: esquemas como especificación, validación en la frontera, un intento de reparación acotado y luego rechazo, enums en vez de texto libre, esquemas versionados, y una regla dura de que lo 'casi JSON' nunca llega a la base de datos."
+date: 2026-07-14
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "Salidas Estructuradas", "Zod", "Validación", "Confiabilidad de LLMs"]
+author: "Osvaldo Restrepo"
+translationOf: "structured-outputs-are-a-contract"
+tldr: "Un LLM que devuelve JSON es una API de terceros sin SLA y con vena creativa. La mayoría de los equipos tratan su salida como dato en el momento en que JSON.parse tiene éxito, y así es como registros medio válidos terminan en bases de datos de producción. Yo trato las salidas estructuradas como un contrato: el esquema, no el prompt, es la especificación; cada salida se valida en la frontera con zod o pydantic; una validación fallida recibe exactamente un intento de reparación con los errores del validador como retroalimentación, y luego se rechaza y se pone en cuarentena; los enums reemplazan al texto libre donde sea que un sistema downstream tome una decisión; los esquemas se versionan como cualquier API pública; y nada que sea 'casi JSON' se escribe jamás en la base de datos. El modelo tiene permitido equivocarse. La frontera no."
+faqs:
+  - question: "Si mi proveedor soporta modo JSON o esquemas de herramientas, ¿todavía necesito validación?"
+    answer: "Sí. Las funciones de salida estructurada del proveedor reducen dramáticamente el JSON malformado, y deberías usarlas. Pero garantizan forma, no significado. Un campo puede ser un string perfectamente válido y aun así ser 'N/A' en un campo de fecha, un valor de enum inventado que se coló por un esquema laxo, o un número en la unidad equivocada. Tu propio validador codifica tus reglas de negocio, y el proveedor no puede conocerlas. Usa ambos: el proveedor para la sintaxis, tu esquema para la semántica."
+  - question: "¿Por qué solo un intento de reparación? ¿No arreglarían más reintentos más salidas?"
+    answer: "Más reintentos arreglan más salidas y esconden más problemas. Si una salida falla la validación dos veces con los errores explicados, el problema usualmente es la entrada, el prompt o el esquema mismo, no mala suerte. Los bucles de reparación sin límite queman costo y latencia, y convierten una señal de calidad visible en una invisible. Una reparación, luego rechazo y cuarentena, mantiene honesta la tasa de fallas y te da ejemplos reales para arreglar."
+  - question: "¿Cómo se versiona un esquema para la salida de un LLM?"
+    answer: "De la misma forma que versionas una API. Cada registro guarda la versión del esquema contra la cual fue validado. Los campos aditivos y opcionales son cambios menores. Renombrar, eliminar o endurecer un campo es un cambio incompatible que recibe una nueva versión, un plan de migración para los registros guardados, y una corrida de evals sobre el nuevo par prompt-más-esquema antes de salir. El prompt y el esquema cambian juntos, en el mismo commit, porque son dos mitades de un mismo contrato."
+relatedPosts: ["designing-llm-retry-fallbacks", "eval-set-is-the-spec", "api-design-lessons-learned"]
+---
+
+El reporte de bug decía que un documento tenía "una fecha de renovación de N/A." No faltante. No null. El string literal "N/A," sentado en un campo de fecha, en una base de datos de producción, rompiendo silenciosamente el ordenamiento de un dashboard que un usuario intentaba usar para encontrar contratos que vencían el próximo trimestre.
+
+Sabía exactamente cómo había llegado ahí, porque yo había escrito el código que lo dejó entrar. Un paso de extracción le pedía JSON al modelo. El modelo devolvía JSON. `JSON.parse` tenía éxito. Una anotación de tipo de TypeScript decía que el campo era un string, cosa que técnicamente era. Y así el registro entró, viéndose perfectamente sano, hasta que un humano intentó hacer algo con él.
+
+Nada se había caído. Ese era el problema. Una caída se habría detectado en una hora. Un valor equivocado de apariencia plausible puede vivir en una base de datos durante meses.
+
+Esa tarde dejé de pensar en la salida del modelo como "la respuesta" y empecé a pensarla como lo que realmente es: **un payload entrante de una API de terceros sin SLA, sin disciplina de versionado, y con vena creativa.** Nunca escribirías el payload de un webhook sin validar directo en tu base de datos. La salida de un LLM merece al menos la misma sospecha, y probablemente más.
+
+Este es el contrato al que la someto ahora.
+
+## 1. El Esquema Es la Especificación, No el Prompt
+
+La mayoría de los bugs de salidas estructuradas empiezan con el prompt cargando toda la definición de los datos. "Devuelve un objeto JSON con los nombres de las partes, la fecha efectiva, la fecha de renovación y el nivel de riesgo." El prompt es el único lugar donde vive la forma, y entonces la forma es lo que el modelo decida que esa oración significa hoy.
+
+Yo lo invierto. El esquema se escribe primero, en código, y es la fuente de verdad. El prompt se deriva de él, o como mínimo se revisa contra él. Si los dos alguna vez no están de acuerdo, gana el esquema, porque el esquema es lo que realmente corre en la frontera.
+
+Así se ve una versión simplificada de un contrato de extracción en un servicio de TypeScript:
+
+```ts
+import { z } from "zod";
+
+export const RISK_LEVELS = ["low", "medium", "high", "needs_review"] as const;
+
+export const ContractExtractionV2 = z.object({
+  schemaVersion: z.literal(2),
+  parties: z.array(z.string().min(1)).min(2),
+  effectiveDate: z.string().date().nullable(),   // fecha ISO o null explícito
+  renewalDate: z.string().date().nullable(),     // nunca "N/A", nunca "TBD"
+  autoRenews: z.boolean().nullable(),
+  riskLevel: z.enum(RISK_LEVELS),
+  riskReasons: z.array(z.string().max(280)).max(5),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
+export type ContractExtraction = z.infer<typeof ContractExtractionV2>;
+```
+
+Hay algunas decisiones deliberadas ahí. Las fechas son fechas ISO o un `null` explícito, así que "no lo pude encontrar" tiene exactamente una forma de escribirse. El riesgo es un enum, no una oración. Las razones están acotadas en cantidad y longitud para que un modelo conversador no pueda meter un ensayo en un campo que la UI muestra en una línea. Y la versión es un literal dentro del objeto, así que cada registro guardado lleva consigo el contrato contra el cual fue validado.
+
+El tipo de TypeScript se infiere del esquema, no al revés. Eso importa más de lo que parece. Una anotación de tipo sobre el resultado de `JSON.parse` es una promesa que le haces al compilador sin evidencia. Un tipo inferido de un esquema que realmente corrió es una promesa respaldada por una verificación.
+
+<Callout type="info" title="Una anotación de tipo no es validación">
+Escribir `as ContractExtraction` sobre la salida parseada del modelo le dice al compilador que confíe en ti. No verifica nada en tiempo de ejecución. Los únicos tipos en los que puedes confiar en la frontera son los producidos por un validador que realmente se ejecutó contra los datos.
+</Callout>
+
+## 2. Valida en la Frontera, Siempre
+
+La frontera es el único lugar donde la salida del modelo se convierte en dato de la aplicación. Todo lo que está del otro lado es texto no confiable. Todo lo que está de este lado está tipado, validado y es seguro para razonar.
+
+Mantengo esa frontera como una función por contrato, y nada tiene permitido saltársela:
+
+```
+  respuesta del modelo (texto)
+          │
+          ▼
+  ┌──────────────────────────┐
+  │  extraer payload JSON    │   args del tool-call, o el cuerpo crudo
+  └────────────┬─────────────┘
+               ▼
+  ┌──────────────────────────┐
+  │  schema.safeParse()      │   forma + reglas de negocio
+  └──────┬────────────┬──────┘
+     ok  │            │  falla
+         ▼            ▼
+   registro tipado  reparar una vez (regla 3)
+   → base de datos   │
+                     ├── ok    → registro tipado
+                     └── falla → cuarentena + alerta
+```
+
+Usa las funciones de salida estructurada que ofrece tu proveedor. Los esquemas de herramientas y los modos JSON reducen enormemente la salida malformada, y no hay razón para parsear prosa cuando no tienes que hacerlo. Pero esas funciones garantizan *sintaxis*, no *significado*. El proveedor puede prometerte un string. No puede prometerte que el string sea una fecha real, que las partes no sean la misma empresa listada dos veces, o que un nivel de riesgo "high" venga con al menos una razón.
+
+Esas son reglas de negocio, y pertenecen a tu esquema, donde puedes probarlas:
+
+```ts
+export const ContractExtractionChecked = ContractExtractionV2.superRefine((v, ctx) => {
+  if (v.effectiveDate && v.renewalDate && v.renewalDate < v.effectiveDate) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["renewalDate"],
+      message: "renewalDate no puede ser anterior a effectiveDate",
+    });
+  }
+  if (v.riskLevel === "high" && v.riskReasons.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["riskReasons"],
+      message: "un riesgo alto requiere al menos una razón",
+    });
+  }
+});
+```
+
+La misma idea funciona en Python con validadores de pydantic; el lenguaje no importa. Lo que importa es que las reglas vivan en un solo lugar ejecutable, cerca de la frontera, en vez de estar dispersas entre el prompt, la UI y la memoria de un revisor.
+
+## 3. Repara Una Vez, Luego Rechaza
+
+Cuando la validación falla, hay una tentación fuerte de simplemente pedir de nuevo. Y de nuevo. Un bucle de reintentos se siente robusto. En la práctica es donde los problemas de calidad van a esconderse.
+
+Mi regla es un intento de reparación, y no es un reintento a ciegas. La llamada de reparación recibe la entrada original, la salida inválida y los mensajes de error reales del validador, y se le pide que arregle solo lo que falló:
+
+```ts
+async function extractContract(doc: string): Promise<ExtractionResult> {
+  const first = await callModel(buildExtractionPrompt(doc));
+  const parsed = ContractExtractionChecked.safeParse(first.json);
+  if (parsed.success) return { status: "ok", data: parsed.data };
+
+  const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+  const repaired = await callModel(buildRepairPrompt(doc, first.raw, issues));
+  const second = ContractExtractionChecked.safeParse(repaired.json);
+  if (second.success) return { status: "repaired", data: second.data };
+
+  await quarantine({ doc, attempts: [first.raw, repaired.raw], issues });
+  return { status: "rejected", issues };
+}
+```
+
+Nota que el tipo de retorno tiene tres estados, no dos. "Repaired" se rastrea por separado de "ok," porque una tasa de reparación en aumento es una alerta temprana de que un prompt o una versión de modelo se ha desviado, mucho antes de que algo sea realmente rechazado. Escribí más sobre presupuestos de reintentos y fallbacks en [diseñando reintentos y fallbacks para LLMs](/es/blog/designing-llm-retry-fallbacks); la versión corta es que cada reintento debe ganarse su costo trayendo información nueva, y "el validador dijo exactamente esto" es la información más útil que le puedes dar a un modelo.
+
+Si la reparación también falla, la salida se rechaza. No se coacciona. No se rellena con un valor por defecto. Se rechaza, se pone en cuarentena con todo lo necesario para reproducirla, y se le muestra a un humano o a una cola de revisión. Dos fallas seguidas con los errores explicados casi siempre significan que el problema es la entrada, el prompt o el esquema mismo. Esas son cosas que quiero ver, no cosas que quiero que un bucle tape.
+
+<Callout type="warning" title="La coerción es una reparación silenciosa">
+"Si la fecha no se puede parsear, guarda null" suena inofensivo. Convierte un error del modelo en un hecho dentro de tu base de datos que nadie revisa jamás. Si vas a poner un valor por defecto, haz que sea una decisión explícita a nivel de esquema con una razón, no un bloque catch que se traga la evidencia.
+</Callout>
+
+## 4. Enums en Vez de Texto Libre, Donde Sea que Decida una Máquina
+
+Esta es la regla con el mayor retorno por línea de código.
+
+Cualquier campo sobre el que un sistema downstream vaya a ramificar — un filtro, una regla de enrutamiento, un umbral de notificación, un color en un dashboard — debería ser un enum. No un string al que se le "pide" al modelo que se limite a unos pocos valores. Un enum real que el validador hace cumplir.
+
+```
+texto libre:  "riskLevel": "Moderado a alto, pendiente de revisión legal"
+              → ¿en qué categoría del dashboard cae eso?
+              → ¿dispara la alerta?
+              → cada consumidor escribe su propia comparación de strings
+
+enum:         "riskLevel": "needs_review"
+              → una categoría, una regla, un significado
+              → el matiz va en riskReasons, donde lo leen humanos
+```
+
+La separación es la parte importante. Los modelos son buenos con los matices, y los matices son valiosos. Pero los matices pertenecen a campos que leen humanos, como razones o resúmenes. Las decisiones pertenecen a campos que leen máquinas, y esos campos necesitan un vocabulario cerrado.
+
+También siempre incluyo un valor de escape como `needs_review` o `unknown`. Sin uno, un enum cerrado presiona al modelo a elegir la respuesta equivocada más cercana cuando la respuesta honesta es "no lo puedo saber." Es el mismo problema de calibración sobre el que escribí en [dos tonos de equivocarse](/es/blog/two-tones-of-wrong-clinical-ai): si no le das a la incertidumbre un lugar legítimo a donde ir, aparece disfrazada de confianza.
+
+## 5. Versiona el Esquema Como una API Pública
+
+Un esquema para la salida de un modelo cambia más seguido que la mayoría de los esquemas de API, porque cada mejora al prompt te tienta a agregar un campo, renombrar uno o endurecer una regla. Cada uno de esos es un cambio de contrato, y los datos que ya están en la base de datos se escribieron bajo el contrato anterior.
+
+Así que lo trato exactamente como una API:
+
+```
+campo aditivo y opcional              → cambio menor, misma versión
+nuevo campo obligatorio               → incompatible: nueva versión
+campo renombrado o eliminado          → incompatible: nueva versión
+regla endurecida (el enum se achica,  → incompatible: nueva versión
+  baja la longitud máxima, nuevo refinamiento)
+```
+
+Cada registro guardado lleva su `schemaVersion`. Los lectores manejan las versiones que conocen y fallan ruidosamente con las que no. Un cambio incompatible sale con un plan de migración para los registros existentes, aunque ese plan sea "marcar los registros viejos como v1 y dejar que la UI los muestre en solo lectura."
+
+Y el prompt y el esquema cambian juntos, en el mismo commit, revisados juntos. Son dos mitades de un mismo contrato. Un cambio de prompt que no toca el esquema está bien. Un cambio de esquema sin cambio de prompt casi siempre es un bug esperando tráfico. Antes de que cualquiera de los dos salga, corre contra el set de evals, porque, como argumenté en [el set de evals es la especificación](/es/blog/eval-set-is-the-spec), el set de evals es cómo descubres si el nuevo contrato realmente se está cumpliendo, no solo si compila.
+
+<Callout type="tip" title="Guarda la versión junto con los datos">
+Un campo `schemaVersion` cuesta unos pocos bytes por registro y te salva del peor tipo de arqueología: mirar un registro de producción e intentar adivinar qué prompt, bajo qué reglas, lo produjo. Pon la versión dentro del payload, valídala como un literal, y nunca la infieras de un timestamp.
+</Callout>
+
+## 6. Lo "Casi JSON" Nunca Toca la Base de Datos
+
+Esta es la regla que me enseñó el bug del "N/A," y la que hago cumplir con más rigor.
+
+Hay una atracción gravitacional hacia aceptar salidas que están *casi* bien. Nueve campos son perfectos y uno está un poco mal. ¿No es mejor salvar los nueve que perder los diez? Se siente pragmático. Es como se pudren las bases de datos.
+
+Una vez que un registro parcialmente válido está en tu almacén principal, cada consumidor tiene que defenderse de él. Cada consulta necesita una guarda. Cada reporte necesita una nota al pie. El costo del campo malo ya no se paga una vez en la frontera; se paga para siempre, por todos, en cada ruta de lectura. Y en una plataforma donde muchas apps leen los mismos tipos de registros a través de APIs, un escritor descuidado se convierte en el problema de todos.
+
+Así que la base de datos solo ve registros que pasaron el contrato completo. Todo lo demás va a un almacén de cuarentena diseñado para ello:
+
+```
+almacén principal      almacén de cuarentena
+─────────────────      ─────────────────────
+solo validados         salida cruda, cada intento
+tipados, versionados   issues del validador
+leídos por las apps    referencia a la entrada (no una copia de datos
+                         sensibles salvo que las reglas de retención lo permitan)
+                       revisados por humanos, alimentan el set de evals
+```
+
+La cuarentena no es un bote de basura. Es el dataset más valioso que tienes, porque es una lista curada exactamente de los casos donde tu contrato y tu modelo no estuvieron de acuerdo. Algunos resultan ser errores del modelo, y se convierten en casos de eval. Otros resultan ser errores del esquema — una regla demasiado estricta para documentos reales — y se convierten en cambios de esquema. De cualquier forma, alguien los mira. Nada que esté a medias se cuela en el lugar donde se asume que todo está bien.
+
+Cuando un usuario sí necesita ver algo de una extracción rechazada, la UI lo muestra como lo que es: un borrador que no se pudo verificar, claramente marcado, con un camino para arreglarlo a mano. No aparece en la misma tabla que los datos verificados, con la misma tipografía.
+
+## Cómo Se Ve Esto en la Práctica
+
+Nada de esto es exótico. Es la misma disciplina que los buenos equipos de backend han aplicado a APIs externas durante años, apuntada a un nuevo tipo de API externa. En el día a día, se reduce a un checklist pequeño que corro en cualquier funcionalidad donde un modelo produce datos estructurados:
+
+```
+□ esquema escrito primero en código; tipos inferidos de él
+□ función de salida estructurada del proveedor activada (sintaxis)
+□ validador propio en la frontera (semántica + reglas de negocio)
+□ los campos que lee una máquina son enums, con escape "unknown"
+□ el matiz que leen humanos vive en campos de texto separados y acotados
+□ un intento de reparación con los errores del validador como feedback
+□ ok / repaired / rejected rastreados como métricas separadas
+□ salida rechazada en cuarentena con todo lo necesario para reproducirla
+□ schemaVersion guardado dentro de cada registro
+□ prompt + esquema cambian en el mismo commit, corren contra evals
+```
+
+Lo interesante es lo que pasa con la relación del equipo con el modelo una vez que esto está en su lugar. La gente deja de tenerle miedo. Cuando la frontera es sólida, puedes experimentar con prompts, cambiar de modelo y probar un tier más barato, porque el peor caso es una tasa de rechazo más alta en un dashboard, no datos corruptos en producción. El contrato es lo que hace segura la iteración.
+
+## El Hilo
+
+Si comprimo todo esto en una oración: **el modelo tiene permitido equivocarse; la frontera no.**
+
+Los modelos de lenguaje son probabilísticos, y alguna fracción de su salida estructurada siempre estará malformada, inventada o sutilmente mal. Eso no es un defecto que puedas quitar con prompts. Es la naturaleza del componente. Lo que tú controlas es si esas salidas se verifican, se reparan una vez con retroalimentación real y se rechazan limpiamente — o si se deslizan a tu base de datos viéndose exactamente como la verdad.
+
+Un esquema es una promesa que tu sistema le hace a cada consumidor downstream. Cúmplela, aun cuando el modelo no lo haga.
+
+---
+
+*Si estás construyendo pipelines de extracción o clasificación sobre LLMs y quieres un segundo par de ojos sobre tus esquemas, tu lógica de reparación o el diseño de tu cuarentena, [contáctame](/contact). El lugar más barato para atrapar un campo malo es la frontera, y es mucho más fácil diseñar esa frontera antes de que el primer "N/A" aparezca en producción.*

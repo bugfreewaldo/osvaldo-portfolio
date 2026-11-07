@@ -1,0 +1,229 @@
+---
+title: "The SDK Is the Real API: Lessons from Building an Auth Client for 17+ Apps"
+description: "Developers don't experience your endpoints. They experience your SDK. What I learned building the TypeScript client SDK for a shared OAuth and JWKS auth service consumed by more than seventeen apps: token refresh that can't stampede, JWKS caching that survives key rotation, typed errors, safe defaults, deprecations as a feature, and why one well-designed package beats seventeen careful teams."
+date: 2026-07-21
+published: true
+category: "Backend Engineering"
+tags: ["Backend Engineering", "SDK Design", "Authentication", "OAuth", "TypeScript"]
+author: "Osvaldo Restrepo"
+tldr: "When a shared service has many consumers, the endpoints are an implementation detail; the client SDK is the interface people actually live with. At TheGreyMatter.ai, the GreyMatter 3.0 platform runs a shared OAuth SSO and JWKS auth service behind more than seventeen vertical AI apps, and the TypeScript SDK that wraps it turned out to matter more than the service itself. Before it, every app re-implemented token refresh, key caching, and claim checks slightly differently, which is seventeen chances to write the same bug seventeen ways. The SDK centralizes the hard parts: single-flight token refresh, JWKS caching with rotation-aware refetch, a closed set of typed errors, defaults that are safe without configuration, and deprecations that warn early and loudly. A good SDK does not just save code. It removes whole categories of bugs from every app that uses it."
+faqs:
+  - question: "Why build an SDK instead of just documenting the OAuth and JWKS endpoints well?"
+    answer: "Because good documentation describes correct behavior, and an SDK enforces it. Token refresh races, key rotation, clock skew, and audience checks are all things a careful developer can get right from documentation, but across many teams and many apps, someone will get each of them slightly wrong. An SDK puts the correct behavior in one place, tests it once, and makes the safe path the default path for every consumer."
+  - question: "What should not go into an auth SDK?"
+    answer: "Application authorization logic. The SDK should verify identity and surface claims reliably, but deciding what a user may do in a specific app — which deals, which companies, which records — belongs to that app. Pushing business permissions into a shared SDK couples every app to every other app's rules and turns a small security library into a release bottleneck."
+  - question: "How do you deprecate something in an SDK that many apps depend on?"
+    answer: "Treat it as a feature with a timeline. Mark it deprecated in types so editors show it, log a structured warning once per process at runtime, keep the old path working for an announced window, give a one-line migration in the warning itself, and track which apps still call it. Removal happens only after usage reaches zero or every remaining owner has a date. Surprise removals are what make teams pin old versions forever."
+relatedPosts: ["authentication-patterns-modern-apps", "api-design-lessons-learned", "one-database-per-app-federation"]
+---
+
+A few weeks into working on the GreyMatter 3.0 platform backbone, I did something I recommend to anyone who inherits a shared service: I read every consumer.
+
+Not the service. The service was fine. The OAuth flows were standard, the JWKS endpoint served the right keys, the tokens were signed correctly. I read how the apps *used* it. And that is where I found the interesting stuff.
+
+One app fetched the signing keys on every single request. Another cached them in memory forever, which works beautifully right up until the day keys rotate. One app refreshed access tokens from three different places in its frontend, and under the right timing, all three fired at once. One checked the token's audience. One checked it if a config flag was set. One did not know what the audience claim was for.
+
+None of these teams were careless. Every one of them had read the docs. The docs were accurate. The problem was simpler and more humbling than that: **with more than seventeen apps consuming one auth service, there were seventeen chances to write the same subtle bug seventeen slightly different ways.**
+
+That is when I stopped thinking about the auth service's endpoints as its API. The real API was whatever code the developers actually called. Right now that code was seventeen hand-rolled integrations. It needed to be one SDK.
+
+## 1. Developers Experience the SDK, Not the Endpoint
+
+This sounds obvious once you say it, but it changes where you spend your design effort.
+
+A developer building a new vertical app does not think "I will now perform an authorization code exchange against the token endpoint and validate the resulting JWT against the key set." They think "I need the user to be logged in" and "I need to know who this request is from." Whatever they type to make those two things happen *is* your interface. If that is a raw `fetch` against an endpoint, then every OAuth subtlety becomes their problem. If it is a well-designed function, the subtleties become yours, which is where they belong.
+
+```
+without an SDK                          with an SDK
+──────────────                          ───────────
+app → build token request               app → auth.getAccessToken()
+    → handle refresh timing                 app → auth.verify(req)
+    → fetch + cache JWKS
+    → pick key by kid                   (refresh, JWKS, claims, skew,
+    → verify signature                   errors: handled once, tested
+    → check iss, aud, exp, nbf           once, fixed once)
+    → handle clock skew
+    → map 12 failure modes
+  × 17 apps, 17 interpretations
+```
+
+The service still matters. Its endpoints still need to be clean, versioned, and documented, and I still believe everything I wrote in [API design lessons learned](/blog/api-design-lessons-learned). But for a shared service with many internal consumers, the SDK is the layer that decides whether the service gets used correctly.
+
+## 2. Token Refresh Is the SDK's Job, and It Must Not Stampede
+
+The single most common bug I found was the refresh race.
+
+An access token expires. Three parts of a React app — a data loader, a background poll, a user click — all notice at roughly the same moment. Each one calls refresh. Depending on how the refresh token is handled, you get anything from wasted requests to one refresh invalidating another's result, which shows up as a user getting randomly logged out at the worst possible moment. These bugs are miserable to reproduce, because they depend on timing.
+
+The fix is boring and belongs in exactly one place: a single-flight refresh. Everyone who needs a token while a refresh is in progress waits for the same promise.
+
+```ts
+export class TokenManager {
+  private current: TokenSet | null = null;
+  private inflight: Promise<TokenSet> | null = null;
+
+  constructor(
+    private readonly refreshFn: (refreshToken: string) => Promise<TokenSet>,
+    private readonly skewSeconds = 60,
+  ) {}
+
+  async getAccessToken(): Promise<string> {
+    if (this.current && !this.expiresSoon(this.current)) {
+      return this.current.accessToken;
+    }
+    return (await this.refreshOnce()).accessToken;
+  }
+
+  private refreshOnce(): Promise<TokenSet> {
+    if (!this.inflight) {
+      if (!this.current?.refreshToken) {
+        return Promise.reject(new AuthError("session_expired"));
+      }
+      this.inflight = this.refreshFn(this.current.refreshToken)
+        .then((next) => (this.current = next))
+        .finally(() => (this.inflight = null));
+    }
+    return this.inflight;
+  }
+
+  private expiresSoon(t: TokenSet): boolean {
+    return t.expiresAt - this.skewSeconds * 1000 <= Date.now();
+  }
+}
+```
+
+Two details in there were each a real bug somewhere before the SDK existed. The refresh happens a little *before* expiry, not after, so a request does not leave the client with a token that dies in flight. And the in-flight promise is cleared in `finally`, so one failed refresh does not poison every future call.
+
+This is about thirty lines of code. It is also exactly the kind of thirty lines that every team writes slightly differently when left alone.
+
+<Callout type="tip" title="Concurrency bugs belong in libraries">
+If a correct implementation requires reasoning about timing, it should not live in application code. Application developers are thinking about their feature. Put the race-sensitive logic in one shared place, test it with deliberate concurrency, and let every app inherit the fix.
+</Callout>
+
+## 3. JWKS Caching Has Two Failure Modes, and You Need to Avoid Both
+
+On the verification side, the classic mistakes come in a matched pair.
+
+**Fetch every time**, and you have turned your auth service into a dependency of every request on every app, with latency and availability to match. **Cache forever**, and the first key rotation silently breaks verification everywhere until someone restarts a process.
+
+The SDK does what a careful implementation should: cache the key set with a reasonable lifetime, and when a token arrives signed with a key ID the cache does not know, treat that as a signal that rotation may have happened and refetch — but at most once within a cooldown window, so a flood of garbage tokens cannot turn into a flood of requests against the key endpoint.
+
+```
+token arrives with kid = "k7"
+          │
+          ▼
+   kid in cache? ── yes ──▶ verify with cached key
+          │
+          no
+          ▼
+   refetched in the last cooldown window?
+          │                     │
+          no                    yes
+          ▼                     ▼
+   refetch JWKS            reject: unknown_key
+   (single-flight)         (do not hammer the endpoint)
+          │
+   kid present now? ── yes ──▶ verify
+          │
+          no ──▶ reject: unknown_key
+```
+
+For the cryptography itself, the SDK leans on a well-established JOSE library rather than anything hand-written. That is a rule I would defend in any code review: the SDK owns the *policy* — caching, cooldowns, which claims are required, what skew is acceptable — and delegates the *math* to code that thousands of other projects have already battle-tested. I talk more about the general shape of token-based auth in [authentication patterns for modern apps](/blog/authentication-patterns-modern-apps).
+
+## 4. Errors Are Part of the Interface
+
+Before the SDK, auth failures surfaced in apps as whatever the underlying code happened to throw. A network error. A generic "invalid token." A 401 with a body nobody parsed. Each app then wrote its own guesswork for "should I log the user out, retry, or show an error?"
+
+The SDK exposes a closed set of error codes, and every failure maps to exactly one of them:
+
+```ts
+export type AuthErrorCode =
+  | "session_expired"     // refresh token no longer valid: send to login
+  | "token_invalid"       // signature or format problem: reject request
+  | "token_expired"       // access token past exp beyond allowed skew
+  | "audience_mismatch"   // token was issued for a different app
+  | "unknown_key"         // kid not found even after refetch
+  | "provider_unavailable"; // auth service unreachable: retryable
+
+export class AuthError extends Error {
+  constructor(
+    public readonly code: AuthErrorCode,
+    public readonly retryable = code === "provider_unavailable",
+  ) {
+    super(code);
+    this.name = "AuthError";
+  }
+}
+```
+
+The value is not the class. It is the *closed* union. A developer handling auth errors can switch over six cases, TypeScript tells them if they missed one, and the distinction that matters most in practice — "the user needs to log in again" versus "something is temporarily wrong, try again" — is explicit instead of inferred from a status code.
+
+That distinction alone eliminated a whole family of bugs where a brief network hiccup on the auth service logged users out of an app, or, worse, where a genuinely expired session got retried in a loop.
+
+<Callout type="info" title="Your error type is documentation that compiles">
+An exhaustive, typed error union tells developers every way an operation can fail, and the compiler holds them to handling it. Free-form error strings tell them nothing until production does. For a shared library, the error surface deserves as much design attention as the happy path.
+</Callout>
+
+## 5. Defaults Should Be Safe Without Configuration
+
+The most dangerous option in any security library is the one that is off by default.
+
+I found an audience check that only ran if a config flag was set. Of course some apps never set it. Nobody was being reckless; they copied a working example that predated the flag. The safe behavior existed. It just was not the default.
+
+The SDK flips that posture. Verification requires an expected issuer and audience at construction time, and it refuses to build without them. Clock skew tolerance has a small, sensible default. Algorithms are restricted to the ones the platform actually uses. Anything that loosens security is possible, but it has to be spelled out explicitly in code, where a reviewer will see it.
+
+```
+unsafe-by-default                    safe-by-default
+─────────────────                    ───────────────
+verify(token)                        createVerifier({ issuer, audience })
+  aud checked if config.checkAud       aud always checked
+  any alg the header claims            alg allow-list fixed
+  skew: whatever the code does         skew: small default, explicit override
+  forgot the option? still "works"     forgot the option? does not compile
+```
+
+That last line is the one I care about most. The best misconfiguration is the one that cannot be expressed. Required options in the constructor type mean a developer cannot accidentally ship a verifier that skips the audience check. The type system does the security review before a human ever has to.
+
+## 6. Deprecations Are a Feature, Not an Afterthought
+
+An SDK with many consumers lives a long time, and it will need to change. How it changes decides whether teams keep upgrading or pin an old version and never look back.
+
+I treat every deprecation as a small project with a timeline:
+
+```
+1. mark it in types           → editors strike it through immediately
+2. warn once per process      → structured log, includes the one-line fix
+3. keep the old path working  → for an announced window, not "for now"
+4. measure who still calls it → per app, from those warnings
+5. remove only at zero        → or when every remaining owner has a date
+```
+
+The warning text matters. "This method is deprecated" is useless. "`getUser()` is deprecated; use `verify(req).claims` instead, removal planned for the next major version" is a migration that takes thirty seconds. The goal is that upgrading feels like accepting a suggestion, not like being punished.
+
+Surprise removals are what create version sprawl. Once an app has been burned by a breaking change, its owners pin the version and stop reading release notes. Across many apps, that is how you end up with five generations of auth code running in production at once, which defeats the entire point of having one SDK.
+
+<Callout type="warning" title="A shared SDK is only shared if people upgrade it">
+The security value of a central auth library depends on fixes reaching every consumer. If your upgrade path is painful, teams will pin old versions and your single source of truth quietly becomes many. Make upgrades boring, make deprecations loud and slow, and track adoption like a product metric.
+</Callout>
+
+## 7. Know What Stays Out of the SDK
+
+The last lesson is about restraint.
+
+Once an SDK is in every app, it becomes tempting to put everything shared into it. Permission helpers. App-specific role logic. A convenience function that checks whether a user can see a particular deal. Every one of those requests sounds reasonable in isolation.
+
+I kept saying no to most of them. The platform's federation rule is that each app owns its data and shares through APIs, a pattern I wrote about in [one database per app](/blog/one-database-per-app-federation). Authorization — which deals, which companies, which records a user may touch — belongs to each app, because each app owns the data it protects. The auth SDK's job is narrower and more important: tell the app, reliably, *who* this is and what the identity provider asserted about them. What that person is allowed to do is the app's decision.
+
+Keeping that line clean keeps the SDK small, which keeps it auditable, which keeps it trustworthy. A security library that grows into a business-logic library becomes a release bottleneck for every team and a review nightmare for whoever owns it.
+
+## The Throughline
+
+If I compress all of this into one sentence: **for a shared service, the SDK is the API, and its job is to make the correct path the only easy one.**
+
+The endpoints define what is possible. The SDK defines what actually happens in production, across every app and every team, on the busiest day and the worst network. Single-flight refresh, rotation-aware key caching, a closed set of errors, safe defaults, slow and loud deprecations, and a firm line around what does not belong — none of it is glamorous. All of it is the difference between one auth implementation and seventeen.
+
+The best compliment that SDK ever got was silence. The auth bugs stopped showing up in app after app, not because every team got more careful, but because there was no longer anywhere for those bugs to live.
+
+---
+
+*If you run a shared service with many internal consumers and you are deciding whether an SDK is worth the investment, [reach out](/contact). I am happy to compare notes on what to put in it, what to keep out, and how to get every team actually upgrading.*

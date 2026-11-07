@@ -1,0 +1,226 @@
+---
+title: "Read the Error First: Teaching Kids to Debug Before They Prompt"
+description: "At Waldo's Code Lab, the new reflex is to paste every red error straight into an AI chat before reading a single word of it. So I started teaching the step that comes before the prompt: read the error out loud, predict what the code will do, explain it to a rubber duck, and only then ask. The small exercises I use, and why debugging is the one skill the AI is not going to do for them."
+date: 2026-08-18
+published: true
+category: "Education"
+tags: ["Education", "Debugging", "Kids", "AI", "Waldo's Code Lab"]
+author: "Osvaldo Restrepo"
+tldr: "Kids at Waldo's Code Lab now reach for AI the instant they see an error, usually before they have read it. The fix is not banning the AI; it is teaching the steps that come before the prompt. Read the error out loud and find the line number. Guess what the code will do before you run it, and write the guess down. Explain the code line by line to a rubber duck. Only then ask the AI, and when you do, tell it what you expected, what happened, and what you already tried. I use small, deliberately broken exercises to build the habit. Debugging is the skill AI doesn't replace, because it is the skill you need to know whether the AI was right."
+faqs:
+  - question: "Isn't it faster to just let kids paste the error into an AI chatbot?"
+    answer: "Faster for that one error, slower for everything after it. Most beginner errors say exactly what is wrong and on which line, and a kid who learns to read them fixes the next fifty in seconds without help. A kid who always pastes never builds that skill, and also has no way to judge whether the AI's fix is right or just different. The minute spent reading is an investment that pays back immediately."
+  - question: "What is 'guess then run' and why does it work?"
+    answer: "Before running any code, the student writes down what they think it will print or do. Then they run it and compare. When the guess is right, their mental model is confirmed. When it is wrong, the gap between the guess and reality is exactly where the learning is. It turns every run into a small experiment and makes surprises visible instead of something to paste away."
+  - question: "When should kids be allowed to ask the AI for help with a bug?"
+    answer: "After they can answer three questions: what did I expect to happen, what actually happened, and what have I already tried. Once they can say those out loud, they are allowed to ask, and the questions become the prompt. That makes the AI's answer far better, and it means the kid can tell whether the answer actually explains the gap they found."
+relatedPosts: ["teaching-kids-code-ai-age", "reading-code-you-wont-write", "vibe-coding-ai-assisted-development"]
+---
+
+A girl of about eleven at Waldo's Code Lab was building a little quiz game in Python. She ran it. The screen filled with red. And before I could even walk over, her hands were already moving: select all, copy, switch tab, paste into the AI chat, enter.
+
+I asked her to stop and switch back. "What does the error say?"
+
+She looked at me like I had asked her to read the terms and conditions. "I don't know. That's why I'm asking."
+
+"Read me the last line. Out loud."
+
+"NameError. Name... 'scroe' is not defined." Pause. "Oh. I spelled score wrong."
+
+Ten seconds. She did not need the AI. She did not need me. She needed to read the thing that was already on her screen, telling her precisely what was wrong and on which line. The error message was the answer. She just had a reflex that skipped it.
+
+I wrote a while ago about [teaching kids to code when the AI writes the code](/blog/teaching-kids-code-ai-age), and in that post I said debugging is the main event in my class, not the punishment. This is the follow-up, because the last year changed what that means in practice. The problem is no longer kids getting stuck on errors. It is kids never looking at errors at all.
+
+## The New Reflex
+
+When I started teaching, a red error produced one of two reactions: frustration, or a hand in the air. Both were fine. Both led to a conversation in which the kid eventually read the error.
+
+Now there is a third reaction, and it is the most common one: paste. The error has become something you hand to a machine, not something you read. And I understand why. The AI usually fixes it. The game runs. Everyone is happy.
+
+Except the kid learned nothing about why it broke, and the next time it breaks in a slightly different way, she pastes again. Over a term, she builds a working quiz game and zero debugging ability. Worse, she has no way to tell when the AI's fix is wrong, and beginner-level AI fixes are wrong more often than kids think. Sometimes the AI "fixes" the error by rewriting half the program, and now she has code she did not write and cannot explain, which breaks my one rule from the last post.
+
+So I stopped fighting the AI and started teaching the steps that come *before* it.
+
+```
+OLD REFLEX                         WHAT I TEACH NOW
+──────────                         ────────────────
+run                                run
+  │                                  │
+  ▼                                  ▼
+red text                           red text
+  │                                  │
+  ▼                                  ▼
+paste into AI                      1. read the last line out loud
+  │                                2. find the line number, look at it
+  ▼                                3. guess the cause, change one thing
+it runs (?)                        4. still stuck? explain it to the duck
+                                   5. still stuck? ask the AI — with
+                                      what you expected, what happened,
+                                      and what you tried
+```
+
+Steps one to four are free. They take a couple of minutes. And in my experience they solve most beginner bugs before the AI is ever involved.
+
+## Step 1: Read the Error Like a Sentence
+
+The first thing I teach is that an error message is not noise. It is a sentence written by the computer, in a strange dialect, telling you what went wrong. And like any sentence, it has parts.
+
+I draw this on the whiteboard almost every week:
+
+```
+Traceback (most recent call last):
+  File "quiz.py", line 14, in <module>       ◄── WHERE: the file and the line
+    print("Your score is " + scroe)          ◄── WHAT LINE: the actual code
+                             ^^^^^
+NameError: name 'scroe' is not defined       ◄── WHAT KIND + WHY
+└───┬───┘  └──────────────┬─────────────┘
+  type            the message, in words
+```
+
+Then the rule: **start at the bottom.** Beginners read from the top, hit "Traceback (most recent call last)," decide it is gibberish, and give up. The useful part is almost always the last line. Read the type. Read the message. Then go up one line to see which line of your code it is talking about.
+
+I make them read it out loud. That sounds silly, and it is the single most effective thing I do. Reading silently, kids skim. Reading out loud, they actually process the words, and about half the time the fix comes out of their own mouth mid-sentence, the way it did with "scroe."
+
+I also keep a little cheat sheet on the wall with the five errors they hit most and what each one usually means in kid language:
+
+```
+NameError        "I don't know that name."  → typo, or you used it before creating it
+SyntaxError      "I can't even read this."  → missing colon, bracket, or quote
+IndentationError "Your spaces are messy."   → line up the code inside if/for/def
+TypeError        "These don't mix."         → e.g. adding a number to text
+IndexError       "There's nothing there."   → asked for item 5 of a 3-item list
+```
+
+Within a few weeks, kids stop needing the cheat sheet. They have read enough errors to recognize them. That recognition is a skill, and it only grows if they actually look.
+
+## Step 2: Guess, Then Run
+
+The second habit is the one I am proudest of, because it works on bugs that do not produce an error at all — the program runs, but does the wrong thing.
+
+Before running any code, you write down what you think it will do. On paper, in a notebook, or in a comment. Then you run it and compare.
+
+Here is one of the exercises I use. I hand it out with the instruction: "Don't run it yet. Write down exactly what it prints."
+
+```python
+fruits = ["mango", "papaya", "banana"]
+
+for i in range(1, len(fruits)):
+    print(i, fruits[i])
+```
+
+Most kids write:
+
+```
+1 mango
+2 papaya
+3 banana
+```
+
+Then they run it, and it prints:
+
+```
+1 papaya
+2 banana
+```
+
+And the room gets loud. "Where did mango go?" Now they *want* to know. The gap between their guess and reality is exactly the lesson — lists start at zero, `range` stops before the end — and they found it themselves, with a stake in the answer, instead of being told.
+
+Compare that with the AI path. A kid who wanted "1 mango, 2 papaya, 3 banana," got the wrong output, and pasted the code into a chat would get a corrected version back. It would work. And the kid would have learned that the AI fixes lists, not how lists work.
+
+<Callout type="tip" title="The guess is the point, not the score">
+I never grade whether the guess was right. A wrong guess is more valuable than a right one, because it shows exactly where the kid's mental model and the real computer disagree. Celebrate the surprises. A kid who is never surprised is either very good, or not really guessing.
+</Callout>
+
+Over time, "guess, then run" becomes automatic. Kids start muttering predictions before they hit the run button. That muttering is a working mental model of the computer, and it is the thing that lets them read AI-generated code later and say "wait, that won't do what I asked." I wrote about that adult version of the skill in [reading code you won't write](/blog/reading-code-you-wont-write). It starts here, with mango.
+
+## Step 3: Explain It to the Duck
+
+There is a small yellow rubber duck on the table at the Code Lab. It has become something of a celebrity.
+
+Rubber-duck debugging is an old programmer trick: when you are stuck, you explain your code, line by line, out loud, to a rubber duck. The duck says nothing. It does not need to. Somewhere in the explanation you say a sentence like "and then this adds one to the score every time... wait, it's inside the wrong loop," and you have found the bug.
+
+Kids find this hilarious at first and then, quietly, start doing it. The rule is that you have to explain what each line *does*, not what you *wanted* it to do. That distinction is the whole trick. Bugs live in the gap between intention and instruction, and saying the instruction out loud makes the gap audible.
+
+Here is a classic I use for duck practice:
+
+```python
+age = input("How old are you? ")
+
+if age > 12:
+    print("You can join the advanced group!")
+```
+
+It crashes with a `TypeError`. A kid explaining it to the duck says, "First I ask how old they are, and I save it in age. Then if age is more than twelve..." and an older kid at the table usually interrupts: "But `input` gives you text, not a number." The duck takes the credit.
+
+Why not just let the AI be the duck? Because the AI answers. That is its whole job, and it is a wonderful job, but it takes away the moment where the kid says the solution themselves. The duck is valuable precisely because it is useless. It forces the kid to finish the thought.
+
+## Step 4: Small Exercises, Deliberately Broken
+
+The habits above only stick with practice, and practice needs material. So every few weeks we run what the kids call "broken code day." I hand out short programs, five to fifteen lines, each with exactly one bug. They know there is a bug. They do not know where.
+
+A few I come back to:
+
+```python
+# 1. The average that is always wrong
+scores = [8, 9, 10]
+total = 0
+for s in scores:
+    total = s            # should be total = total + s
+print(total / len(scores))
+
+# 2. The game that never ends
+lives = 3
+while lives > 0:
+    print("You lost a life!")
+                         # missing: lives = lives - 1
+
+# 3. The greeting that greets nobody
+def greet(name):
+    message = "Hello, " + name
+                         # missing: return message
+print(greet("Waldo"))    # prints None
+```
+
+The bug comments are on my answer key, not on the handout, obviously. Each one is chosen because it does not crash with a helpful message. Number one prints a wrong number. Number two runs forever. Number three prints `None`. These are the bugs that pasting an error cannot fix, because there is no error to paste. You have to guess, run, compare, and think.
+
+The rules for broken code day are simple: no AI for the first ten minutes. Read, guess, duck. After ten minutes, you may ask the AI, but only by following step 5.
+
+<Callout type="info" title="Pick bugs with no error message">
+The most useful practice bugs are the silent ones: wrong output, infinite loops, functions that return nothing. They cannot be solved by pasting a traceback, so they force the habits that actually transfer — prediction, tracing, and explaining. Crashes teach kids to read errors. Silent bugs teach them to think.
+</Callout>
+
+## Step 5: Then Ask — But Ask Like a Debugger
+
+I am not anti-AI in my classroom. I said it in the last post and I mean it more now: these tools are an extraordinary tutor, especially for kids who do not have an engineer at home. The goal is not to stop kids asking. It is to make the asking good.
+
+So before anyone asks the AI about a bug, they have to be able to answer three questions out loud:
+
+```
+1. What did I EXPECT to happen?
+2. What ACTUALLY happened?           (the exact error, or the exact wrong output)
+3. What have I ALREADY TRIED?
+```
+
+Those three answers become the prompt. And the difference in what comes back is dramatic. "Fix this" plus a wall of code gets a rewritten program. "I expected it to print the average, 9, but it prints 3.33. I checked the division and that looks right. I think the problem is in the loop" gets an explanation that points at the line with `total = s`, often with a question back. The kid is debugging *with* the AI instead of handing the bug *to* it.
+
+And here is the part that matters most: because the kid formed an expectation, she can check the AI's answer against it. If the AI's fix makes the program print 9, good. If the AI confidently suggests something that still prints 3.33, she knows immediately. She is not just receiving an answer. She is evaluating one.
+
+## Why This Is the Skill the AI Doesn't Replace
+
+Parents sometimes push back. If the AI can fix the bug, why does my kid need to?
+
+My answer is that debugging is not really about fixing bugs. It is about noticing when reality disagrees with what you expected, and then finding out why. That skill does not become less valuable when the AI writes the code. It becomes *more* valuable, because now someone has to notice when the AI's code disagrees with what was asked, and that someone is the human.
+
+Everything else in programming, the AI can increasingly help with: syntax, boilerplate, looking things up, even writing whole functions. But the AI cannot know what you meant. Only you know what you expected. Debugging is the practice of holding your expectation up against what the computer actually did and refusing to move on until they match. A kid who has that habit can use any tool safely. A kid who doesn't is trusting a box.
+
+## The Throughline
+
+If I had to compress this into one sentence: **the error message is the first answer, your prediction is the second, and the AI is the third — in that order.**
+
+The girl with the quiz game, by the way, has a new habit. When her program goes red, she leans back, reads the last line out loud in a slightly theatrical voice, and usually groans and fixes it. Last month I watched her get stuck on a real one, a silent bug in her scoring logic. She guessed, ran, explained it to the duck, and then asked the AI, starting with "I expected the score to go up by one but it goes up by two." It found the double-counted line on the first try. She read the explanation, nodded, and said, "Yeah, that's what I thought."
+
+That last sentence is the whole goal. Not that she never needs help. That when help arrives, she is already close enough to recognize it.
+
+---
+
+*If you teach kids or beginners to code and are wrestling with how AI fits into the classroom, [reach out](/contact). I am always happy to trade broken exercises, and the duck is open to collaborations.*

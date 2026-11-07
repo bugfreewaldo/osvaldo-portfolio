@@ -1,0 +1,225 @@
+---
+title: "Tu Documentación Ahora Tiene Dos Lectores: Ingenieros Nuevos y Agentes de Código"
+description: "La documentación solía tener una sola audiencia: el próximo humano. Ahora cada README, CLAUDE.md y descripción de API también la lee un agente de código que nunca hace una pregunta de seguimiento. Qué cambia cuando escribes para ambos: invariantes explícitas, ejemplos por encima de la prosa, listas de 'no hagas', documentación que vive junto al código, y por qué la documentación desactualizada daña mucho más a los agentes que a las personas."
+date: 2026-08-04
+published: true
+category: "Ingeniería de Software"
+tags: ["Documentación", "Agentes de Código", "CLAUDE.md", "Experiencia de Desarrollador", "MCP"]
+author: "Osvaldo Restrepo"
+translationOf: "docs-for-humans-and-agents"
+tldr: "La documentación ahora tiene dos lectores: el ingeniero nuevo y el agente de código. Fallan de maneras distintas. Un humano confundido hace una pregunta en el chat; un agente confundido elige la interpretación más plausible y escribe código basado en ella. Eso cambia cómo escribo documentación. Declaro invariantes explícitas en vez de describir comportamiento, empiezo con ejemplos en vez de párrafos, mantengo una lista corta de 'no hagas' para cada servicio, mantengo la documentación en la misma carpeta y el mismo pull request que el código que describe, y trato la documentación desactualizada como un bug, porque un agente confía completamente en un README viejo. Las descripciones de herramientas expuestas vía MCP también son documentación, y merecen el mismo cuidado. La buena noticia es que la documentación escrita para agentes resulta ser mejor documentación para humanos."
+faqs:
+  - question: "¿Necesito documentación separada para agentes de código y para humanos?"
+    answer: "Mayormente no. Las mismas cualidades que hacen que la documentación funcione para un agente — reglas explícitas, ejemplos concretos, límites claros y precisión — hacen que funcione mejor para un ingeniero nuevo también. La única excepción es un archivo corto orientado al agente como CLAUDE.md que se carga en cada sesión; mantenlo ligero y haz que apunte a la documentación más larga en vez de duplicarla."
+  - question: "¿Por qué la documentación desactualizada es peor para los agentes que para los humanos?"
+    answer: "Un humano leyendo un README desactualizado normalmente nota que algo no cuadra, revisa el código o le pregunta a un compañero. Un agente tiende a tratar el documento como la verdad y actuar sobre él de inmediato, a menudo con confianza y a escala. Una oración equivocada que a un humano le cuesta diez minutos de confusión puede costarte un pull request de apariencia plausible construido sobre una regla que ya no existe."
+  - question: "¿Cuál es el cambio de mayor valor para hacer la documentación amigable para agentes?"
+    answer: "Escribe tus invariantes como reglas explícitas y verificables — lo que siempre debe ser cierto, lo que nunca debe pasar — junto al código que gobiernan. Las descripciones de cómo funcionan las cosas hoy se desvían en silencio; las invariantes son cortas, difíciles de malinterpretar y fáciles de revisar. Si solo haces una cosa, haz esa."
+relatedPosts: ["claude-md-token-management", "reading-code-you-wont-write", "mcp-model-context-protocol-guide"]
+---
+
+Hace unos meses, en la misma semana, dos recién llegados empezaron a trabajar en el servicio central de archivos que mantengo en TheGreyMatter.ai. Uno era un ingeniero nuevo. El otro era un agente de código al que había apuntado al repositorio para que ayudara con un refactor.
+
+Ambos leyeron el mismo README. Ambos llegaron a la misma oración, que decía, más o menos, que los archivos están limitados a la app que los subió. Eso había sido cierto alguna vez. Dejó de ser completamente cierto cuando agregamos compartir entre apps mediante permisos explícitos, y nadie, es decir yo, había actualizado el párrafo.
+
+La ingeniera lo leyó, frunció el ceño, abrió el código, vio la verificación de permisos y me mandó un mensaje: "El README dice que los archivos son por app, pero hay una tabla de permisos. ¿Cuál es?" Cinco minutos, un arreglo al README, listo.
+
+El agente lo leyó y se lo creyó. Escribió un helper perfectamente limpio que filtraba por app, se saltaba la búsqueda de permisos y habría roto en silencio la función de compartir para cada app que dependía de ella. Los tests lo atraparon. Pero el agente había hecho exactamente lo que el documento le dijo que hiciera, y el documento estaba mal.
+
+Esa fue la semana en que dejé de pensar en la documentación como algo escrito para el próximo humano. Ahora tiene dos lectores. Y fallan de maneras muy distintas.
+
+## Dos Lectores, Dos Modos de Falla
+
+Esta es la diferencia, tan simple como la puedo poner:
+
+```
+                    LECTOR HUMANO                LECTOR AGENTE
+                    ─────────────                ─────────────
+ambigüedad    ──▶   le pregunta a alguien        elige la lectura más plausible
+desactualizado──▶   "esto se siente raro", revisa lo trata como la verdad
+info faltante ──▶   lee el código, adivina       llena el hueco con convenciones
+info errónea  ──▶   pierde diez minutos          envía un pull request confiado
+volumen       ──▶   lo hojea, se aburre          lo lee todo, cada vez
+```
+
+El humano es lento y escéptico. El agente es rápido y confiado. El escepticismo humano ha estado cubriendo en silencio la mala documentación por décadas. Podías salirte con la tuya con un README vago porque las personas que lo leían llenaban los huecos con mensajes de Slack y preguntas en el pasillo. Los agentes no preguntan. Resuelven la ambigüedad como lo haría un nuevo empleado muy diligente en su primer día si fuera demasiado tímido para hablar: adivinando razonablemente y siguiendo adelante.
+
+Así que todo lo que sigue se trata de eliminar la necesidad de adivinar. Y, para mi leve fastidio, cada uno de estos cambios también hizo la documentación mejor para los humanos.
+
+## 1. Escribe Invariantes, No Descripciones
+
+La mayoría de la documentación describe cómo se comporta un sistema. "El endpoint de subida cifra los archivos y los guarda en blob storage, luego emite un evento." Es prosa correcta. También es una oración que se va a desviar, porque el comportamiento cambia en pequeñas formas todo el tiempo y nadie reescribe el párrafo.
+
+Lo que los agentes y los ingenieros nuevos realmente necesitan son las reglas que deben cumplirse sin importar cómo cambie la implementación. Invariantes. Cortas, explícitas, verificables.
+
+```markdown
+## Invariantes — servicio de archivos
+
+- Cada blob guardado se cifra con una llave de datos por archivo (cifrado de sobre).
+  El texto plano nunca toca blob storage. Tampoco en archivos temporales.
+- Un archivo lo puede leer: su app dueña, O una app con un permiso activo.
+  Nunca solo por ID de app — siempre pasa por `canRead(file, caller)`.
+- Cada mutación escribe una entrada de auditoría en la misma operación. Sin auditoría, no hay escritura.
+- Los payloads de webhooks nunca contienen contenido de archivos ni PII. Solo IDs y tipos de evento.
+```
+
+Fíjate en lo que no son. No son explicaciones de cómo funciona el cifrado de sobre, ni un tour por la tabla de permisos. Son las cuatro oraciones que, si se violan, significan que alguien envió un bug. A un agente que las lee le cuesta mucho más escribir el helper equivocado, porque "nunca solo por ID de app" no es ambiguo. Un revisor tiene una lista de verificación. Una ingeniera nueva sabe dónde están los bordes filosos desde el primer día.
+
+Escribí sobre cómo funciona el cifrado de sobre en [otro artículo](/es/blog/envelope-encryption-documents-ai-reads). Ese artículo es para entender. La lista de invariantes es para no romper cosas. Son documentos distintos con trabajos distintos.
+
+<Callout type="tip" title="La prueba de una invariante">
+Si puedes imaginar a un revisor señalando un diff y diciendo "esto viola la regla 3," es una invariante. Si la única respuesta posible es "mmm, creo que no es exactamente así como funciona," es una descripción. Los agentes necesitan mucho más el primer tipo que el segundo.
+</Callout>
+
+## 2. Los Ejemplos le Ganan a la Prosa, Siempre
+
+Antes escribía la documentación de APIs como un abogado: párrafos sobre parámetros, opcionalidad, casos límite. Los agentes leen esos párrafos y luego producen código que está correcto en un ochenta por ciento, porque la prosa deja espacio para interpretar y el agente llena ese espacio con la convención que ha visto más seguido en otros lados.
+
+Un solo ejemplo concreto elimina la mayor parte de ese espacio. Esta es la forma que ahora uso para cada función exportada en nuestros SDKs de TypeScript:
+
+```typescript
+/**
+ * Solicita una URL de descarga de corta duración para un archivo que el llamador puede leer.
+ *
+ * Lanza `FileAccessDenied` si el llamador no es dueño ni tiene un permiso activo.
+ * La URL expira después de `ttlSeconds` (máx. 900). No la guardes en caché más allá de eso.
+ *
+ * @example
+ * const url = await files.getDownloadUrl({
+ *   fileId: "f_01J8Z...",
+ *   ttlSeconds: 300,
+ * });
+ * // => "https://.../f_01J8Z...?sig=...&exp=..."
+ *
+ * @example
+ * // Mal: construir la URL del blob tú mismo se salta la verificación de acceso.
+ * // const url = `${BLOB_BASE}/${fileId}`;
+ */
+export async function getDownloadUrl(args: GetDownloadUrlArgs): Promise<string> {
+  // ...
+}
+```
+
+Dos ejemplos. Uno mostrando la llamada correcta. Otro mostrando la llamada equivocada que alguien, humano o agente, muy probablemente va a intentar. El segundo hace más trabajo que cualquier párrafo que yo pudiera escribir, porque nombra el atajo exacto y dice por qué es un atajo.
+
+Esto conecta con algo que argumenté en [el SDK es la verdadera API](/es/blog/sdk-is-the-real-api): el lugar donde los desarrolladores realmente aprenden tu sistema es la firma de tipos y el texto al pasar el cursor, no la wiki. Eso es doblemente cierto para los agentes, que leen el código que están editando con mucho más cuidado que cualquier página externa.
+
+## 3. Escribe la Lista de "No Hagas"
+
+Cada servicio que mantengo ahora tiene una sección corta llamada "No hagas." Es mi parte favorita de la documentación, y es la parte que los agentes más respetan.
+
+```markdown
+## No hagas
+
+- No leas del contenedor de Cosmos de otra app. Llama a su API. (Regla de federación.)
+- No agregues campos a los payloads de webhooks sin subir la versión del evento.
+- No registres los cuerpos de las solicitudes en la ruta de subida. Pueden contener PII.
+- No atrapes y silencies `KeyVaultError`. Deja que falle ruidosamente.
+- No "arregles" el test de reintentos inestable subiendo el timeout. Ver notas en tests/README.
+```
+
+Cada línea existe porque alguien hizo eso. A veces fue un humano. Cada vez más fue un agente haciendo algo de apariencia razonable que nuestra arquitectura prohíbe por razones que no son visibles solo desde el código. La regla de federación es un buen ejemplo: desde dentro de una app, leer directamente de la base de datos de una app hermana parece un atajo perfectamente eficiente. Nada en el código dice que está prohibido. Solo la documentación lo dice. (El razonamiento vive en [una base de datos por app](/es/blog/one-database-per-app-federation), pero el agente no necesita el razonamiento. Necesita la regla.)
+
+Una lista de "no hagas" es conocimiento negativo barato, y el conocimiento negativo es exactamente lo más difícil de inferir del código. El código te muestra lo que se hace. Casi nunca te muestra lo que se intentó, rompió producción y se revirtió.
+
+<Callout type="info" title="El conocimiento negativo es el caro">
+Cualquier lector capaz puede deducir lo que hace el código leyéndolo. Nadie puede deducir lo que el código nunca debe hacer, o lo que se intentó y se abandonó, a menos que alguien lo escriba. Ahí es donde tu esfuerzo de documentación rinde más, para humanos y agentes por igual.
+</Callout>
+
+## 4. Mantén la Documentación Junto al Código que Describe
+
+La wiki es donde la documentación va a morir. Lo digo con cariño por cada wiki que he mantenido.
+
+El problema es la distancia. Cuando la documentación vive en otro sistema, actualizarla es una tarea separada, hecha después, por alguien que se acuerde. Nadie se acuerda. Cuando la documentación vive en la misma carpeta que el código, aparece en el mismo diff, y un revisor puede decir "cambiaste la lógica de permisos pero no el archivo de invariantes."
+
+Mi estructura actual para un servicio se ve así:
+
+```
+file-service/
+├── CLAUDE.md              ← corto, para el agente: punteros + reglas principales
+├── README.md              ← qué es, cómo correrlo, dónde viven las cosas
+├── docs/
+│   ├── invariants.md      ← las reglas que siempre deben cumplirse
+│   ├── do-not.md          ← la lista de arriba
+│   └── events.md          ← cada evento de webhook, versionado, con ejemplos
+├── src/
+│   ├── grants/
+│   │   └── README.md      ← reglas locales solo para esta carpeta
+│   └── ...
+└── tests/
+    └── README.md          ← cómo correrlos, qué es inestable y por qué
+```
+
+El `CLAUDE.md` en la raíz es deliberadamente pequeño. Se carga en cada sesión del agente, así que cada línea cuesta tokens en cada mensaje — lo aprendí por las malas y escribí sobre ello en [el artículo sobre tokens y CLAUDE.md](/es/blog/claude-md-token-management). No duplica las invariantes. Apunta a ellas: "Antes de editar cualquier cosa en `src/grants`, lee `docs/invariants.md` y `src/grants/README.md`." Los agentes siguen bien los punteros. No necesitan todo precargado. Necesitan saber dónde buscar.
+
+Los READMEs por carpeta son el otro ganador silencioso. Un agente editando un archivo en `src/grants/` tiende a mirar alrededor de la carpeta en la que está. Un README de tres líneas ahí, con las reglas locales, se lee exactamente en el momento en que importa.
+
+## 5. La Documentación Desactualizada Es Peor para los Agentes que para los Humanos
+
+Esta es la lección de la historia del inicio, y es la que quiero subrayar.
+
+Para un humano, una documentación desactualizada es una molestia. Cuesta tiempo y algo de confianza, y el humano compensa. Para un agente, una documentación desactualizada es una instrucción. El agente la va a seguir, fielmente, y va a producir trabajo que se ve correcto, pasa una revisión casual y codifica una regla que ya no existe.
+
+Lo que significa que el viejo encogimiento de hombros cultural — "la documentación está un poco desactualizada, pregunta por ahí" — ya no es aceptable. Si los agentes están leyendo tu documentación, un documento incorrecto es un bug latente con un mecanismo de entrega.
+
+Tres cosas que hago al respecto:
+
+- **Los cambios de documentación son parte de la definición de terminado.** Si un pull request cambia comportamiento cubierto por una invariante o un esquema de eventos, el cambio de documentación va en el mismo pull request. Los revisores lo verifican de la misma forma que verifican los tests.
+- **Borra agresivamente.** Una documentación ausente hace que el agente lea el código, que es la fuente de verdad. Una documentación equivocada hace que el agente ignore el código. Si tengo que elegir, prefiero no tener párrafo que tener uno equivocado.
+- **Haz la documentación verificable cuando sea posible.** Nuestros ejemplos de eventos de webhook en `docs/events.md` se validan contra los esquemas reales en CI. Si alguien cambia el esquema y no el ejemplo, el build falla. No toda la documentación se puede testear, pero la que describe contratos usualmente sí.
+
+<Callout type="warning" title="Un documento equivocado le gana al código">
+Cuando un agente ve una oración segura en un README que contradice el código, a menudo confía en la oración. Eso invierte el orden normal de la verdad. Si no puedes mantener una sección precisa, bórrala y deja que el código hable por sí mismo.
+</Callout>
+
+## 6. Las Descripciones de Herramientas También Son Documentación
+
+Hay un tercer tipo de documentación que la mayoría de los equipos ni siquiera piensa como documentación: las descripciones de las herramientas expuestas a los modelos.
+
+Cuando construyo servidores MCP que exponen los datos de nuestra plataforma a Claude, cada herramienta tiene un nombre, una descripción y un esquema de entrada. El modelo los lee para decidir si llamar a la herramienta, cuándo y con qué argumentos. Eso es documentación en el sentido más literal, y la lee un agente cada vez, sin ningún humano en medio.
+
+```typescript
+server.tool(
+  "get_company_snapshot",
+  // Mal: "Obtiene el snapshot."
+  // Mejor: di cuándo usarla, qué devuelve y qué NO hace.
+  "Return the latest diagnostic snapshot for one company the caller can access. " +
+    "Use for 'how is this company doing' questions. " +
+    "Returns scores and the evidence they are based on; does not return raw documents. " +
+    "If the caller lacks access, returns an access error — do not retry with another ID.",
+  { companyId: z.string().describe("Company ID from list_companies, not a name.") },
+  async ({ companyId }) => {
+    // ...
+  }
+);
+```
+
+Los mismos principios, comprimidos: cuándo usarla, qué devuelve, qué no hace, y el único error que el modelo tiene más probabilidad de cometer (pasar un nombre de empresa en vez de un ID). Cubrí el lado del protocolo en [la guía de MCP](/es/blog/mcp-model-context-protocol-guide), pero el lado de la escritura merece su propia atención. Una descripción de herramienta vaga es el equivalente para agentes de un README vago, y falla de la misma forma: suposiciones plausibles, ejecutadas con confianza.
+
+## Lo que Realmente Cambié
+
+Si quieres la versión corta para robar, esta es la lista de verificación que ahora corro sobre cualquier servicio antes de dejar que un agente trabaje en él, o de entregárselo a un ingeniero nuevo:
+
+```
+[ ] invariants.md existe, menos de una página, cada línea verificable en revisión
+[ ] do-not.md existe, cada línea ligada a un error real del pasado
+[ ] cada función exportada tiene al menos un @example (y uno de la forma incorrecta si tienta)
+[ ] CLAUDE.md es corto y apunta a la documentación, no es una copia de ella
+[ ] existen READMEs por carpeta donde las reglas locales difieren de las globales
+[ ] la documentación de contratos (eventos, esquemas) se valida en CI
+[ ] cualquier documento por el que nadie pueda responder fue borrado o reescrito
+```
+
+Nada de eso es exótico. Es la disciplina de documentación que la gente ha recomendado por años y que la mayoría de los equipos, incluido el mío, se saltó en silencio porque los humanos compensaban los huecos. Los agentes eliminaron la compensación. Los huecos ahora son visibles.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **escribe tu documentación como si el lector fuera a creer cada palabra y nunca hacer una pregunta — porque uno de tus lectores ahora hace exactamente eso.**
+
+Lo curioso es lo que pasó con la ingeniera nueva de la historia del inicio. Unas semanas después de que reestructuré la documentación del servicio de archivos alrededor de invariantes, ejemplos y una lista de "no hagas," me dijo que la incorporación al segundo servicio que tocó fue muchísimo más fácil que la del primero, porque la documentación "de verdad dice qué no hacer." Yo la había escrito para el agente. La humana fue quien más se benefició.
+
+Esa es toda la lección. Los agentes no inventaron un nuevo tipo de documentación. Solo dejaron de perdonarnos por el viejo.
+
+---
+
+*Si tu equipo está empezando a soltar agentes de código en una base de código y quieres un segundo par de ojos sobre lo que tu documentación realmente les está diciendo, [contáctame](/contact). Usualmente es una lista corta de arreglos, y rinde para cada lector nuevo, humano o no.*

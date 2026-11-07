@@ -1,0 +1,234 @@
+---
+title: "What to Keep and What to Forget: Data Retention for AI Features"
+description: "The moment you add an AI feature, user data starts leaking into places nobody designed for retention: prompt logs, traces, vector stores, caches, eval sets. Prompts and completions are user data, and they deserve retention windows, redaction, and deletion that actually propagates. Lessons from building MILA for NICU families and shared AI infrastructure at TheGreyMatter."
+date: 2026-11-03
+published: true
+category: "AI Ethics"
+tags: ["AI Ethics", "Data Retention", "Privacy", "LLM Observability", "Healthcare AI"]
+author: "Osvaldo Restrepo"
+tldr: "Every AI feature quietly multiplies the places user data lives. The prompt goes into a log, the completion into a trace, the document into a vector store, the answer into a cache, and the interesting failure into your eval set. Most teams design retention for their main database and forget all of these. My rules: treat prompts and completions as user data, not telemetry; give every store a retention window chosen on purpose; log redacted traces by default and keep full payloads only briefly and behind access control; build deletion as a fan-out that reaches every copy, including embeddings, caches, and eval sets; and in sensitive domains like healthcare, keep less than you think you need. The data you never stored cannot leak, cannot be subpoenaed, and never needs deleting."
+faqs:
+  - question: "Aren't prompt logs just operational telemetry, like request logs?"
+    answer: "No. A request log records that something happened. A prompt log records what the user said, often in their own words, often including names, health details, finances, or other people's information. Completions can contain the same details, rephrased. That makes them user data in every sense that matters for privacy and for deletion requests, and they should be governed like the rest of the user's records."
+  - question: "If I redact traces, how do I debug real problems?"
+    answer: "Most debugging needs the shape of the interaction, not the identity of the person: which tools were called, how long each step took, token counts, the prompt version, the retrieval hits, and the error. Redacted traces keep all of that. For the rare case that needs the full payload, keep a short-lived, access-controlled store with an audit log, or reproduce the issue with synthetic data. Debuggability and privacy are much less in tension than people assume."
+  - question: "How do you delete a user from a vector store or an eval set?"
+    answer: "You plan for it at write time. Every embedding, cache entry, and eval example needs metadata that points back to the user or source record it came from, so deletion can find it. Then deletion becomes a fan-out job that walks every store, removes or tombstones the matching entries, and records that it finished. For eval sets, the better default is to never put raw user data in them at all: rewrite the case synthetically and keep the behavior you wanted to test."
+relatedPosts: ["consent-is-a-ux-problem", "observability-llm-production", "digital-health-compliance-guide"]
+---
+
+During an early round of MILA testing, I was chasing a bug where a draft parent update came out with the wrong tone. I did what I always do: I opened the logs and searched for the request.
+
+I found it. I also found, in plain text, in a debug trace I had added weeks earlier and forgotten about, the baby's first name, a line from the overnight nursing notes, and the draft message meant for the parents.
+
+Nothing bad happened. The logs were internal, access was limited, and I fixed it the same afternoon. But I remember the feeling very precisely, because it was the feeling of discovering that my system had been keeping something I never decided to keep. I had designed the database carefully. I had thought about consent. And then I had built a perfectly ordinary logging line that copied the most sensitive data in the whole product into a place with no retention policy at all.
+
+That is the core problem with data retention in AI features. It is not that teams make bad decisions about what to keep. It is that they never make the decision, because the data ends up in places nobody thought of as storage.
+
+## Prompts and Completions Are User Data
+
+This is the mental shift everything else depends on.
+
+Traditional request logs record that something happened: a user ID, an endpoint, a status code, a latency. Prompts are different. A prompt contains what the user actually said, in their own words. In a healthcare tool, that might be a diagnosis. In a finance tool, a salary. In a voice agent for a small business, a caller's address and why they need a plumber at 11pm.
+
+Completions are not safer. The model reads the user's data and writes it back, rephrased, summarized, sometimes combined with retrieved documents about other people. A completion can contain more sensitive information than the prompt that produced it.
+
+<Callout type="warning" title="If it contains what the user said, it is user data">
+Prompts, completions, retrieved chunks, tool call arguments, and tool results all carry user content. They belong in the same governance bucket as the user's records in your main database: retention windows, access control, and deletion. Calling them "telemetry" is how they escape all three.
+</Callout>
+
+## Map Where the Data Actually Goes
+
+Before you can choose what to keep, you need to see every place a single AI interaction leaves a copy. When I finally drew this for an AI feature, it was humbling.
+
+```
+                         user message
+                              │
+          ┌───────────────────┼─────────────────────┐
+          ▼                   ▼                     ▼
+   app database        request / debug logs    LLM trace store
+   (the one you        (often full payloads    (spans with prompt,
+    designed)           by accident)            completion, tools)
+          │                                         │
+          ▼                                         ▼
+   vector store  ◄── embeddings of           response cache
+   (chunks + metadata) uploaded docs         (keyed on prompt hash)
+          │                                         │
+          ▼                                         ▼
+   eval set / golden examples          provider-side retention
+   ("this failure was interesting")    (check your provider's terms)
+          │
+          ▼
+   fine-tuning or analytics exports
+```
+
+The database at the top-left is the only box most teams have a retention policy for. Every other box is a copy, and every copy is something you will need to account for when a user asks you to delete their data, when a security review asks what you store, or when something leaks.
+
+At TheGreyMatter, the federation rule helps here: each app owns its own Cosmos DB, and sharing happens only through APIs. That makes the "where does the data live" question much more answerable, because there is no shared database quietly accumulating copies from seventeen apps. But federation does not cover logs, traces, embeddings, or caches by itself. Those you have to map on purpose.
+
+## Choose a Retention Window for Every Store
+
+Once the map exists, each box gets a decision. Not a default. A decision, written down, with a reason.
+
+Here is roughly the shape I use. The numbers are illustrative; the right windows depend on your domain, your contracts, and your legal advice, and that conversation should happen with someone who knows your regulatory context.
+
+```
+store                      what it keeps            window (illustrative)
+─────────────────────────  ───────────────────────  ──────────────────────
+app database               the user's records       life of the account
+redacted traces            shape, timing, versions  weeks to a few months
+full-payload debug store   raw prompt + completion  days, access-controlled
+response cache             completions by key       hours to days
+vector store               chunks of user docs      as long as the source doc
+eval set                   synthetic or consented   indefinitely (no raw PII)
+analytics exports          aggregates only          per analytics policy
+```
+
+Two principles drive the table.
+
+**Derived data never outlives its source.** An embedding of a document should not exist after the document is deleted. A cached answer about a contract should not survive the contract. This sounds obvious and is violated constantly, because the vector store and the cache were set up by someone else, at a different time, for a different reason.
+
+**The more raw the data, the shorter the window.** Full payloads are the most useful for debugging and the most dangerous to keep. They get the shortest window and the tightest access. Redacted, structural data is safe to keep longer because it says what happened without saying who it happened to.
+
+## Log Redacted Traces by Default
+
+I care a lot about observability for LLM systems; I wrote a whole post on [observability for LLMs in production](/blog/observability-llm-production). Nothing in this post argues for flying blind. The argument is that most of what you need to debug an AI feature is structural, and structure can be logged without the user's words.
+
+My default trace keeps the things that explain behavior: the prompt version, the model, token counts, latency per step, which tools were called, which retrieval chunks were hit (by ID, not by content), the confidence or refusal outcome, and the error, if any. The user's words and the model's words are redacted before they ever reach the trace store.
+
+```typescript
+type TraceSpan = {
+  traceId: string;
+  promptVersion: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  toolCalls: { name: string; ok: boolean; latencyMs: number }[];
+  retrievedChunkIds: string[];
+  outcome: "answered" | "refused" | "error";
+  // Content fields are redacted unless the debug store is explicitly enabled
+  input: string;
+  output: string;
+};
+
+const PATTERNS: [RegExp, string][] = [
+  [/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email]"],
+  [/\+?\d[\d\s().-]{7,}\d/g, "[phone]"],
+  [/\b\d{3}-\d{2}-\d{4}\b/g, "[id-number]"],
+];
+
+export function redact(text: string, knownNames: string[] = []): string {
+  let out = text;
+  for (const [pattern, label] of PATTERNS) out = out.replace(pattern, label);
+  // Names we already know from the record are the most reliable thing to strip
+  for (const name of knownNames) {
+    if (name.length > 1) out = out.replaceAll(name, "[name]");
+  }
+  return out;
+}
+
+export function toTrace(span: TraceSpan, ctx: { knownNames: string[] }): TraceSpan {
+  return {
+    ...span,
+    input: redact(span.input, ctx.knownNames),
+    output: redact(span.output, ctx.knownNames),
+  };
+}
+```
+
+Pattern-based redaction is not perfect, and I do not pretend it is. Regexes miss things. That is why the known-names step matters: in most AI features, you already know the sensitive entities because they came from your own records (the patient, the customer, the account). Stripping the values you already hold catches far more than any generic pattern. And for the most sensitive products, the safer default is to not log content at all and accept a slightly harder debugging life.
+
+<Callout type="tip" title="Debug with shape, not with identity">
+When I look back at the bugs I have actually fixed in AI features, almost none required knowing who the user was. They required knowing which prompt version ran, what was retrieved, which tool failed, and how long each step took. Log that generously. Log the words sparingly, briefly, and behind an audit trail.
+</Callout>
+
+When a full payload genuinely is needed, it goes to a separate debug store with a short window, restricted access, and an entry in the audit log for every read. At TheGreyMatter, every mutation already goes through an audit log and sensitive fields are encrypted at the field level with keys held in Azure Key Vault. Reading raw AI payloads deserves the same seriousness as reading raw records, because it is the same data.
+
+## Deletion That Actually Propagates
+
+Here is the test I now run on every AI feature I build: if a user asks to be forgotten today, can I prove that every copy is gone by tomorrow?
+
+For the main database, usually yes. For everything else on the map, the honest answer at most companies is "probably not." The embedding is still in the vector store. The completion is still in the cache. The interesting failure case that someone copied into the eval set six months ago still has the user's message in it, word for word.
+
+Deletion that works is designed at write time, not at delete time. Every derived copy needs a pointer back to where it came from.
+
+```typescript
+// Every derived record carries its lineage
+type Lineage = {
+  tenantId: string;
+  userId: string;
+  sourceId: string; // the document, message, or record it came from
+};
+
+interface DeletableStore {
+  name: string;
+  deleteByLineage(filter: Partial<Lineage>): Promise<number>;
+}
+
+export async function forgetUser(
+  tenantId: string,
+  userId: string,
+  stores: DeletableStore[],
+  audit: (event: object) => Promise<void>
+) {
+  const results = [];
+  for (const store of stores) {
+    const removed = await store.deleteByLineage({ tenantId, userId });
+    results.push({ store: store.name, removed });
+  }
+  await audit({ type: "user.forgotten", tenantId, userId, results, at: new Date() });
+  return results;
+}
+
+// Registered stores: app DB, vector store, response cache,
+// debug payload store, eval candidates queue, analytics exports.
+// Adding a new store without registering it here fails review.
+```
+
+The code is simple on purpose. The hard part is not the loop. The hard part is the discipline that every store holding user-derived data registers itself here, and that every record in those stores carries lineage metadata. A vector store where the chunks have no `userId` or `sourceId` in their metadata cannot be cleaned without re-indexing everything. A cache keyed only on a prompt hash cannot be cleaned by user at all; it can only expire. Which is fine, if the window is short, and that is exactly why the cache window in the table above is hours to days.
+
+<Callout type="danger" title="Eval sets are where deleted users live forever">
+Eval sets are built from real failures, which is what makes them valuable and what makes them dangerous. A user who asked to be deleted can survive for years as "example 214" in a golden dataset. My default: never put raw user content in an eval set. Rewrite the case with synthetic details that preserve the behavior under test, and keep a pointer only if the user explicitly consented.
+</Callout>
+
+That rule costs a little effort per example and saves an entire category of problem. It also tends to make eval cases better, because rewriting a case forces you to say exactly which behavior it tests.
+
+## Healthcare Raises the Stakes
+
+Everything above is good practice in any domain. In healthcare, it stops being good practice and becomes the floor.
+
+With MILA, the data is about premature babies and frightened families. A NICU parent's message to the care team can include things they would not tell their closest friends. The nursing notes MILA reads are clinical records. The drafts it produces are, in effect, clinical communication. There is no version of "we kept it in the logs by accident" that I would be comfortable explaining to a parent.
+
+So MILA works under a stricter set of defaults:
+
+```
+MILA retention defaults
+
+  - no free-text content in standard logs, ever
+  - traces keep structure only: versions, timings, outcomes
+  - drafts live with the clinical record, not in a side store
+  - no response cache for anything patient-specific
+  - eval cases are synthetic, written to mirror real patterns
+  - every human review action is audited
+```
+
+The cost is real. Debugging is slower. Some bugs need a synthetic reproduction instead of a quick log search. I have accepted that trade gladly, and I think anyone building clinical AI should, too. If you are working in this space, [the digital health compliance guide](/blog/digital-health-compliance-guide) covers the regulatory side; this post is about the engineering habits that make compliance possible instead of aspirational.
+
+## Retention Is a Consent Question
+
+Retention is usually filed under security or infrastructure. I think it belongs next to consent. When a user types into an AI feature, they are making a judgment about what happens to their words, usually with very little information. I argued in [consent is a UX problem](/blog/consent-is-a-ux-problem) that consent only means something when people actually understand what they are agreeing to. Retention is the other half of that promise: whatever you told them, your systems have to actually do it.
+
+That means the retention table should be something you can explain in one plain paragraph to a user. "We keep your conversation with your account. We keep technical records of how the system behaved, without your words, for a limited time. We do not use your conversations to test the system without asking. When you delete your account, all of it goes." If you cannot write that paragraph honestly, the problem is not the copywriting. It is the architecture.
+
+## The Throughline
+
+If I had to compress this into one sentence: **every AI feature multiplies the places user data lives, so retention has to be a decision you make for every copy, not a default you inherit from your logger.**
+
+Treat prompts and completions as user data. Map every store they touch. Give each one a window on purpose. Log the shape, not the words. Build deletion as a fan-out with lineage. Keep raw users out of eval sets. And when the domain is sensitive, keep less than you think you need.
+
+The data you never stored cannot leak, cannot surprise you in a debug session, and never needs deleting. That is the cheapest privacy control there is.
+
+---
+
+*If you are adding AI features to a product that handles sensitive data and want a second pair of eyes on where that data ends up, [reach out](/contact). Drawing the map is usually a one-afternoon exercise, and it tends to be the most useful afternoon of the quarter.*

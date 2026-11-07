@@ -1,0 +1,193 @@
+---
+title: "Helpful With Money: Building a Personal Finance Agent That Knows Its Place"
+description: "Lessons from building BudgetCopilot, a personal AI finance agent. An agent that touches someone's money has to be humble: categorize and explain, never move money on its own, keep every number out of the LLM, show the math, guard transaction data like medical records, and know the difference between insight and advice."
+date: 2026-10-06
+published: true
+category: "AI Product"
+tags: ["AI Product", "BudgetCopilot", "Personal Finance", "AI Agents", "Privacy"]
+author: "Osvaldo Restrepo"
+tldr: "I built BudgetCopilot because I was buried in debt and could not afford an advisor. The first lesson came fast: a language model is a wonderful explainer and a terrible accountant. A finance agent earns trust by being humble. It categorizes and explains, but it never moves money autonomously. Every number it shows is computed by deterministic code, and the model only narrates facts it was handed. The math is always one tap away. Transaction data is treated with the same care as clinical data, because it tells the story of someone's life. And the agent stays on the insight side of the line — it says what happened and what the options cost, and leaves the decision to the person whose money it is."
+faqs:
+  - question: "Why not let the LLM do the arithmetic if it is usually right?"
+    answer: "Because 'usually right' is the wrong bar for money. A model that sums forty transactions correctly most of the time will eventually produce a total that is off by a plausible amount, stated in a confident voice, and nobody will notice until it matters. Deterministic code is cheap, testable, and right every time. The model's job is to explain numbers, never to produce them."
+  - question: "Will a finance agent ever be allowed to move money on its own?"
+    answer: "Not in anything I build, at least not without an explicit, per-action human confirmation. The asymmetry is brutal: the upside of saving someone a click is tiny, and the downside of a wrong transfer, a duplicated payment, or an overdraft is real money and real stress for someone who may already be stretched thin. Agents can prepare an action; a human presses the button."
+  - question: "What is the difference between insight and advice in a finance product?"
+    answer: "Insight describes what happened and what each option would cost: 'you spent more on delivery this month than last month, and here is the math on paying card A first versus card B.' Advice tells the person what they should do with their life: 'cancel this, invest in that.' Insight respects the user's context and values, which the agent cannot fully see. Advice pretends to know them. A good finance agent is generous with insight and very careful with advice."
+relatedPosts: ["first-ai-feature-should-be-read-only", "when-models-should-say-i-dont-know", "structured-outputs-are-a-contract"]
+---
+
+The night I decided to build BudgetCopilot, I was sitting at my kitchen table with three credit card statements, a loan balance, and a spreadsheet I had rebuilt from scratch for the fourth time. I was not trying to get rich. I was trying to figure out which card to pay first, and whether I could breathe that month. A financial advisor wanted more per session than I had left over after rent. So I did the thing engineers do when they are stressed and broke: I started writing code.
+
+The first prototype was embarrassingly simple. Pull transactions, hand them to a model, ask it to tell me where my money went. And it did — beautifully. It wrote a warm, clear paragraph about my spending. It noticed patterns I had been avoiding. It even said something kind about the progress I had made on one card.
+
+It also told me I had spent a total on restaurants that month that was wrong. Not wildly wrong. Wrong by an amount small enough to sound plausible and large enough to matter when your margin is thin. I only caught it because I had the spreadsheet open next to it and the numbers did not match.
+
+That was the moment the whole design of BudgetCopilot changed. A model that writes a beautiful paragraph around a wrong number is not a helpful finance tool. It is a confident liar with good manners. Everything I have built since comes from one idea: **an agent that touches someone's money has to be humble.**
+
+Here is what humble looks like in practice.
+
+## 1. Categorize and Explain. Never Move Money.
+
+The most exciting demo for a finance agent is the one where it does things. "I noticed you have a subscription you never use — I cancelled it." "Your checking is high, so I moved the extra to savings." "Your card payment is due, so I paid it." Every one of those demos gets applause, and every one of them is a feature I refuse to ship autonomously.
+
+The asymmetry is the whole argument. When the agent gets it right, it saves the user one click. When it gets it wrong, it overdrafts an account the night before rent clears, pays a bill twice, or cancels the one subscription the user actually needed for work. The people who most need a tool like BudgetCopilot are exactly the people for whom a wrong transfer is not an inconvenience. It is a crisis.
+
+So the agent's permissions are deliberately boring:
+
+```
+CAN                                   CANNOT
+─────────────────────────────────     ──────────────────────────────────
+read transactions (via aggregator)    initiate a transfer
+categorize and re-categorize          pay a bill
+explain a month in plain language     cancel a subscription
+compare payoff strategies             open or close an account
+prepare a suggested action            execute that action
+flag something unusual                hide or delete a transaction
+```
+
+Notice the second-to-last row. The agent can prepare an action — "here is what a payment of this amount to card A would do to your plan" — but a human looks at it, understands it, and presses the button in their own bank. That separation is the same principle I wrote about in [why your first AI feature should be read-only](/blog/first-ai-feature-should-be-read-only), applied to the place where it matters most. Read access builds trust. Write access spends it.
+
+<Callout type="warning" title="Saving a click is not worth a crisis">
+Before giving a finance agent any write capability, compare the best case and the worst case honestly. The best case is convenience. The worst case is an overdraft, a missed payment, or a duplicated transfer for someone who is already stretched thin. If the worst case is real money and real stress, the agent prepares and the human executes.
+</Callout>
+
+## 2. The Model Never Does Arithmetic
+
+This is the rule that came directly out of that kitchen-table night, and it is the most important technical decision in the whole system.
+
+Language models are extraordinary at language and unreliable at sums. They will add forty numbers correctly most of the time, and then one day they will not, and the wrong total will arrive in exactly the same calm, fluent voice as the right ones. "Most of the time" is not a standard anyone should accept for money.
+
+So in BudgetCopilot, every number the user sees is computed by plain, deterministic code before the model is ever involved. Totals, averages, month-over-month changes, payoff timelines, interest projections — all of it. The model receives the results as facts and is only allowed to narrate them.
+
+```typescript
+// All money math happens here, in code, in integer cents.
+type MonthFacts = {
+  month: string;
+  totalSpentCents: number;
+  byCategory: Record<string, number>;
+  changeVsLastMonthCents: Record<string, number>;
+  largestTransactions: { id: string; merchant: string; amountCents: number }[];
+};
+
+function computeMonthFacts(txns: Transaction[], prev: Transaction[]): MonthFacts {
+  const byCategory = sumByCategory(txns);       // deterministic, unit-tested
+  const prevByCategory = sumByCategory(prev);
+  const changeVsLastMonthCents = diffCategories(byCategory, prevByCategory);
+  return {
+    month: monthOf(txns),
+    totalSpentCents: sumCents(txns),
+    byCategory,
+    changeVsLastMonthCents,
+    largestTransactions: topN(txns, 5),
+  };
+}
+
+// The model gets facts, not raw rows, and is told to narrate only those facts.
+const facts = computeMonthFacts(thisMonth, lastMonth);
+const summary = await narrateMonth(facts);
+
+// Then we check: every currency amount in the narrative must exist in the facts.
+assertNumbersAreGrounded(summary.text, facts);
+```
+
+That last line is the safety net. After the model writes its summary, a small validator extracts every currency amount from the text and checks that each one appears in the computed facts. If the model invents a number, rounds one creatively, or "helpfully" adds two categories together on its own, the summary is rejected and regenerated, or the user gets a plainer, template-based version. No unverified number reaches the screen.
+
+It sounds paranoid. It is actually cheap. Summing integers in code costs nothing, is trivially testable, and is right every single time. The model is then free to do what it is genuinely good at: turning a table of facts into something a tired person can understand at 11 p.m.
+
+<Callout type="tip" title="Money in cents, math in code">
+Store amounts as integer cents, compute every total and projection in deterministic code, and pass the model a finished set of facts. Then validate that every number in the model's output exists in those facts. The model explains the numbers. It never produces them.
+</Callout>
+
+This is also, more generally, the lesson behind [when the answer is a SQL query](/blog/when-the-answer-is-a-sql-query): a lot of what looks like an "AI feature" is really a deterministic computation with a language layer on top. Finance is just the domain where getting that split wrong hurts the fastest.
+
+## 3. Show the Math, Always
+
+Even when the number is right, a number without its working is a number you have to take on faith. And people do not trust money tools on faith — nor should they.
+
+Every figure in BudgetCopilot is one tap away from its derivation. "You spent more on delivery this month" expands into the actual list of transactions that made up that category, with dates and merchants. A debt payoff projection expands into the month-by-month table: starting balance, interest, payment, remaining. When the agent compares two strategies — paying the highest-interest card first versus the smallest balance first — it shows both tables side by side, not just a verdict.
+
+```
+"Paying card A first saves you more in interest."
+
+            ▼ tap "show the math"
+
+  strategy          months to debt-free    total interest
+  ───────────────   ───────────────────    ──────────────
+  highest APR first        computed              computed
+  smallest balance         computed              computed
+
+  difference: computed, from the two rows above
+  assumptions: same total monthly payment, no new charges,
+               current APRs held constant
+```
+
+The assumptions line matters as much as the numbers. Every projection is a model of the future, and the user deserves to know what it assumed. "No new charges" is a big assumption for someone whose car might break down next month. Saying it out loud turns a prediction into an honest scenario.
+
+Showing the math also changed something I did not expect: it made people engage more, not less. When users can see the derivation, they start correcting it. "That restaurant charge was actually a work dinner I got reimbursed for." That correction makes the next month's facts better, and it means the user is thinking with the tool rather than just receiving from it.
+
+## 4. Insight Is Not Advice
+
+There is a line in personal finance that I think about constantly, and I want to be careful here because I am an engineer, not a licensed financial professional, and BudgetCopilot is a tool, not an advisor.
+
+**Insight** describes what happened and what the options cost. "Your delivery spending went up compared to last month." "If you put the same monthly amount toward card A first, here is the projected difference in interest." "This subscription has charged you every month and I do not see related activity — is it still useful to you?"
+
+**Advice** tells someone what to do with their life. "Cancel that." "Stop eating out." "Put your savings into this." "You should not have bought that."
+
+The difference is not just legal caution. It is respect. The agent sees transactions. It does not see that the delivery spending went up because a parent was in the hospital, or that the "unused" subscription is the one thing keeping someone sane, or that the person has decided, with full information, that paying the small card first is worth the extra interest because the motivation of closing an account is real. The snowball method exists precisely because humans are not spreadsheets.
+
+So the agent's language is shaped to stay on the insight side:
+
+```
+advice (avoid):    "You should cancel your streaming subscriptions."
+
+insight (prefer):  "You have three streaming subscriptions totaling a
+                    computed amount per month. If you wanted to free up
+                    money for card A, this is one of the larger
+                    flexible categories. Want to see what changes if
+                    you drop one?"
+```
+
+The second version gives the person the facts, connects them to the goal they already set, and offers a scenario. The decision stays with them. When users explicitly ask "what should I do?", the agent still frames the answer as options with tradeoffs, and for anything involving investments, taxes, or legal questions, it says plainly that this is outside what it can responsibly answer and suggests talking to a qualified professional. That is the same honest-refusal pattern I wrote about in [when models should say "I don't know"](/blog/when-models-should-say-i-dont-know), and it matters even more when the topic is someone's rent.
+
+<Callout type="info" title="The agent cannot see the whole life">
+Transactions tell you what happened, not why. A finance agent that jumps to advice is pretending to know context it does not have. Describe, quantify, offer scenarios, and let the person with the full picture make the call.
+</Callout>
+
+No judgment is part of this too. Debt carries shame, and people already feel it. An agent that moralizes about a purchase is an agent people stop opening. The tone I aim for is a calm friend who is good with spreadsheets: clear, specific, never scolding.
+
+## 5. Transaction Data Is the Most Intimate Data You Will Hold
+
+I spend my days at TheGreyMatter.ai working on platform security — envelope encryption for documents, field-level encryption for PII, audit logs on every mutation. I spend my nights, in my PhD research, thinking about clinical data. And I am convinced that a bank transaction feed is about as intimate as a medical record.
+
+Think about what a few months of transactions reveal. Where someone lives and works. When they go to the pharmacy and which one. Whether they gamble, drink, give to a church, send money home to family abroad, pay a lawyer, visit a clinic. Transactions are a diary written by a card reader.
+
+So the data handling in BudgetCopilot follows a few rules:
+
+- **Minimize what the model sees.** The model gets computed facts and the specific transactions needed to explain them, not the full raw history. Account numbers, card numbers, and anything that looks like an identifier are stripped before any prompt is built.
+- **Use the aggregator's read-only scope.** Bank connections go through an aggregator with the narrowest permissions available. There is no write scope to accidentally use.
+- **No training on user data.** Model providers are configured for zero retention where available, and user transactions are never used to tune anything.
+- **Deletion actually deletes.** When someone disconnects an account or closes their profile, their transactions and derived facts go with it, not into an archive "just in case."
+- **Log the access, not the content.** Every time the system reads transactions, that access is logged. The logs record what was read and why, not the transactions themselves.
+
+None of this is exotic. It is the same discipline I apply to clinical systems and enterprise platforms, and a personal finance tool deserves it just as much, maybe more, because the people using it often have the least margin to recover from a leak.
+
+## What the Agent Is Actually For
+
+After all those "nevers," it is fair to ask what is left. The answer is: almost everything that actually helped me.
+
+The agent is excellent at turning a messy month into a clear story. It categorizes transactions and learns from corrections. It notices the subscription that crept up in price, the category that drifted, the week that went sideways. It explains a payoff plan in plain language and makes the tradeoffs visible. It sends a gentle nudge when a due date is coming. It celebrates when a card hits zero.
+
+That last part sounds small. It is not. When I was in the worst of it, what I needed most was not a robot moving money around. It was clarity, a plan I understood, and something that noticed when I made progress. A humble agent can give all three without ever touching the money.
+
+## The Throughline
+
+If I had to compress BudgetCopilot's design into one sentence: **let code be right about the numbers, let the model be kind about the story, and let the human own every decision.**
+
+Deterministic arithmetic outside the model. Math one tap away. Read-only access to accounts. Insight over advice. Transaction data treated like the diary it is. None of these make for a flashy demo. All of them make for a tool someone can trust with the thing they are most anxious about.
+
+I built it because I needed it. The humility is what makes it safe to share.
+
+---
+
+*If you are building an AI product that touches money — or any data where a confident wrong answer has a real cost — and want a second pair of eyes on where the model ends and the code begins, [reach out](/contact). I have made the mistakes already, at my own kitchen table.*

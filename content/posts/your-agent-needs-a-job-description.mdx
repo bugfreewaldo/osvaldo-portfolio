@@ -1,0 +1,232 @@
+---
+title: "Your Agent Needs a Job Description, Not a Personality"
+description: "Agents fail when their scope is 'be helpful.' What changed for me was writing a literal job description for each agent at TheGreyMatter.ai: The Fixer, Vector_10, and TheHacker. Responsibilities, tools, the things it must never do, who it escalates to, and how its performance gets reviewed. Here is the charter format I use, and why it ends up in code, not just in the prompt."
+date: 2026-06-23
+published: true
+category: "AI Engineering"
+tags: ["AI Agents", "Agent Design", "Guardrails", "Evals", "TheGreyMatter"]
+author: "Osvaldo Restrepo"
+tldr: "Most agent failures I have debugged were not model failures. They were scope failures: an agent told to 'be helpful' will eventually be helpful in a direction nobody asked for. The fix that worked for me was boring and old-fashioned: write each agent a real job description. For every agent on the GreyMatter platform, including The Fixer (compliance audit remediation), Vector_10 (reasoning over the 9-vector ontology), and TheHacker (scanning our own systems), I now write a charter that names its single responsibility, the exact tools it holds, what it must never do, who it escalates to, and how its work is reviewed. The charter then compiles into three things: the system prompt, the tool allowlist enforced in code, and the eval suite. A personality is something you describe. A job is something you can audit."
+faqs:
+  - question: "Isn't a detailed system prompt the same thing as an agent charter?"
+    answer: "No. A system prompt is one output of the charter, and the weakest one, because the model can be talked out of it. The charter also produces a tool allowlist enforced in code, a set of hard 'never' rules checked outside the model, an escalation path wired into the runtime, and an eval suite that reviews the agent's performance. If the only place your agent's limits live is the prompt, you have written a suggestion, not a job description."
+  - question: "How narrow should an agent's responsibility be?"
+    answer: "Narrow enough that you can write it in one sentence without the word 'and' doing heavy lifting, and narrow enough that a reviewer can say whether a given run was in scope or not. If two people on your team would disagree about whether an action was part of the agent's job, the scope is too vague. When an agent needs a second responsibility, that is usually a second agent with its own charter, not a longer prompt."
+  - question: "How do you review an agent's performance over time?"
+    answer: "The same way you would review a new hire on probation: against the responsibilities in the charter, with real examples. Each charter names an eval set built from real cases, a sample of production runs that a human reads every review cycle, and the signals that trigger an early review, like an escalation rate that suddenly drops to zero or a tool call that was blocked by the allowlist. The review results feed back into the charter itself."
+relatedPosts: ["building-ai-agents-production", "eval-set-is-the-spec", "security-agent-scanning-your-own-code"]
+---
+
+The first version of The Fixer had a system prompt that started with "You are a helpful compliance assistant." I wrote that sentence. I was proud of how clean it looked.
+
+The Fixer's real job, the one I had in my head, was narrow: take a finding from a compliance audit and propose the remediation. A missing access review, an undocumented retention policy, a control without evidence. Read the finding, propose the fix, hand it to a human.
+
+In one of the first test runs, I gave it a finding about a control with incomplete evidence. It did propose a remediation. It also rewrote the finding's severity from "high" to "medium" because, in its words, the gap "appeared to be partially mitigated." It drafted a note to the control owner. And it suggested an edit to a policy document that had nothing to do with the finding, because it had noticed some inconsistent wording along the way.
+
+Every one of those actions was, in a sense, helpful. None of them was its job. And the severity change was the kind of thing that, if it had slipped through unreviewed, would have quietly made an audit look better than it was.
+
+The model was not broken. My scope was. "Be helpful" is not a scope. It is a personality. And an agent with a personality and no job description will eventually be helpful in a direction you never authorized.
+
+## Personalities Don't Have Boundaries
+
+Here is the pattern I keep seeing, in my own work and in agent systems other people show me. The system prompt describes *who the agent is*: helpful, thorough, careful, expert. It rarely describes *what the agent is for*, what it is not for, and what happens when it reaches the edge.
+
+That works fine in a chat window, where a human reads every turn and the cost of a detour is a few wasted seconds. It falls apart the moment the agent holds tools, runs in a loop, and acts on data that matters. I have written about the mechanics of those loops in [building AI agents for production](/blog/building-ai-agents-production); this post is about the thing that sits above the loop and decides what the loop is allowed to want.
+
+A good employee does not have unlimited scope just because they are smart and motivated. Actually, the smarter and more motivated they are, the more a clear job description matters, because they will find work to do. Agents are the same. A capable model with a vague mandate is not a safe model. It is an energetic one.
+
+<Callout type="warning" title="Capability makes vague scope worse, not better">
+A weak model with a vague scope fails loudly and you notice. A strong model with a vague scope succeeds at things you did not ask for, quietly, and you notice later. The better the model gets, the more the job description matters.
+</Callout>
+
+## So I Started Writing Actual Job Descriptions
+
+After The Fixer's enthusiastic first week, I stopped writing system prompts first. Now every agent on the GreyMatter platform gets a charter before it gets a prompt. The format is stolen, shamelessly, from how a decent hiring manager writes a role:
+
+1. **Responsibility.** One sentence. What this agent is for.
+2. **Tools.** The exact capabilities it holds. Not categories. Names.
+3. **Never.** The actions it must not take, even if they would help.
+4. **Escalation.** Who it reports to, and under what conditions it stops and hands off.
+5. **Performance review.** How we decide whether it is doing the job well.
+
+Here is a trimmed version of The Fixer's charter, roughly as it lives in the repo:
+
+```yaml
+agent: the-fixer
+version: 3
+
+responsibility: >
+  Given one compliance audit finding, propose a remediation plan
+  with the evidence required to close it. Proposals only.
+
+inputs:
+  - one audit finding (id, control, severity, evidence gaps)
+  - the control's current documentation (read-only)
+
+tools:
+  - findings.read          # read the assigned finding only
+  - controls.read          # read control docs and evidence index
+  - evidence.search        # search existing evidence for the control
+  - remediation.propose    # write a DRAFT plan, status = pending_review
+
+never:
+  - change a finding's severity, status, or owner
+  - edit policy or control documents directly
+  - contact people (no email, no messages, no tickets assigned to humans)
+  - act on any finding other than the one assigned
+  - mark anything as resolved
+
+escalate_to: compliance-reviewer (human)
+escalate_when:
+  - the finding looks misclassified (report it, do not fix it)
+  - remediation requires a policy change
+  - evidence is contradictory or missing entirely
+  - confidence in the plan is low
+
+performance_review:
+  eval_set: evals/the-fixer/        # real findings, reviewed plans
+  human_sample: weekly read of a sample of production proposals
+  watch:
+    - escalation rate (zero is a red flag, not a win)
+    - blocked tool calls (any is a red flag)
+    - reviewer edit distance on accepted proposals
+```
+
+Notice what that charter does to the original failure. Severity change: explicitly forbidden, and also not possible, because there is no tool that writes severity. The note to the control owner: forbidden, and no messaging tool exists. The unrelated policy edit: out of scope twice over. The observation that the finding might be misclassified, which was actually a useful instinct, now has a home: it becomes an escalation, not an action.
+
+That last part matters. The charter does not make the agent dumber. It tells the agent where to put the things it notices that are not its job.
+
+## The Three Agents, Three Jobs
+
+The charter format really proved itself once I had more than one agent, because the hardest bugs in multi-agent systems are scope overlaps. Two agents that both think something is their job is worse than one agent that thinks nothing is.
+
+Here is how the three main agents on the platform divide the world, in one line each:
+
+```
+┌──────────────┬──────────────────────────────────┬──────────────────────────────┐
+│ agent        │ responsibility (one sentence)    │ must never                   │
+├──────────────┼──────────────────────────────────┼──────────────────────────────┤
+│ The Fixer    │ propose remediation for one      │ change findings, edit docs,  │
+│              │ compliance audit finding         │ contact people, resolve      │
+├──────────────┼──────────────────────────────────┼──────────────────────────────┤
+│ Vector_10    │ reason over a company's data     │ invent scores, write to the  │
+│              │ through the 9-vector ontology    │ ontology, answer outside it  │
+├──────────────┼──────────────────────────────────┼──────────────────────────────┤
+│ TheHacker    │ scan OUR systems for security    │ touch anything not on the    │
+│              │ weaknesses and report them       │ target list, exploit, patch  │
+└──────────────┴──────────────────────────────────┴──────────────────────────────┘
+```
+
+**Vector_10** is the one people most want to expand. It reasons over a company's data through the 9-vector ontology, which makes it feel like a general strategy advisor, and every demo ends with someone asking "can it also just tell us what to do?" Its charter says no, explicitly. It explains where a company sits on the ontology and why, citing the data it used. It does not produce scores the underlying data does not support, it does not write back into the ontology, and when a question falls outside the vectors, it says so instead of improvising an answer that sounds ontological. That refusal is in the charter as a responsibility, not as a limitation.
+
+**TheHacker** is the one where the "never" list is the whole point. An agent whose job is finding vulnerabilities is, by construction, an agent that knows how to look for ways in. Its charter is the narrowest of the three: a fixed list of targets, all ours. Scan, verify the finding is real, report with reproduction steps, stop. It does not exploit beyond what is needed to confirm a finding, it does not patch, and it does not decide that a neighboring system "looks related" and wander over. I will write more about the specifics in a post on [running a security agent against your own code](/blog/security-agent-scanning-your-own-code), but the charter is what made me comfortable turning it on at all.
+
+<Callout type="tip" title="Scope overlap is the multi-agent bug">
+When you have several agents, write their responsibilities next to each other and look for overlaps and gaps. Every overlap is a future argument between two agents. Every gap is a place where a user's request will land on whichever agent is most eager, which is never the one you would choose.
+</Callout>
+
+## The Charter Is Not the Prompt
+
+This is the part that took me longest to learn, and it is the part I would underline if I could only keep one paragraph.
+
+If the charter only becomes a system prompt, you have written a very well-organized suggestion. Models follow instructions well, but "well" is not "always," and a sufficiently weird input, a confusing tool result, or a prompt injection buried in a document can talk an agent out of almost anything you only *asked* it to do.
+
+So the charter compiles into three artifacts, and only one of them is the prompt:
+
+```
+                    ┌─────────────────────┐
+                    │   agent charter     │
+                    │   (yaml, in repo)   │
+                    └──────────┬──────────┘
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+ ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+ │ system prompt   │  │ runtime policy  │  │ eval suite      │
+ │                 │  │                 │  │                 │
+ │ explains the    │  │ tool allowlist  │  │ real cases per  │
+ │ job to the      │  │ + never-rules   │  │ responsibility  │
+ │ model           │  │ checked in code │  │ + escalations   │
+ │                 │  │ + escalation    │  │ + never-cases   │
+ │ (persuasion)    │  │ (enforcement)   │  │ (review)        │
+ └─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+The runtime policy is the one that actually holds the line. Here is the shape of the check that sits between the model and every tool call, simplified:
+
+```typescript
+type Charter = {
+  agent: string;
+  tools: string[];
+  scope: { resourceIds: string[] };
+};
+
+type ToolCall = { name: string; args: Record<string, unknown> };
+
+export function authorizeToolCall(charter: Charter, call: ToolCall) {
+  // 1. The tool must be named in the charter. No categories, no wildcards.
+  if (!charter.tools.includes(call.name)) {
+    return deny("tool_not_in_charter", call);
+  }
+
+  // 2. The target must be inside the agent's assigned scope.
+  const target = String(call.args.resourceId ?? "");
+  if (target && !charter.scope.resourceIds.includes(target)) {
+    return deny("resource_out_of_scope", call);
+  }
+
+  return { allowed: true as const };
+}
+
+function deny(reason: string, call: ToolCall) {
+  // Blocked calls are never silent. They are logged and they surface
+  // in the agent's performance review.
+  auditLog.write({ event: "agent_tool_denied", reason, tool: call.name });
+  return { allowed: false as const, reason };
+}
+```
+
+Nothing clever. The important design choice is that the model never sees tools outside its charter in the first place, and if it somehow tries to call one anyway, the attempt is logged as an event someone will read. A blocked call is not an error to retry. It is a performance review item.
+
+The "never" list gets the same treatment where it can. The Fixer cannot change severity because no tool it holds can write severity. TheHacker cannot leave its target list because the target list is the scope check. Where a "never" cannot be enforced structurally, it becomes an eval case instead, so we at least know if it is being violated. If a rule lives only in the prompt, I treat it as untested.
+
+## Escalation Is a Responsibility, Not a Failure
+
+Every charter has an escalation section, and it names a person or a role, not "the user." This was a real change in how I thought about agents.
+
+In the early days, I measured agents by how often they completed the task without help. That sounds right and is quietly wrong, for the same reason it is wrong for a new employee. The new hire who never asks a question is not the best one. It is the one you should worry about.
+
+So escalation is written in the charter as part of the job. The Fixer is *supposed* to hand off a finding it thinks is misclassified. Vector_10 is *supposed* to say "this is outside the ontology" instead of improvising. TheHacker is *supposed* to stop and report when it finds something it is not sure how to confirm safely. Those handoffs are success cases in the eval suite, not failures.
+
+And like I wrote about refusal in clinical AI, the rate matters in both directions. If an agent's escalation rate suddenly drops to zero, that is not a sign it got smarter. It is usually a sign it started confidently doing things it used to correctly hand off.
+
+## Performance Reviews, Literally
+
+The last section of the charter is the one most teams skip, and it is the one that keeps the other four honest.
+
+Each agent has an eval set built from real cases, organized by the responsibilities and "nevers" in its charter. For The Fixer, that means real findings with plans a human reviewer accepted, findings that should have been escalated, and findings designed to tempt it into changing a severity. I have argued before that [the eval set is the spec](/blog/eval-set-is-the-spec); for agents, the charter is what tells you what the eval set needs to contain.
+
+On top of the evals, someone reads a sample of real production runs every week. Not a dashboard. The actual runs. That read is where most charter changes come from: a new "never" because the agent found a creative detour, a narrower responsibility because two agents kept overlapping, a new escalation trigger because a reviewer kept fixing the same kind of mistake.
+
+The charter has a version number for exactly that reason. It is a living document, reviewed like a role description that evolves as the team learns what the job actually is.
+
+<Callout type="info" title="Review the agent like a new hire">
+Ask the same questions you would ask about a person three months into a role. Is it doing the job it was hired for? Is it doing things it was not hired for? Does it ask for help at the right moments? Has anything surprised you? If you cannot answer those from your evals and run samples, you do not yet know how your agent is performing.
+</Callout>
+
+## What Changed in Practice
+
+I do not want to oversell this. Writing charters did not make the agents brilliant. It made them legible.
+
+When something goes wrong now, the first question is not "why did the model do that?" It is "was that in the charter?" If yes, the charter or the tool was wrong and we fix it. If no, the enforcement or the eval was missing and we fix that. Either way the conversation is about a document a whole team can read, not about vibes in a prompt.
+
+It also changed product conversations. When a stakeholder asks "can Vector_10 also do X?", the answer is no longer a debate about what the model is capable of. It is a question about whether X belongs in this job or in a new one. Most of the time, it is a new one.
+
+## The Throughline
+
+If I had to compress it into one sentence: **an agent without a job description will invent one, and you will not like what it writes.**
+
+Give every agent one responsibility, a named set of tools, an explicit list of things it must never do, a real person to escalate to, and a performance review based on real work. Then make sure those words live in code and evals, not only in the prompt. The personality can stay. It just should not be the only thing you hired.
+
+---
+
+*If you are building agents and they keep doing helpful things nobody asked for, [reach out](/contact). I am happy to look at your charters, or help you write the first one. It is usually a shorter document than people expect, and a more useful one.*

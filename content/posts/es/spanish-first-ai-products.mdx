@@ -1,0 +1,201 @@
+---
+title: "Productos de IA en Español Primero: Notas desde Panamá"
+description: "La mayoría de los modelos son nativos en inglés, y la mayoría de los productos de IA tratan el español como una capa de traducción. Construir desde Panamá me enseñó otra cosa: la variación regional es real, tú versus usted es una decisión de producto, los usuarios cambian de idioma a mitad de oración, el español cuesta más tokens, el reconocimiento de voz tropieza con los acentos, y los evals escritos en inglés van a certificar felizmente un producto en español que le suena raro a cualquier hablante nativo."
+date: 2026-09-01
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "Español", "Localización", "Agentes de Voz", "Evals"]
+author: "Osvaldo Restrepo"
+translationOf: "spanish-first-ai-products"
+tldr: "El español no es una sola configuración de idioma. Un producto que atiende a Panamá, México y España está atendiendo a tres audiencias con palabras distintas, niveles de formalidad distintos, y cosas distintas que suenan groseras. La mayoría de los modelos son nativos en inglés y van a caer por defecto en un español neutro, ligeramente extranjero, a menos que seas explícito sobre la región y el registro. Los usuarios aquí cambian entre español e inglés a mitad de oración, y el producto debería seguirlos en vez de corregirlos. El español además tiende a costar más tokens que el inglés para el mismo contenido, lo cual importa a volumen. La voz agrega otra capa: un reconocimiento de voz que maneja un acento de libro de texto puede tropezar con uno caribeño. El arreglo no es un mejor paso de traducción. Es tratar el español como un producto de primera clase: prompts y ejemplos nativos, un perfil de locale explícito, y un eval set escrito y calificado en español por gente que lo habla."
+faqs:
+  - question: "¿Los system prompts deberían escribirse en español o en inglés con una instrucción de responder en español?"
+    answer: "Las instrucciones muchas veces pueden quedarse en inglés sin mucha pérdida, porque los modelos siguen instrucciones en inglés de forma muy confiable. Lo que sí tiene que ser español nativo son los ejemplos, las referencias de tono, y cualquier cosa que el modelo probablemente vaya a copiar. Si tus ejemplos few-shot son traducidos, la salida va a sonar traducida. La respuesta honesta es probar ambas versiones contra un eval set en español y dejar que los resultados decidan para tu tarea."
+  - question: "¿El español neutro es suficiente para un producto latinoamericano?"
+    answer: "El español neutro es un default razonable para contenido escrito, y es mucho mejor que sonar accidentalmente como España ante un usuario mexicano. Pero neutro es un piso, no una meta. Para cualquier cosa conversacional, especialmente voz, los usuarios notan cuando el producto no suena como si fuera de ningún lado. Elige una región y un registro por defecto de forma explícita, hazlo configurable, y asegúrate de que el modelo nunca use palabras que son ofensivas en alguno de tus mercados."
+  - question: "¿Cómo evalúas un producto de IA en español si la mayor parte del equipo no lo habla?"
+    answer: "No puedes del todo, y ese es el punto. Los chequeos automáticos pueden atrapar el idioma de la respuesta, la consistencia del registro y los términos regionales prohibidos. Pero alguien que hable el idioma de forma nativa, idealmente de la región objetivo, tiene que escribir y calificar una porción significativa del eval set. Un equipo angloparlante calificando salidas en español mayormente mide si parece español, no si suena bien."
+relatedPosts: ["ai-engineering-panama", "shipping-ai-to-non-technical-users", "voice-agents-turn-taking"]
+---
+
+El primer prototipo de voz en español que construí en Shining Image era técnicamente perfecto. Entendía la pregunta, encontraba el espacio disponible, confirmaba la dirección y agendaba la cita. Una persona hispanohablante en Texas lo probó por nosotros, y cuando colgó se rió y dijo: "Suena como una película doblada."
+
+Tenía razón. El agente hablaba un español cuidadoso, neutro, ligeramente formal, del tipo que escuchas en un documental narrado para todo un continente a la vez. Usaba *usted* con un tono que se sentía más como un banco que como un negocio local de limpieza. Decía las cosas de una forma en que nadie que ella conociera las diría. Nada de lo que decía estaba mal. Todo era un poquito extranjero.
+
+He vivido con ese comentario por años ya, construyendo desde la Ciudad de Panamá. La mayoría de los productos de IA que veo tratan el español como una configuración: construye en inglés, agrega un paso de traducción, envía a "LATAM." Eso funciona más o menos tan bien como esperarías. Estas son las notas que me hubiera gustado tener antes de ese primer prototipo.
+
+## 1. El Modelo Es un Hablante Nativo de Inglés que Aprendió Español Muy Bien
+
+Empieza con el encuadre honesto. La mayoría de los modelos de frontera se entrenan con mucho más inglés que español. Son muy buenos en español, de verdad, pero el inglés es su casa. Eso se nota en detalles pequeños:
+
+- Estructuras de oración que son gramaticales pero tienen forma de inglés.
+- Calcos literales: *"aplicar para un trabajo"* en vez de *"solicitar un empleo,"* *"hace sentido"* en vez de *"tiene sentido."*
+- Una tendencia hacia un registro sin lugar, ligeramente formal, cuando nada le dice lo contrario.
+- Menos profundidad en vocabulario regional, especialmente para países pequeños como Panamá.
+
+Nada de esto es un problema insalvable. Solo significa que el modelo no va a tomar las decisiones de producto en español por ti. Si no especificas, elige un default, y su default es "español escrito por alguien cuidadoso que no es de aquí."
+
+<Callout type="info" title="El español por defecto no es el español de nadie">
+Cuando no le dices a un modelo qué español quieres, te da el promedio más seguro. Ese promedio está bien para un artículo de ayuda. En una conversación, se lee distante, y en una llamada de voz suena como una película doblada. Decide la región y el registro a propósito.
+</Callout>
+
+## 2. La Región Es una Decisión de Producto, No un Detalle de Traducción
+
+El español de Panamá, México y España comparte una gramática y diverge en cien formas pequeñas e importantes. Algunas que les pegan a los productos de IA:
+
+```
+concepto        Panamá           México           España
+─────────────   ──────────────   ──────────────   ──────────────
+"ustedes"       ustedes          ustedes          vosotros
+"carro"         carro            carro / coche    coche
+"computadora"   computadora      computadora      ordenador
+"genial"        chévere          padre / chido    guay / genial
+"estacionar"    parquear         estacionar       aparcar
+```
+
+Algunas de estas son solo sabor. Otras no. Hay palabras cotidianas del español que son perfectamente inocentes en un país y vulgares en otro. Un modelo que cae por defecto en el vocabulario casual de España de vez en cuando va a decir algo que hace que un usuario mexicano haga una mueca, y no va a tener idea de que lo hizo.
+
+Así que el locale no es un string como `es`. Es un perfil:
+
+```typescript
+type SpanishLocaleProfile = {
+  region: "PA" | "MX" | "CO" | "ES" | "neutral-latam";
+  register: "tu" | "usted";
+  pluralYou: "ustedes" | "vosotros";
+  preferredTerms: Record<string, string>;   // "computer" -> "computadora"
+  bannedTerms: string[];                     // palabras que nunca usar en este mercado
+  allowEnglishLoanwords: boolean;            // "el meeting", "el link"
+};
+
+const panamaConsumer: SpanishLocaleProfile = {
+  region: "PA",
+  register: "tu",
+  pluralYou: "ustedes",
+  preferredTerms: { computer: "computadora", car: "carro" },
+  bannedTerms: [],
+  allowEnglishLoanwords: true,
+};
+```
+
+Ese perfil entra en el system prompt como instrucciones explícitas, y también alimenta los chequeos automáticos del eval. Si el producto atiende varios mercados, el perfil se selecciona por tenant o por usuario, no se fija una sola vez en el código.
+
+## 3. Tú vs. Usted Es una Decisión de Tono, y Tiene que Ser Consistente
+
+En inglés, "you" es "you." En español, elegir *tú* o *usted* dice algo sobre la relación antes de que la oración siquiera arranque. *Usted* puede significar respeto, distancia o formalidad. *Tú* puede significar calidez, cercanía o, para algunos usuarios, falta de respeto.
+
+No hay una respuesta correcta universal. Una app de finanzas para jóvenes profesionales en Panamá probablemente quiere *tú*. Un producto usado por dueños de negocio mayores, o cualquier cosa clínica, probablemente quiere *usted*, al menos al principio. Algunos productos reflejan al usuario: si escribe con *tú*, el producto lo sigue.
+
+Lo que nunca es aceptable es mezclarlos. Los modelos se desvían. Una respuesta que empieza con *usted* y termina con *"¿quieres que te ayude con algo más?"* se lee descuidada en el mejor caso y confundida en el peor. Lo reviso explícitamente:
+
+```python
+import re
+
+TU_MARKERS = [r"\bquieres\b", r"\bpuedes\b", r"\btienes\b", r"\bte\b", r"\btu\b"]
+USTED_MARKERS = [r"\bdesea\b", r"\bpuede usted\b", r"\btiene usted\b", r"\ble\b", r"\bsu\b"]
+
+def register_consistency(text: str, expected: str) -> bool:
+    """Heurística burda: marca respuestas que usan marcadores del otro registro."""
+    lowered = text.lower()
+    other = USTED_MARKERS if expected == "tu" else TU_MARKERS
+    hits = sum(1 for pattern in other if re.search(pattern, lowered))
+    return hits == 0
+```
+
+Es una heurística burda, y se equivoca (*le* y *su* aparecen en muchísimas oraciones con *tú* que hablan de una tercera persona). Así que marca casos para revisión humana en vez de reprobarlos automáticamente. Aun burda, atrapa la deriva que nadie nota en un demo y todos notan en la segunda semana.
+
+## 4. Los Usuarios Cambian de Idioma, y el Producto Debería Seguirlos
+
+En Panamá, mucha gente se mueve entre español e inglés dentro de la misma oración. *"Mándame el link del meeting antes del lunch."* Eso no es un error. Es como habla la gente, especialmente en negocios, tecnología, y en cualquier lugar cerca del Canal y del sector bancario.
+
+El mal patrón es un producto que "corrige" al usuario, respondiendo en un español rígido con cada préstamo reemplazado por un equivalente de diccionario, o peor, cambiándose completamente al inglés porque vio tres palabras en inglés. Ambas cosas se sienten como si el producto no estuviera escuchando.
+
+Mi regla es simple: responde en el idioma dominante del usuario, conserva los préstamos que usó, y no introduzcas nuevos que no usó. Si alguien escribe mayormente en español con "meeting" y "link," la respuesta va en español y dice "meeting" y "link." Si se cambia completamente al inglés a mitad de conversación, síguelo.
+
+<Callout type="tip" title="Refleja, no corrijas">
+El cambio de idioma es una señal sobre quién es tu usuario, no un error que arreglar. Responde en su idioma dominante, reutiliza sus préstamos, y nunca le "traduzcas" a un usuario sus propias palabras. A nadie le gusta que un software lo corrija.
+</Callout>
+
+## 5. El Español Cuesta Más Tokens
+
+Este es silencioso y aparece en la factura. Los tokenizadores generalmente están afinados para inglés, y el texto en español usualmente necesita notablemente más tokens que el texto en inglés que lleva el mismo significado. Palabras más largas, más flexión, tildes, y patrones de subpalabras menos comunes, todo suma.
+
+Para una sola solicitud, a nadie le importa. A volumen, importa en tres lugares:
+
+```
+dónde aparece el impuesto de tokens del español
+─────────────────────────────────────────────────────────────
+costo       misma función, mismo tráfico, factura más alta por solicitud
+contexto    los documentos largos en español llenan la ventana antes
+latencia    más tokens de salida significa una espera más larga para terminar
+```
+
+Trato el contexto como un presupuesto justamente por esta razón, y he escrito sobre eso en [las ventanas de contexto son un presupuesto](/es/blog/context-windows-are-a-budget). Cuando dimensiones una función, estímala con muestras en español, no con el prototipo en inglés. De lo contrario, tus márgenes se calcularon en el idioma equivocado.
+
+## 6. La Voz Lo Hace Todo Más Difícil
+
+El texto perdona. La voz no.
+
+Los modelos de voz a texto han avanzado mucho, y Whisper manejaba el español muchísimo mejor que lo que teníamos antes. Pero el "español" en un dataset de voz tiende a inclinarse hacia ciertos acentos, y el español caribeño, incluyendo mucho del habla panameña, hace cosas que confunden a los reconocedores: la *s* final que se cae o se aspira, terminaciones recortadas, habla rápida, y palabras en inglés soltadas en medio de las oraciones.
+
+En los agentes de voz de Shining Image, las fallas que vi no eran dramáticas. Eran pequeñas y caras: un nombre de calle mal escuchado, un número tragado, un "sí" que sonaba como una vacilación. Cada una convertía una reserva confiada en una reserva equivocada. Los arreglos fueron mayormente arreglos de producto:
+
+- **Lee de vuelta todo lo que compromete.** Direcciones, fechas, números de teléfono. Siempre confirma en voz alta antes de actuar. Escribí más sobre este tipo de ritmo en [agentes de voz y toma de turnos](/es/blog/voice-agents-turn-taking).
+- **Prefiere respuestas estructuradas a abiertas** para los campos críticos. "¿Es el martes o el miércoles?" le gana a "¿Qué día le conviene?"
+- **Prueba con acentos reales.** Grabaciones de personas que de verdad suenan como tus clientes, no una muestra pulida de estudio.
+- **Haz que el traspaso a un humano sea fácil y temprano.** Alguien que se está repitiendo por tercera vez debería escuchar una oferta para dejar un mensaje, no un cuarto intento.
+
+<Callout type="warning" title="Tu eval de STT necesita los acentos de tus clientes">
+Un reconocedor de voz que sale bien en pruebas con español claro y estándar todavía puede batallar con la forma específica en que hablan tus usuarios. Si tu eval de voz no incluye grabaciones que suenan como tus clientes reales, con su velocidad, sus acentos y su ruido de fondo, estás evaluando el producto equivocado.
+</Callout>
+
+## 7. Prompts Traducidos vs. Prompts Nativos
+
+El atajo más común que veo: escribir el prompt en inglés, probarlo en inglés, luego traducirlo al español (muchas veces con el mismo modelo) y enviarlo. La salida usualmente es gramatical y casi siempre está ligeramente desafinada.
+
+Lo que hago ahora es dividir el prompt en dos capas:
+
+```
+capa                      idioma          por qué
+──────────────────────    ─────────────   ─────────────────────────────────
+instrucciones / reglas    inglés está ok  los modelos siguen instrucciones en
+                                          inglés de forma muy confiable
+perfil de locale          explícito       región, registro, términos, préstamos
+ejemplos few-shot         español nativo  el modelo copia ejemplos; ejemplos
+                                          traducidos producen salida traducida
+referencias de tono       español nativo  escritas por un hablante nativo de
+                                          la región objetivo
+```
+
+Los ejemplos son la parte que más importa. Un modelo imita sus ejemplos mucho más de cerca de lo que sigue instrucciones abstractas de estilo. Si los ejemplos los escribió un panameño, la salida empieza a sonar como si fuera de algún lado. Si pasaron por un traductor, la salida también suena así.
+
+Esta no es una regla universal, y la sostengo con ligereza. Para algunas tareas, un prompt completamente en español funciona mejor. Por eso la decisión sale del eval, no de mi preferencia.
+
+## 8. El Eval También Tiene que Estar en Español
+
+Todo lo anterior se cae si el eval set está en inglés.
+
+Lo he visto más de una vez: un equipo construye un producto en español, escribe los casos de evaluación en inglés porque es lo que habla el equipo, traduce las entradas, y califica las salidas con una rúbrica en inglés. Los puntajes se ven geniales. Los hablantes nativos que usan el producto piensan que suena robótico. Ambas cosas son ciertas, porque el eval está midiendo si la salida es correcta, no si suena bien.
+
+Un eval set en español necesita:
+
+- **Entradas escritas por hablantes nativos,** incluyendo jerga, errores de tipeo, tildes faltantes y cambios de idioma. Los usuarios reales no escriben *"¿Podría usted indicarme...?"* Escriben *"cuanto cuesta el servicio"* sin tildes y sin signos de pregunta.
+- **Chequeos automáticos** del idioma de la respuesta, la consistencia del registro, los términos regionales prohibidos, y el vocabulario preferido del perfil de locale.
+- **Calificación humana** por alguien de la región objetivo en una porción significativa, enfocada en "¿una persona de aquí diría esto?"
+
+Eso último no se puede saltar. He argumentado que [el eval set es la especificación](/es/blog/eval-set-is-the-spec). Si la especificación está escrita en inglés, el producto va a ser inglés disfrazado.
+
+<Callout type="danger" title="Una rúbrica en inglés va a certificar un producto que suena extranjero">
+Si las personas que escriben y califican tu eval no hablan el idioma objetivo de forma nativa, tus puntajes miden gramática y exactitud, no naturalidad. Esa es exactamente la brecha que los usuarios sienten primero. Paga por calificadores nativos. Es más barato que perder usuarios.
+</Callout>
+
+## El Hilo
+
+Si tuviera que comprimir todo esto en una oración: **el español no es una traducción de tu producto, es una versión de tu producto, y necesita sus propias decisiones.**
+
+Qué región. Qué registro. Qué palabras nunca decir. Cómo seguir a los usuarios que cambian de idioma. Qué le hace el impuesto de tokens a tus márgenes. Cómo maneja el reconocedor la forma en que la gente de aquí habla de verdad. Y un eval escrito y calificado por gente que notaría la diferencia.
+
+La persona que dijo que nuestro agente sonaba como una película doblada me estaba dando la mejor retroalimentación posible. El producto funcionaba. Simplemente no le pertenecía a nadie. Español primero significa construir algo que suene como si le perteneciera a la gente que lo usa.
+
+---
+
+*Si estás construyendo un producto de IA para usuarios hispanohablantes y quieres un segundo par de oídos sobre cómo suena, [contáctame](/contact). Con gusto hablamos de regiones, registro y evals, en el idioma que prefieras.*

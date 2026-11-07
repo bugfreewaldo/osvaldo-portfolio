@@ -1,0 +1,188 @@
+---
+title: "Labeling Is Clinical Work: What My PhD Taught Me About Ground Truth in Medicine"
+description: "In medicine, ground truth is not found, it is decided, usually by tired experts who do not fully agree. Lessons from my PhD research on clinical decision support: why clinicians disagree on labels, why that disagreement is data and not noise, how adjudication works, why labeling deserves clinicians' real time and respect, and how all of it shaped the way I build MILA."
+date: 2026-06-30
+published: true
+category: "Healthcare AI"
+tags: ["Healthcare AI", "Data Labeling", "Clinical Decision Support", "PhD Research", "MILA"]
+author: "Osvaldo Restrepo"
+tldr: "I started my PhD research on clinical decision support thinking labels were a chore to finish before the real work began. The first time two experienced clinicians labeled the same cases and disagreed, I treated it as noise and reached for a majority vote. That was wrong. In medicine, ground truth is a judgment call, and disagreement between clinicians often carries the most important information in the dataset: where the case is genuinely ambiguous, where the guideline is unclear, or where context is missing. Now I keep every rater's label, record why they disagreed, adjudicate instead of averaging, measure agreement before I measure any model, and treat clinicians' labeling time as clinical work that deserves respect. Those habits moved directly into MILA, where the eval set marks disputed cases and the system is never allowed to sound more certain than the clinicians themselves were."
+faqs:
+  - question: "Why not just use majority vote to resolve labeling disagreements?"
+    answer: "Because majority vote throws away exactly the information you most need. When two careful clinicians disagree, it usually means the case is ambiguous, the labeling guideline has a gap, or something in the record is missing. A majority vote hides all of that behind one clean label, and your model then learns to be confident about cases where the experts were not. Adjudication, a structured conversation that produces a final label and a recorded reason, keeps the signal."
+  - question: "What is inter-rater agreement, and why measure it before training a model?"
+    answer: "Inter-rater agreement measures how often independent experts give the same label to the same case, usually adjusted for chance with a statistic like Cohen's kappa. It matters because it sets a rough ceiling on what any model can meaningfully achieve against those labels. If clinicians only moderately agree with each other, a model that appears to beat that agreement is more likely learning quirks of one labeler than learning medicine."
+  - question: "How do you get busy clinicians to spend time labeling data?"
+    answer: "By treating their time as the scarcest resource in the project. Short, focused sessions instead of marathon spreadsheets. Tooling that shows the case the way they would see it clinically. A guideline written with them, not handed to them. Showing them what their labels changed. And crediting the work properly. Clinicians are generous with time when it is respected and stingy, rightly, when it is wasted."
+relatedPosts: ["two-tones-of-wrong-clinical-ai", "eval-set-is-the-spec", "why-i-built-mila"]
+---
+
+Early in my PhD, I built what I thought was a very efficient labeling setup. A spreadsheet. One row per case. A column for the label, a column for notes, a dropdown so nobody could type anything creative. I sent it to two experienced clinicians who had kindly agreed to help, and I blocked out an afternoon to train my first model when the labels came back.
+
+The labels came back. They did not match.
+
+Not completely, not wildly, but enough that the afternoon became a week. My first reaction, and I am not proud of it, was annoyance. I had a clean pipeline, and the humans were introducing noise. I did what a lot of engineers do: I started reading about majority vote and label smoothing, and I scheduled a third clinician as a tie-breaker.
+
+Then I sat down with one of the original two to understand a handful of the cases where they disagreed. In the first one, she explained her reasoning in about thirty seconds. Then she said, almost as an aside: "But I can see why someone would go the other way. It depends what you assume about the patient's baseline, and that is not in the record."
+
+That sentence ended my majority-vote plan. The disagreement was not noise. It was the most honest thing in the dataset.
+
+## Ground Truth in Medicine Is a Decision
+
+In most ML tutorials, ground truth is a fact about the world that you look up. The image contains a cat or it does not. The transaction was fraud or it was not, and eventually the chargeback tells you.
+
+Clinical labels are rarely like that. "Should this case have been flagged for escalation?" "Is this trend concerning?" "Was this a notable event a family should hear about today?" Those are judgments. Experienced, trained, reasonable judgments, made by people who look at the same record and weigh it differently, because medicine is full of cases where reasonable experts weigh things differently.
+
+So in clinical AI, ground truth is not found. It is *decided*, by people, under a guideline, with incomplete information. Which means the labeling process is not a data-entry step before the science. It is part of the science. And, more uncomfortably, it is a kind of clinical work.
+
+<Callout type="info" title="Your model can only be as sure as your labelers were">
+If clinicians disagree on a set of cases, a model trained on a single "true" label for those cases will learn to be confident where the experts were not. That confidence did not come from medicine. It came from your pipeline deleting the disagreement.
+</Callout>
+
+## 1. Keep Every Label, Not Just the Winner
+
+The first change I made was structural, and it is the one I would recommend to anyone building a clinical dataset: never store only the final label. Store every rater's label, who gave it, and why.
+
+Here is roughly the shape my research data moved to:
+
+```python
+from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class RaterLabel:
+    rater_id: str            # pseudonymous, never a name
+    label: str               # e.g. "escalate" | "monitor" | "no_action"
+    confidence: str          # "sure" | "leaning" | "unsure"
+    rationale: str           # one or two sentences, in their words
+    missing_context: Optional[str] = None  # what they wished the record had
+
+@dataclass
+class LabeledCase:
+    case_id: str
+    guideline_version: str
+    rater_labels: list[RaterLabel] = field(default_factory=list)
+    adjudicated_label: Optional[str] = None
+    adjudication_note: Optional[str] = None
+    disputed: bool = False   # true if raters disagreed before adjudication
+```
+
+Three fields in there did more for my research than any model change I made that year.
+
+`confidence` is self-reported, and that is fine. A clinician saying "I am leaning, not sure" is clinical information. `rationale` is what made adjudication possible later, because you cannot reconcile two labels if you do not know the reasoning behind them. And `missing_context` turned out to be gold: it is a list, written by experts, of what the record does not tell you. That list told me more about the limits of any model I could build than any error analysis did.
+
+The `disputed` flag stays on the case forever, even after adjudication. A case that two experts disagreed on is a different kind of case from one they agreed on instantly, and that difference should follow it into training, into evaluation, and into the error analysis.
+
+## 2. Write the Guideline With Clinicians, and Expect It to Change
+
+My first labeling guideline was a paragraph I wrote myself. It was reasonable-sounding and clinically naive, and the disagreements exposed every gap in it.
+
+Some disagreements were genuine clinical ambiguity. But a surprising number were guideline ambiguity: two clinicians reading the same instruction and interpreting it differently. "Flag if concerning" means different things to different specialists. "Notable" depends on whether you are thinking about the clinical team or the family.
+
+So the guideline became a living document, written with the clinicians, versioned, and revised after every round. Every case records which guideline version it was labeled under, because a label under version one and a label under version three are not the same measurement.
+
+```
+round 1 ──▶ label a small batch independently
+              │
+              ▼
+          measure agreement, collect disagreements
+              │
+              ▼
+          discuss disputed cases together
+              │
+       ┌──────┴───────────────────────┐
+       ▼                              ▼
+  genuine clinical               guideline was unclear
+  ambiguity                      or incomplete
+       │                              │
+       ▼                              ▼
+  keep as disputed,             revise guideline,
+  adjudicate, record why        bump version, relabel
+       │                              │
+       └──────────────┬───────────────┘
+                      ▼
+               next round
+```
+
+This loop is slow. It is also the only version of the process that converged. The disagreement rate dropped across rounds, not because anyone was pressured to agree, but because the guideline finally said what we meant. The cases that stayed disputed after the guideline stabilized were the genuinely hard ones, which is exactly the set you want to know about.
+
+## 3. Adjudicate, Don't Average
+
+When raters disagree, there are a few things you can do. You can take a majority vote. You can average into a soft label. Or you can adjudicate: bring the disagreement back to clinicians, discuss the case, and produce a final label along with a written reason.
+
+Soft labels have their place in modeling, and I use them. But for building the reference set I evaluate against, adjudication won every time, for one simple reason: it produces an explanation. A majority vote tells you that two people said A and one said B. Adjudication tells you that the case turns on an assumption about baseline, that the guideline now addresses it, and that the case should stay flagged as disputed.
+
+Adjudication is also where I learned the most about medicine, which is not a small thing for an engineer working in clinical AI. Listening to two experienced clinicians reason through a case they disagree on is the closest thing to a masterclass I got during the whole research process.
+
+<Callout type="tip" title="The adjudication note is the most valuable column">
+A final label without a reason is a number. A final label with a reason is knowledge you can reuse: in the guideline, in the eval set, in error analysis, and in explaining to clinicians why the model behaves the way it does. Always write the note.
+</Callout>
+
+## 4. Measure Agreement Before You Measure the Model
+
+This is the statistical version of the same lesson, and it is the one I wish someone had drilled into me on day one.
+
+Before training anything, measure how much the clinicians agree with each other on independent labels. For two raters, Cohen's kappa is the usual starting point because it adjusts for agreement you would get by chance:
+
+```python
+from sklearn.metrics import cohen_kappa_score
+
+def pairwise_agreement(cases: list[LabeledCase], a: str, b: str) -> float:
+    pairs = []
+    for case in cases:
+        labels = {r.rater_id: r.label for r in case.rater_labels}
+        if a in labels and b in labels:
+            pairs.append((labels[a], labels[b]))
+    if not pairs:
+        raise ValueError("no overlapping cases for these raters")
+    left, right = zip(*pairs)
+    return cohen_kappa_score(left, right)
+```
+
+That number does two jobs. It tells you whether your guideline is working, since agreement should go up across rounds as the guideline improves. And it gives you a rough sense of the ceiling. If experienced clinicians only moderately agree on a label, then a model that appears to match one rater much better than the raters match each other is a warning sign, not a triumph. It probably learned that rater's habits, not the medicine.
+
+I now report agreement right next to model performance, in the same table, every time. A model metric without the human agreement beside it is missing its denominator.
+
+## 5. Labeling Time Is Clinical Time. Respect It.
+
+Here is the part that is less about statistics and more about manners.
+
+The clinicians who labeled data for my research did it on top of their real jobs. Every hour they gave me was an hour not spent with patients, with family, or asleep. My first spreadsheet treated that hour as cheap: long sessions, a tiny dropdown, the record pasted in as an unformatted text blob, no explanation of what any of it was for.
+
+What I changed, slowly, because I learned it slowly:
+
+- **Short sessions.** Small batches someone can finish between other obligations, not a marathon. Fatigue changes labels, and fatigued labels are noise you created yourself.
+- **Show the case the way a clinician reads it.** Structured, in a sensible order, with the information they would look at first actually first. A labeling tool that fights the reader is a source of error.
+- **Make "unsure" a first-class answer.** Forcing a confident label on a case someone is not sure about is asking them to lie for your dataset's convenience.
+- **Close the loop.** Tell them what changed because of their labels: a revised guideline, a model error they caught, a disputed case that turned into a design decision.
+- **Credit the work.** In the research, in conversations, in how you describe the dataset. Labels are expert contributions, not clerical tasks.
+
+None of this is sophisticated. All of it improved label quality more than any technical trick I tried. People who feel respected think harder about their answers.
+
+<Callout type="warning" title="Cheap labels are expensive">
+If your labeling process treats clinicians' time as free, you will get labels that reflect that: rushed, forced into categories that do not fit, without the reasoning you will need later. The cost shows up months afterward as a model that is confidently wrong in ways nobody can explain.
+</Callout>
+
+## What It Taught Me for MILA
+
+When I started building MILA, I carried all of this over almost unchanged, because it turned out the problem was the same one in different clothes.
+
+MILA drafts updates for NICU families, and every draft is reviewed by a nurse before anything reaches a parent. Evaluating those drafts means deciding what a good update looks like. Is this event "notable" enough to mention today? Is this wording reassuring or minimizing? Is this the right level of detail for a frightened parent at night?
+
+Those are judgment calls, and nurses do not always agree on them. One nurse's "worth mentioning" is another's "unnecessary worry." So MILA's evaluation set is built the way my research data was: multiple reviewers on the hard cases, rationales recorded, disputed cases flagged and kept, and a guideline that has been revised several times with the nurses who actually use it. I have written about how [the eval set is the spec](/blog/eval-set-is-the-spec); in a clinical product, the labeling process is how that spec gets written honestly.
+
+The disputed cases also shaped the product directly. When the reference set shows that nurses themselves split on a kind of situation, MILA is not allowed to sound more certain than they were. Those are the places where the draft hedges, flags, or defers, which connects straight to what I wrote about [the tone of being wrong in clinical AI](/blog/two-tones-of-wrong-clinical-ai). Calibration starts in the labels. If the labels erased the doubt, the model never had a chance to learn it.
+
+And the respect part carried over too. Nurses giving feedback on MILA drafts are doing labeling work, whether anyone calls it that or not. Their edits, their rejections, their "I would never say it like that" are the most valuable data the product has. The review screen is designed so that feedback costs them seconds, not minutes, and I tell them what changed because of it.
+
+## The Throughline
+
+If I had to compress all of it into one sentence: **in medicine, a label is a clinical opinion, and the disagreement between opinions is part of the truth you are trying to model.**
+
+Keep every rater's label. Write the guideline with clinicians and let it change. Adjudicate and write down why. Measure their agreement before you brag about your model. And treat the hours they give you as clinical work, because that is what it is.
+
+I started my PhD thinking labeling was the chore before the research. It turned out to be the research.
+
+---
+
+*If you are building a clinical dataset or evaluating a healthcare AI system and the labels feel shakier than the model, [reach out](/contact). It usually means you are looking at the right problem, and it is a much better conversation to have before training than after.*

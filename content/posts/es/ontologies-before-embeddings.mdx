@@ -1,0 +1,202 @@
+---
+title: "Ontologías Antes que Embeddings: Lo que Vector_10 Me Enseñó Sobre Conservar el 'Por Qué'"
+description: "Cuando tu dominio ya tiene un marco de referencia, codifícalo primero como estructura y usa embeddings después para la coincidencia difusa. Lecciones de construir Vector_10, un agente que razona sobre una ontología de negocio de 9 vectores: por qué la búsqueda vectorial pura encuentra texto parecido pero pierde el razonamiento, cómo un grafo pequeño más embeddings le gana a cualquiera de los dos por separado, y cómo se ve GraphRAG cuando el grafo es algo en lo que los expertos ya se pusieron de acuerdo."
+date: 2026-09-22
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "Grafos de Conocimiento", "GraphRAG", "Embeddings", "Vector_10"]
+author: "Osvaldo Restrepo"
+translationOf: "ontologies-before-embeddings"
+tldr: "Los embeddings son excelentes para responder '¿qué texto se parece a esto?' y malos para responder '¿por qué esto pertenece aquí?' Cuando construí Vector_10, un agente que razona sobre una ontología de 9 vectores para evaluar negocios, mi primera versión era búsqueda vectorial pura sobre los documentos del marco. Recuperaba párrafos plausibles de la parte equivocada del marco y no podía explicar sus propias clasificaciones. El arreglo fue codificar la ontología primero como estructura — un grafo pequeño de vectores, dimensiones, indicadores y relaciones explícitas — y usar embeddings solo para el paso difuso de mapear evidencia desordenada del mundo real sobre esa estructura. La recuperación entonces recorre el grafo, así que cada respuesta viene con un camino que la explica. Si los expertos ya se pusieron de acuerdo en cómo se organiza un dominio, no le pidas a un índice vectorial que lo redescubra."
+faqs:
+  - question: "¿Cuándo debería usar un grafo de conocimiento u ontología en vez de búsqueda vectorial simple?"
+    answer: "Cuando tu dominio ya tiene una estructura estable y acordada por expertos — un marco, una taxonomía, una jerarquía regulatoria, una clasificación clínica — y las respuestas que necesitas dependen de relaciones, no solo de similitud. Si los usuarios preguntan '¿por qué?' o '¿qué afecta esto?' tan seguido como '¿qué es esto?', necesitas estructura. Si tu corpus es una pila suelta de documentos sin una organización acordada, la búsqueda vectorial simple es un punto de partida razonable."
+  - question: "¿Necesito una base de datos de grafos dedicada para hacer GraphRAG?"
+    answer: "No necesariamente. Una base de datos de grafos dedicada es excelente cuando el grafo es grande o los recorridos son complejos. Para una ontología compacta con unos cientos de nodos y tipos de relación bien definidos, la adyacencia guardada en documentos o tablas relacionales y recorrida en código de aplicación funciona bien. Lo que importa es que la estructura sea explícita y versionada, no qué motor la almacena."
+  - question: "Si tengo una ontología, ¿todavía necesito embeddings?"
+    answer: "Sí, para el paso difuso. La evidencia real nunca llega etiquetada con los términos de tu ontología. Un memo de directorio, una queja de un cliente o una nota financiera tienen que mapearse sobre la estructura, y ese mapeo es un problema de similitud donde los embeddings brillan. El diseño es estructura para razonar, embeddings para emparejar — cada uno haciendo el trabajo en el que realmente es bueno."
+relatedPosts: ["graph-databases-neo4j-guide", "vector-databases-ai-apps", "building-production-rag-systems"]
+---
+
+La primera demo de Vector_10 salió bien justo hasta que alguien le hizo una pregunta de seguimiento.
+
+Vector_10 es un agente que construí en TheGreyMatter.ai que razona sobre nuestra ontología de 9 vectores: un marco para evaluar un negocio a lo largo de nueve dimensiones, cada una dividida en áreas e indicadores más específicos. La idea es simple de decir. Le das al agente evidencia sobre una empresa — documentos, notas, métricas — y te dice dónde cae esa evidencia dentro del marco, qué sugiere y qué mirar después.
+
+En la demo, le di una nota corta sobre un negocio que dependía mucho de un par de clientes grandes. Respondió con confianza, ubicando el tema en el marco y resumiendo la guía relevante. Bien. Entonces alguien preguntó: "¿Por qué ese vector y no el otro? ¿Y qué más afecta esto?"
+
+El agente produjo tres párrafos bien escritos. Eran relevantes. También venían de dos partes distintas del marco, cosidos entre sí, y no respondían la pregunta, porque el sistema en realidad no sabía por qué. Sabía qué pedazos de texto estaban *cerca* de la pregunta en el espacio de embeddings. Eso no es lo mismo que saber dónde pertenece algo, y no se acerca ni de lejos a saber qué afecta.
+
+Esa tarde dejé de pensar en el marco como una pila de documentos y empecé a tratarlo como lo que realmente es: una estructura en la que los expertos ya se pusieron de acuerdo. Este post es sobre lo que cambió cuando lo hice.
+
+## 1. Los Embeddings Responden "Parecido," No "Por Qué"
+
+Me gustan los embeddings. Escribí una guía entera sobre [bases de datos vectoriales para apps de IA](/es/blog/vector-databases-ai-apps), y los uso cada semana. Pero vale la pena ser preciso sobre lo que hacen.
+
+Un embedding convierte un pedazo de texto en un punto en un espacio donde los significados parecidos caen cerca. La búsqueda vectorial encuentra los puntos más cercanos a tu consulta. Es una primitiva poderosa para "encuéntrame texto que hable de esto." No tiene noción de jerarquía, ni de dirección, ni de *porque*.
+
+Así se ve eso en la práctica con un marco:
+
+```
+consulta: "los ingresos dependen de dos clientes grandes — ¿por qué es un riesgo?"
+
+búsqueda vectorial pura devuelve (top 3 por similitud coseno):
+  1. párrafo sobre concentración de clientes     (área correcta)
+  2. párrafo sobre concentración de proveedores  (palabras parecidas, otra área)
+  3. párrafo sobre cobertura del pipeline        (palabras parecidas, otro vector)
+
+lo que el usuario realmente necesitaba:
+  riesgo de concentración ──belongs_to──▶ área ──part_of──▶ vector
+        │
+        ├──affects──▶ previsibilidad del flujo de caja
+        ├──affects──▶ poder de negociación
+        └──evidenced_by──▶ % de ingresos del cliente principal (indicador)
+```
+
+Los tres primeros resultados son texto razonable. Dos de ellos están en el lugar equivocado. Y ninguno carga las relaciones por las que preguntó el usuario, porque esas relaciones no están *en* ningún párrafo individual. Viven en la estructura del marco — en cómo se conectan las partes — y partir un documento en pedazos destruye exactamente eso.
+
+<Callout type="warning" title="Partir en pedazos borra la estructura">
+Cuando divides un documento de un marco en chunks y los embebes, te quedas con las palabras y tiras el índice. Los títulos, el anidamiento, el "esto se agrega en aquello" — la parte en la que los expertos pasaron años poniéndose de acuerdo — es precisamente lo que no sobrevive. La búsqueda por similitud no puede devolver lo que el chunking eliminó.
+</Callout>
+
+## 2. Si los Expertos Ya Dibujaron el Mapa, Codifica el Mapa
+
+La idea que desbloqueó Vector_10 era vergonzosamente obvia en retrospectiva. El marco de 9 vectores no es conocimiento desestructurado esperando ser descubierto. Es una taxonomía con niveles explícitos y relaciones explícitas, diseñada por personas que piensan en negocios para ganarse la vida. Mi trabajo no era que un modelo infiriera esa estructura a partir de prosa. Mi trabajo era escribirla.
+
+Así que la ontología se volvió datos. No un grafo gigante — uno pequeño y deliberado. Nodos para los vectores, las áreas debajo de ellos y los indicadores que aportan evidencia. Aristas con una lista corta de tipos de relación con nombre. Cada nodo carga una definición escrita por un humano, y esa definición es lo que se embebe.
+
+```typescript
+type NodeKind = "vector" | "area" | "indicator";
+
+type RelationType =
+  | "part_of"        // área ──▶ vector, indicador ──▶ área
+  | "affects"        // área ──▶ área (influencia direccional)
+  | "evidenced_by"   // área ──▶ indicador
+  | "conflicts_with";// dos áreas que tiran en direcciones opuestas
+
+interface OntologyNode {
+  id: string;
+  kind: NodeKind;
+  label: string;
+  definition: string;      // escrita por un humano; esto es lo que embebemos
+  version: string;         // la ontología se versiona como código
+}
+
+interface OntologyEdge {
+  from: string;
+  to: string;
+  type: RelationType;
+  rationale: string;       // por qué existe esta arista, en una oración
+}
+```
+
+Dos campos ahí cargan más peso del que parece. El `rationale` en cada arista es el "por qué" que la búsqueda vectorial pura perdía: una explicación de una oración de por qué un área afecta a otra. Cuando el agente recorre esa arista, puede citar la razón en vez de inventar una. Y `version` significa que la ontología cambia a través de revisión, como el código. Cuando el marco evoluciona, el cambio es un diff que alguien aprobó, no un trabajo de re-embedding que mueve en silencio todas las respuestas.
+
+Escribí sobre la mecánica del modelado de grafos en [la guía de Neo4j](/es/blog/graph-databases-neo4j-guide). Para Vector_10, sin embargo, quiero ser honesto: el grafo es lo suficientemente pequeño como para que el motor importe mucho menos que la disciplina. Podría vivir en una base de datos de grafos dedicada, o como listas de adyacencia en documentos recorridas en código de aplicación. La decisión que importó fue hacer la estructura explícita, no dónde se guarda.
+
+## 3. Usa Embeddings para el Paso Difuso, y Solo para Ese Paso
+
+Nada de esto significa que los embeddings desaparecieron. Se mudaron al único trabajo donde genuinamente son la mejor herramienta: mapear evidencia desordenada sobre una estructura limpia.
+
+La evidencia real nunca llega etiquetada. Un memo de directorio no dice "esto pertenece al área X del vector Y." Dice algo como "estamos un poco nerviosos con la renovación de nuestra cuenta más grande." Llegar de esa oración al nodo correcto de la ontología es un problema de coincidencia difusa, y para eso exactamente sirven los embeddings.
+
+El pipeline terminó viéndose así:
+
+```
+  evidencia (memo, nota, métrica)
+            │
+            ▼
+  ┌──────────────────────────────┐
+  │ 1. EMBEBER + EMPAREJAR       │  difuso: ¿a qué nodos de la
+  │    contra definiciones       │  ontología se parece esto?
+  └──────────────┬───────────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │ 2. CONFIRMAR                 │  el modelo elige entre candidatos,
+  │    modelo + restricciones    │  debe citar el fragmento de evidencia
+  └──────────────┬───────────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │ 3. RECORRER                  │  estructural: seguir aristas
+  │    el grafo                  │  part_of, affects, evidenced_by
+  └──────────────┬───────────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │ 4. RESPONDER CON UN CAMINO   │  cada afirmación se rastrea a un
+  │                              │  nodo, una arista y una razón
+  └──────────────────────────────┘
+```
+
+El paso 1 es búsqueda vectorial pura, pero contra un conjunto pequeño y curado de definiciones de nodos en vez de contra pedazos de un documento largo. Eso solo hizo el emparejamiento muchísimo más estable, porque cada objetivo es una descripción nítida, escrita por un humano, de un solo concepto, en vez de un párrafo que por casualidad menciona tres.
+
+El paso 2 es donde el modelo se gana su lugar. Ve los pocos nodos candidatos y la evidencia, y tiene que elegir — o no elegir ninguno — y citar el fragmento exacto de evidencia que justifica la elección. "Ninguno de estos encaja" es una respuesta permitida, y la trato como una respuesta sana.
+
+El paso 3 es determinista. Una vez que la evidencia está anclada a un nodo, el agente no busca ideas relacionadas. Sigue aristas. ¿Qué afecta esta área? ¿Qué indicadores la confirmarían? ¿Con qué entra en conflicto? Esas respuestas vienen de la estructura, no de la similitud.
+
+<Callout type="tip" title="Estructura para razonar, embeddings para emparejar">
+Deja que cada herramienta haga el trabajo en el que es buena. Los embeddings son excelentes en "¿a qué concepto se parece esta oración desordenada?" Un grafo es excelente en "dado este concepto, ¿qué se sigue de él?" La mayoría de los sistemas de recuperación le piden a uno de los dos que haga ambos trabajos, y se nota.
+</Callout>
+
+## 4. GraphRAG Es Solo RAG que Recuerda el Índice
+
+Se habla de GraphRAG como si fuera una especie nueva. En la práctica, la versión que me funciona es modesta: una recuperación que devuelve un subgrafo pequeño en vez de una pila de chunks, y un prompt que le entrega al modelo ese subgrafo como contexto estructurado.
+
+Esta es una versión simplificada de la función de recuperación:
+
+```typescript
+async function retrieveForEvidence(evidence: string, maxHops = 2) {
+  // 1. difuso: encontrar nodos candidatos por similitud de definición
+  const candidates = await nodeIndex.search(await embed(evidence), { topK: 5 });
+
+  // 2. el modelo confirma (o rechaza) citando un fragmento de evidencia
+  const anchor = await confirmAnchor(evidence, candidates);
+  if (!anchor) return { anchor: null, subgraph: null, reason: "no-fit" };
+
+  // 3. estructural: recorrer relaciones explícitas desde el ancla
+  const subgraph = await ontology.traverse(anchor.nodeId, {
+    types: ["part_of", "affects", "evidenced_by", "conflicts_with"],
+    maxHops,
+  });
+
+  return { anchor, subgraph };
+}
+```
+
+Lo que recibe el modelo no es "aquí hay cinco párrafos que parecen relevantes." Es "esta evidencia se ancló a esta área, por este fragmento. Esta área es parte de este vector. Afecta a estas dos áreas, por estas razones declaradas. Estos indicadores la confirmarían." El trabajo del modelo se encoge de *entender el dominio* a *explicar este camino específico en lenguaje simple*, que es un trabajo en el que los modelos de lenguaje son muy buenos.
+
+Y cuando alguien pregunta "¿por qué ese vector y no el otro?", la respuesta ya no son tres párrafos plausibles. Es el camino, con la razón adjunta a cada paso. La pregunta de seguimiento que rompió la primera demo se volvió la más fácil de responder.
+
+Todavía uso recuperación clásica basada en chunks también, para la guía extensa adjunta a cada nodo. Es el patrón de [construir sistemas RAG en producción](/es/blog/building-production-rag-systems), solo que acotado: una vez que el grafo nos dice *qué* nodo importa, recuperamos chunks de guía filtrados a ese nodo. La estructura reduce la búsqueda; la similitud completa el detalle.
+
+## 5. La Ontología Es un Artefacto de Producto, No un Paso de Preprocesamiento
+
+El cambio más grande no fue técnico. Fue sobre quién es dueño de qué.
+
+Cuando el marco era una pila de documentos embebidos, nadie era dueño de la estructura, porque la estructura era implícita. Cuando se volvió un grafo con definiciones y razones, se volvió algo que la gente podía leer, discutir y mejorar. Los expertos del dominio empezaron a revisar aristas. "Estas dos áreas no deberían estar unidas por `affects`; la influencia solo va en una dirección." Esa oración es un cambio de una línea en un archivo versionado. En el mundo de solo embeddings, el arreglo equivalente habría sido "reescribe algunos párrafos y espera que los vectores se muevan."
+
+Eso me dio tres cosas que antes no tenía:
+
+- **Explicabilidad por construcción.** Cada respuesta carga un camino. Nadie tiene que confiar en el relato del modelo sobre su propio razonamiento, porque el razonamiento está en los datos.
+- **Testeabilidad.** Puedo escribir evals que verifican estructura: dada esta evidencia, el ancla debería ser este nodo, y el recorrido debería incluir estas áreas. Eso es mucho más fácil de afirmar que "la respuesta debería sentirse bien."
+- **Cambio controlado.** Las actualizaciones de la ontología pasan por revisión y se publican con una versión. Si las respuestas cambian, puedo señalar el diff que las cambió.
+
+<Callout type="info" title="Estructura versionada le gana a la deriva silenciosa">
+En un sistema de solo embeddings, actualizar el conocimiento significa re-embeber y ver cómo las respuestas se mueven de formas que nadie puede explicar del todo. En un sistema estructurado, actualizar el conocimiento significa un diff revisado con un número de versión. Uno de esos lo puedes auditar. Del otro solo puedes tener esperanza.
+</Callout>
+
+## Cuándo Esto Es Exagerado
+
+No quiero venderlo de más. Construir una ontología es trabajo real, y si tu dominio todavía no tiene una, inventarla es un proyecto de investigación, no un sprint.
+
+Estructura primero tiene sentido cuando el dominio ya tiene un marco acordado — una metodología, una taxonomía, una jerarquía regulatoria, una clasificación clínica — y las preguntas que te importan involucran relaciones: por qué, qué más, qué se sigue. En mi trabajo de doctorado sobre soporte a decisiones clínicas, este patrón aparece por todas partes, porque la medicina está llena de clasificaciones cuidadosamente construidas que un índice vectorial aplanaría con gusto.
+
+Si tu corpus es una pila suelta de tickets de soporte o notas de reuniones sin una organización acordada, empieza con búsqueda vectorial y mira hasta dónde te lleva. Puede que descubras una estructura en el camino. En ese momento, escríbela.
+
+## El Hilo
+
+Si tuviera que comprimir todo este post en una oración: **cuando los expertos ya dibujaron el mapa, codifica el mapa y usa embeddings solo para encontrar dónde estás en él.**
+
+La búsqueda vectorial pura es una forma poderosa de encontrar texto que se parece a tu pregunta. Es una mala forma de preservar el razonamiento que hace que un dominio sea un dominio. Vector_10 se volvió bueno cuando dejé de pedirle a un índice que redescubriera un marco que la gente ya había construido, y empecé a tratar ese marco como datos: explícito, versionado, revisable y recorrible. Los embeddings no perdieron su trabajo. Solo dejaron de pedirles que hicieran el de otro.
+
+---
+
+*Si tienes un marco de dominio entre manos y te preguntas si embeberlo o codificarlo, [contáctame](/contact). La respuesta usualmente es "ambos, en un orden específico," y el orden es más fácil de resolver juntos que solo.*

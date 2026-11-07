@@ -1,0 +1,194 @@
+---
+title: "One Database per App: The Federation Rule in a 17-App Ecosystem"
+description: "GreyMatter runs more than seventeen vertical AI apps on one platform, and every one of them owns its own Cosmos DB. Apps share through APIs and the shared identity and file layer — never by reading each other's containers. Why that rule felt painfully slow at first, how tempting 'just read their container' is, what it bought us in independent deploys, blast radius, and ownership, and the real costs I would not hide from anyone: duplication and eventual consistency."
+date: 2026-06-09
+published: true
+category: "System Design"
+tags: ["System Design", "Architecture", "Cosmos DB", "Microservices", "GreyMatter"]
+author: "Osvaldo Restrepo"
+tldr: "In the GreyMatter platform, every vertical app — DueDiligence9, Forecast9, Contracts9, Board9 and the rest — owns its own Cosmos DB. The federation rule says apps share data only through APIs and the shared identity and file services, never by reading another app's containers directly. At first it felt like bureaucracy: a one-line query became an endpoint, a client, and a contract. The temptation to just read the other container never goes away. But the rule bought three things that matter more as the ecosystem grows: apps deploy independently, a bad migration or a runaway query stays inside one app, and every piece of data has exactly one owner who can change it. The costs are real — some data gets duplicated, and copies are eventually consistent rather than instantly correct — and you have to design for them on purpose. I would make the same call again."
+faqs:
+  - question: "Isn't one database per app just microservices dogma?"
+    answer: "It can be, if you apply it to a small system with one team. The rule earns its cost when you have many apps evolving at different speeds on a shared platform. At that point a shared database becomes a shared schema, and a shared schema becomes a coordination tax on every change. Separate databases turn that implicit coupling into explicit APIs, which are slower to create but much cheaper to live with."
+  - question: "What about reports or AI features that need data from several apps?"
+    answer: "They compose through APIs, or they read from a projection built for that purpose. A cross-app view is its own consumer with its own data, fed by the owning apps' APIs or events. What it never does is query the source containers directly, because the moment it does, those containers' schemas are frozen by a consumer their owners do not know about."
+  - question: "How do you deal with eventual consistency between apps?"
+    answer: "You decide, per piece of data, how stale it is allowed to be, and you design the UI to be honest about it. For most cross-app data, seconds or minutes of staleness is fine. Where it is not — permissions, for example — you do not copy the data at all; you ask the owner at request time. The mistake is pretending copies are always current."
+relatedPosts: ["scalable-microservices-architecture", "multi-tenant-saas-architecture", "api-design-lessons-learned"]
+---
+
+The first time the federation rule cost me a real afternoon, the task looked trivial. One app needed to show a small summary of data that lived in another app. A count and a status, basically. Both apps ran on the same platform, in the same Azure subscription, against Cosmos DB accounts I could see from my laptop.
+
+The query would have been five lines. I knew exactly which container. I knew the partition key. I could have shipped it before lunch.
+
+Instead I wrote an endpoint in the owning app, added a method to its client, wrote a test for the contract, and had the consuming app call it. It took the afternoon. I remember being mildly annoyed at a rule I had helped write.
+
+A few months later, the owning app changed how it stored that status — split one field into two, for good reasons. Nothing broke in the other app. Nobody had to coordinate anything. The owning team updated their endpoint to keep returning the same shape, and that was it. That is the moment the rule stopped feeling like bureaucracy to me.
+
+## The Rule
+
+GreyMatter 3.0 is the platform backbone behind more than seventeen vertical AI apps at TheGreyMatter.ai — DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, and others. They share a lot: an OAuth SSO and JWKS auth service, a central file service, a communications service, a connector service for CRMs and accounting systems.
+
+What they do not share is a database. The federation rule is short:
+
+```
+   1. Each app owns its own Cosmos DB.
+   2. Only the owning app reads or writes its containers.
+   3. Apps share data through APIs (and events), never through storage.
+   4. Identity and files are shared layers, accessed through their services.
+```
+
+Drawn out, it looks like this:
+
+```
+   ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
+   │  Forecast9  │  API   │ Contracts9  │  API   │   Board9    │
+   │     app     │◀──────▶│     app     │◀──────▶│     app     │
+   │  ┌───────┐  │        │  ┌───────┐  │        │  ┌───────┐  │
+   │  │ own DB│  │        │  │ own DB│  │        │  │ own DB│  │
+   │  └───────┘  │        │  └───────┘  │        │  └───────┘  │
+   └──────┬──────┘        └──────┬──────┘        └──────┬──────┘
+          │                      │                      │
+          ▼                      ▼                      ▼
+   ┌───────────────────────────────────────────────────────────┐
+   │  shared layer:  auth (SSO + JWKS)  ·  file service         │
+   │                 communications     ·  connectors           │
+   └───────────────────────────────────────────────────────────┘
+
+   arrows between apps go through APIs; no app touches another's DB
+```
+
+Every app can know who the user is, because identity is shared. Every app can store and retrieve files, because the file service is shared. Beyond that, if Board9 wants something Forecast9 knows, it asks Forecast9.
+
+## Why It Felt Slow
+
+I want to be fair to the version of me who was annoyed, because his complaints were correct.
+
+**Every cross-app need becomes an API.** What would be a query becomes an endpoint, a client method, an auth check, a contract test, and a deploy of the owning app before the consuming app can use it. For the first few months, that was a lot of small ceremonies.
+
+**You need to know who owns what.** With a shared database, you just look at the data. With federation, you have to know which app is the source of truth for each concept, and sometimes the honest answer was "we have not decided yet." Making that decision was slow, because it was a real decision.
+
+**Debugging crosses a network.** A bug that spans two apps means two sets of logs, two deployments, and a request in between. That is harder than reading two tables in one console.
+
+None of that is imaginary. If you are one team building one product, I would probably tell you to skip this rule and use one database with good discipline. The trade-off flips somewhere as the number of apps and the speed of change goes up, and with seventeen-plus apps moving at different speeds, we were well past that point.
+
+## The Temptation Never Goes Away
+
+The rule does not get easier to follow. It gets easier to justify, which is different.
+
+The temptation shows up in a very consistent shape. Someone — often me — has a deadline and a perfectly reasonable need. The data is right there. The SDK can connect to any Cosmos account the identity has access to. And the argument is always the same: "It's read-only. I'm not changing anything. What's the harm?"
+
+The harm is that a read is still a dependency. The moment one app reads another's container, that container's schema is no longer owned by its team. They cannot rename a field, change a partition key, split a container, or migrate a document shape without breaking a consumer they may not even know exists. A read-only query is a write-only promise you made on someone else's behalf.
+
+```typescript
+// The five-line version. Tempting. Forbidden.
+const other = cosmos.database("contracts9").container("agreements");
+const { resources } = await other.items
+  .query({
+    query: "SELECT c.id, c.status FROM c WHERE c.dealId = @dealId",
+    parameters: [{ name: "@dealId", value: dealId }],
+  })
+  .fetchAll();
+
+// The federated version. Slower to build once. Cheaper forever.
+const agreements = await contractsClient.listAgreements({
+  dealId,
+  fields: ["id", "status"],
+});
+```
+
+The second version looks almost the same in the calling code. The difference is everything behind it: an endpoint the owning team controls, an auth check that respects deal-level permissions, a response shape they have promised to keep stable, and a place to evolve storage without telling anyone.
+
+<Callout type="warning" title="Read-only is not dependency-free">
+A direct read of another app's storage freezes its schema without its owner's consent. It also bypasses its authorization logic, which means your query may return data the user is not allowed to see in that app. "It's just a read" is the most expensive sentence in a federated system.
+</Callout>
+
+We enforce the rule structurally as well as culturally. Each app's managed identity only has data-plane access to its own Cosmos account. The five-line version does not just fail code review; it fails at runtime with a permission error. I have found that rules enforced only by good intentions last until the first deadline.
+
+## What It Bought
+
+Here is the other side, which only became obvious with time.
+
+### 1. Independent deploys
+
+Each app ships on its own schedule. A migration in Contracts9 does not need a coordinated release with Board9. As long as the API contract holds, the storage underneath can change freely. With many apps moving at once, this is the difference between shipping weekly and having a release calendar meeting.
+
+### 2. Contained blast radius
+
+When something goes wrong in one app's data layer — a bad migration, a runaway query that eats the throughput budget, a partition hot spot — it stays in that app. Other apps' requests to it might fail or slow down, but they fail at an API boundary where they can time out, retry, or degrade gracefully. They do not discover that their own queries are being throttled because a neighbor exhausted a shared database. I wrote more about designing for partial failure in [scalable microservices architecture](/blog/scalable-microservices-architecture); federation is what makes partial failure possible in the first place.
+
+### 3. Clear ownership
+
+Every piece of data has one owner. If a deal status is wrong, there is exactly one place it can be wrong, and one team that can fix it. That sounds like a small thing until you have lived in a system where three services write the same field and nobody knows which write won.
+
+### 4. Security that follows the data
+
+This one I did not expect. Because every read goes through the owning app's API, every read also goes through the owning app's authorization — deal-level and company-level RBAC, audit logging on every mutation. A shared database would have needed every consumer to reimplement those checks correctly. Federation means the checks live in one place, next to the data.
+
+<Callout type="tip" title="The API is where authorization lives">
+In a multi-app platform, the strongest argument for federation is not architecture purity. It is that the owning app's API is the only place that fully understands who is allowed to see what. Every bypass of that API is a bypass of those rules.
+</Callout>
+
+## What It Costs
+
+I promised the real costs, so here they are without varnish.
+
+### Duplication
+
+Sometimes an app needs data from another app often enough that calling an API every time is wasteful or too slow. In those cases it keeps a local copy — a projection — of the parts it needs.
+
+That copy is duplication, and duplication has to be managed. The rules we use:
+
+```
+   - The copy is read-only in the consuming app. Never edited locally.
+   - The copy holds only the fields the consumer actually needs.
+   - The copy records where it came from and when it was last refreshed.
+   - The owning app remains the source of truth. Always.
+```
+
+A projection is a cache with a contract, not a second source of truth. The moment a consuming app starts editing its copy, you have two owners and all the problems that federation was supposed to remove.
+
+### Eventual consistency
+
+A copy is, by definition, sometimes out of date. When the owning app changes something, consumers find out through an event or the next refresh, not instantly.
+
+For most data, a few seconds or minutes of staleness is fine. A dashboard showing yesterday's pipeline numbers does not need to be correct to the millisecond. But some data cannot be stale. Permissions are the clearest example. If a user loses access to a deal, they must lose it everywhere right away. So permissions are never copied; they are checked against the shared auth layer and the owning app at request time.
+
+The design question for every shared piece of data becomes: **how stale is this allowed to be?**
+
+```
+   staleness allowed     strategy
+   ─────────────────     ─────────────────────────────────────
+   none                  call the owner at request time
+   seconds               event-driven projection
+   minutes to hours      scheduled refresh of a projection
+   "whatever"            probably should not be shared at all
+```
+
+And the UI has to be honest about it. A "last updated" timestamp on a cross-app widget costs nothing and saves many confused support conversations.
+
+### Cross-app features are harder
+
+The AI features feel this most. An agent that needs a picture across several apps cannot run one query; it has to call several APIs and combine the results. That is slower, and it requires each app to expose the right endpoints.
+
+I have come to see that as a feature in disguise. An AI agent composing data through the same APIs a user would use inherits the same permissions as the user. It cannot see what the user cannot see, because there is no back door to see it through. That principle comes back in a big way when you expose those APIs to Claude through MCP, which I wrote about in [MCP servers that don't leak](/blog/mcp-servers-that-dont-leak).
+
+## How I Would Introduce the Rule Again
+
+If I were starting a multi-app platform tomorrow, I would do a few things earlier:
+
+1. **Write down ownership before writing code.** A simple table: concept, owning app, how others can access it. Most early federation pain was really undecided ownership.
+2. **Make the shared layer excellent first.** Identity and files are what everyone needs. If those are solid, a huge share of the pressure to break the rule disappears.
+3. **Ship typed clients with every API.** The cost of calling another app should be importing a client and calling a method. When the federated version is as easy to write as the forbidden one, people stop reaching for the forbidden one.
+4. **Enforce access at the infrastructure level.** Each app's identity gets access to its own database. Nothing else.
+5. **Budget for projections.** You will need some. Plan how they are refreshed and labeled instead of letting each team improvise.
+
+## The Throughline
+
+If I had to compress the whole thing into one sentence: **a shared database is a shared schema, and a shared schema is a meeting you will have to attend forever.**
+
+Federation trades the speed of the five-line query for the freedom to change your own data without asking anyone. In a small system, that trade is often not worth it. In an ecosystem of seventeen-plus apps moving at different speeds, built on a shared identity and file layer, it is the thing that keeps each app shippable, each failure contained, and each piece of data owned by someone who can actually fix it. The costs — duplication and staleness — are real, but they are visible costs you can design for. The costs of a shared database are invisible until they arrive all at once.
+
+---
+
+*If you are designing a platform with many apps on shared infrastructure and wrestling with where the data boundaries should go, [reach out](/contact). I have strong opinions about ownership tables, and I am happy to share them.*

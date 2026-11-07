@@ -1,0 +1,194 @@
+---
+title: "Útil con el Dinero: Construyendo un Agente de Finanzas Personales que Conoce su Lugar"
+description: "Lecciones de construir BudgetCopilot, un agente personal de finanzas con IA. Un agente que toca el dinero de alguien tiene que ser humilde: categorizar y explicar, nunca mover dinero por su cuenta, mantener cada número fuera del LLM, mostrar las cuentas, cuidar los datos de transacciones como si fueran registros médicos, y conocer la diferencia entre información y consejo."
+date: 2026-10-06
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "BudgetCopilot", "Finanzas Personales", "Agentes de IA", "Privacidad"]
+author: "Osvaldo Restrepo"
+translationOf: "personal-finance-agents-helpful-with-money"
+tldr: "Construí BudgetCopilot porque estaba enterrado en deudas y no podía pagar un asesor. La primera lección llegó rápido: un modelo de lenguaje es un explicador maravilloso y un contador terrible. Un agente de finanzas se gana la confianza siendo humilde. Categoriza y explica, pero nunca mueve dinero de forma autónoma. Cada número que muestra lo calcula código determinístico, y el modelo solo narra hechos que se le entregaron. Las cuentas siempre están a un toque de distancia. Los datos de transacciones se tratan con el mismo cuidado que los datos clínicos, porque cuentan la historia de la vida de alguien. Y el agente se queda del lado de la información — dice qué pasó y cuánto cuesta cada opción, y deja la decisión a la persona dueña del dinero."
+faqs:
+  - question: "¿Por qué no dejar que el LLM haga la aritmética si casi siempre acierta?"
+    answer: "Porque 'casi siempre' es la vara equivocada para el dinero. Un modelo que suma cuarenta transacciones correctamente la mayoría de las veces eventualmente producirá un total desviado por una cantidad plausible, dicho con voz segura, y nadie lo notará hasta que importe. El código determinístico es barato, se puede probar, y acierta siempre. El trabajo del modelo es explicar números, nunca producirlos."
+  - question: "¿Algún día se le permitirá a un agente de finanzas mover dinero por su cuenta?"
+    answer: "No en nada que yo construya, al menos no sin una confirmación humana explícita por cada acción. La asimetría es brutal: el beneficio de ahorrarle un clic a alguien es mínimo, y el costo de una transferencia equivocada, un pago duplicado o un sobregiro es dinero real y estrés real para alguien que quizás ya está al límite. Los agentes pueden preparar una acción; un humano presiona el botón."
+  - question: "¿Cuál es la diferencia entre información y consejo en un producto financiero?"
+    answer: "La información describe lo que pasó y cuánto costaría cada opción: 'gastaste más en delivery este mes que el anterior, y estas son las cuentas de pagar primero la tarjeta A versus la tarjeta B.' El consejo le dice a la persona qué debería hacer con su vida: 'cancela esto, invierte en aquello.' La información respeta el contexto y los valores del usuario, que el agente no puede ver por completo. El consejo finge conocerlos. Un buen agente de finanzas es generoso con la información y muy cuidadoso con el consejo."
+relatedPosts: ["first-ai-feature-should-be-read-only", "when-models-should-say-i-dont-know", "structured-outputs-are-a-contract"]
+---
+
+La noche que decidí construir BudgetCopilot, estaba sentado en la mesa de mi cocina con tres estados de cuenta de tarjetas de crédito, el saldo de un préstamo, y una hoja de cálculo que había reconstruido desde cero por cuarta vez. No estaba tratando de hacerme rico. Estaba tratando de descifrar qué tarjeta pagar primero, y si podía respirar ese mes. Un asesor financiero cobraba por sesión más de lo que me quedaba después del alquiler. Así que hice lo que hacen los ingenieros cuando están estresados y sin dinero: empecé a escribir código.
+
+El primer prototipo era vergonzosamente simple. Traer las transacciones, dárselas a un modelo, pedirle que me dijera a dónde se fue mi dinero. Y lo hizo — hermosamente. Escribió un párrafo cálido y claro sobre mis gastos. Notó patrones que yo había estado evitando. Incluso dijo algo amable sobre el progreso que había hecho con una tarjeta.
+
+También me dijo un total gastado en restaurantes ese mes que estaba mal. No tremendamente mal. Mal por una cantidad lo bastante pequeña para sonar plausible y lo bastante grande para importar cuando tu margen es estrecho. Solo lo atrapé porque tenía la hoja de cálculo abierta al lado y los números no coincidían.
+
+Ese fue el momento en que todo el diseño de BudgetCopilot cambió. Un modelo que escribe un párrafo hermoso alrededor de un número equivocado no es una herramienta financiera útil. Es un mentiroso seguro de sí mismo con buenos modales. Todo lo que he construido desde entonces sale de una idea: **un agente que toca el dinero de alguien tiene que ser humilde.**
+
+Así se ve la humildad en la práctica.
+
+## 1. Categoriza y Explica. Nunca Muevas Dinero.
+
+El demo más emocionante para un agente de finanzas es aquel donde hace cosas. "Noté que tienes una suscripción que nunca usas — la cancelé." "Tu cuenta corriente está alta, así que moví el excedente a ahorros." "Tu pago de tarjeta vence, así que lo pagué." Cada uno de esos demos recibe aplausos, y cada uno es una función que me niego a enviar de forma autónoma.
+
+La asimetría es todo el argumento. Cuando el agente acierta, le ahorra al usuario un clic. Cuando se equivoca, sobregira una cuenta la noche antes de que se cobre el alquiler, paga una factura dos veces, o cancela la única suscripción que el usuario realmente necesitaba para trabajar. Las personas que más necesitan una herramienta como BudgetCopilot son exactamente las personas para quienes una transferencia equivocada no es un inconveniente. Es una crisis.
+
+Así que los permisos del agente son deliberadamente aburridos:
+
+```
+PUEDE                                 NO PUEDE
+─────────────────────────────────     ──────────────────────────────────
+leer transacciones (vía agregador)    iniciar una transferencia
+categorizar y recategorizar           pagar una factura
+explicar un mes en lenguaje simple    cancelar una suscripción
+comparar estrategias de pago          abrir o cerrar una cuenta
+preparar una acción sugerida          ejecutar esa acción
+señalar algo inusual                  ocultar o borrar una transacción
+```
+
+Fíjate en la penúltima fila. El agente puede preparar una acción — "esto es lo que un pago de este monto a la tarjeta A haría con tu plan" — pero un humano la mira, la entiende, y presiona el botón en su propio banco. Esa separación es el mismo principio sobre el que escribí en [por qué tu primera función de IA debería ser de solo lectura](/es/blog/first-ai-feature-should-be-read-only), aplicado al lugar donde más importa. El acceso de lectura construye confianza. El acceso de escritura la gasta.
+
+<Callout type="warning" title="Ahorrar un clic no vale una crisis">
+Antes de darle a un agente de finanzas cualquier capacidad de escritura, compara el mejor caso y el peor caso con honestidad. El mejor caso es conveniencia. El peor caso es un sobregiro, un pago perdido, o una transferencia duplicada para alguien que ya está al límite. Si el peor caso es dinero real y estrés real, el agente prepara y el humano ejecuta.
+</Callout>
+
+## 2. El Modelo Nunca Hace Aritmética
+
+Esta es la regla que salió directamente de aquella noche en la mesa de la cocina, y es la decisión técnica más importante de todo el sistema.
+
+Los modelos de lenguaje son extraordinarios con el lenguaje y poco confiables con las sumas. Sumarán cuarenta números correctamente la mayoría de las veces, y luego un día no lo harán, y el total equivocado llegará exactamente con la misma voz calmada y fluida que los correctos. "La mayoría de las veces" no es un estándar que nadie debería aceptar para el dinero.
+
+Así que en BudgetCopilot, cada número que ve el usuario lo calcula código simple y determinístico antes de que el modelo siquiera participe. Totales, promedios, cambios mes a mes, plazos de pago, proyecciones de intereses — todo. El modelo recibe los resultados como hechos y solo se le permite narrarlos.
+
+```typescript
+// Toda la matemática del dinero ocurre aquí, en código, en centavos enteros.
+type MonthFacts = {
+  month: string;
+  totalSpentCents: number;
+  byCategory: Record<string, number>;
+  changeVsLastMonthCents: Record<string, number>;
+  largestTransactions: { id: string; merchant: string; amountCents: number }[];
+};
+
+function computeMonthFacts(txns: Transaction[], prev: Transaction[]): MonthFacts {
+  const byCategory = sumByCategory(txns);       // determinístico, con pruebas unitarias
+  const prevByCategory = sumByCategory(prev);
+  const changeVsLastMonthCents = diffCategories(byCategory, prevByCategory);
+  return {
+    month: monthOf(txns),
+    totalSpentCents: sumCents(txns),
+    byCategory,
+    changeVsLastMonthCents,
+    largestTransactions: topN(txns, 5),
+  };
+}
+
+// El modelo recibe hechos, no filas crudas, y se le indica narrar solo esos hechos.
+const facts = computeMonthFacts(thisMonth, lastMonth);
+const summary = await narrateMonth(facts);
+
+// Luego verificamos: cada monto en la narrativa debe existir en los hechos.
+assertNumbersAreGrounded(summary.text, facts);
+```
+
+Esa última línea es la red de seguridad. Después de que el modelo escribe su resumen, un pequeño validador extrae cada monto de dinero del texto y verifica que cada uno aparezca en los hechos calculados. Si el modelo inventa un número, redondea uno creativamente, o "amablemente" suma dos categorías por su cuenta, el resumen se rechaza y se regenera, o el usuario recibe una versión más simple basada en plantillas. Ningún número sin verificar llega a la pantalla.
+
+Suena paranoico. En realidad es barato. Sumar enteros en código no cuesta nada, es trivial de probar, y acierta cada vez. El modelo queda libre para hacer lo que genuinamente hace bien: convertir una tabla de hechos en algo que una persona cansada pueda entender a las 11 p.m.
+
+<Callout type="tip" title="El dinero en centavos, la matemática en código">
+Guarda los montos como centavos enteros, calcula cada total y proyección en código determinístico, y pásale al modelo un conjunto terminado de hechos. Luego valida que cada número en la salida del modelo exista en esos hechos. El modelo explica los números. Nunca los produce.
+</Callout>
+
+Esta es también, de forma más general, la lección detrás de [cuando la respuesta es una consulta SQL](/es/blog/when-the-answer-is-a-sql-query): mucho de lo que parece una "función de IA" es realmente un cálculo determinístico con una capa de lenguaje encima. Las finanzas son simplemente el dominio donde equivocarse en esa división duele más rápido.
+
+## 3. Muestra las Cuentas, Siempre
+
+Incluso cuando el número es correcto, un número sin su procedimiento es un número que tienes que aceptar por fe. Y la gente no confía en herramientas de dinero por fe — ni debería.
+
+Cada cifra en BudgetCopilot está a un toque de su derivación. "Gastaste más en delivery este mes" se expande en la lista real de transacciones que conforman esa categoría, con fechas y comercios. Una proyección de pago de deuda se expande en la tabla mes a mes: saldo inicial, interés, pago, restante. Cuando el agente compara dos estrategias — pagar primero la tarjeta con mayor interés versus el saldo más pequeño — muestra ambas tablas lado a lado, no solo un veredicto.
+
+```
+"Pagar primero la tarjeta A te ahorra más en intereses."
+
+            ▼ toca "mostrar las cuentas"
+
+  estrategia            meses hasta cero deuda    interés total
+  ───────────────────   ──────────────────────    ─────────────
+  mayor tasa primero          calculado             calculado
+  menor saldo primero         calculado             calculado
+
+  diferencia: calculada, de las dos filas de arriba
+  supuestos: mismo pago mensual total, sin cargos nuevos,
+             tasas actuales constantes
+```
+
+La línea de supuestos importa tanto como los números. Cada proyección es un modelo del futuro, y el usuario merece saber qué asumió. "Sin cargos nuevos" es un supuesto enorme para alguien cuyo carro podría dañarse el mes que viene. Decirlo en voz alta convierte una predicción en un escenario honesto.
+
+Mostrar las cuentas también cambió algo que no esperaba: hizo que la gente se involucrara más, no menos. Cuando los usuarios pueden ver la derivación, empiezan a corregirla. "Ese cargo del restaurante en realidad fue una cena de trabajo que me reembolsaron." Esa corrección mejora los hechos del mes siguiente, y significa que el usuario está pensando con la herramienta en vez de solo recibir de ella.
+
+## 4. La Información No Es Consejo
+
+Hay una línea en las finanzas personales en la que pienso constantemente, y quiero ser cuidadoso aquí porque soy ingeniero, no un profesional financiero certificado, y BudgetCopilot es una herramienta, no un asesor.
+
+La **información** describe lo que pasó y cuánto cuestan las opciones. "Tu gasto en delivery subió comparado con el mes pasado." "Si pones el mismo monto mensual a la tarjeta A primero, esta es la diferencia proyectada en intereses." "Esta suscripción te ha cobrado cada mes y no veo actividad relacionada — ¿todavía te es útil?"
+
+El **consejo** le dice a alguien qué hacer con su vida. "Cancela eso." "Deja de comer fuera." "Pon tus ahorros en esto." "No debiste comprar eso."
+
+La diferencia no es solo cautela legal. Es respeto. El agente ve transacciones. No ve que el gasto en delivery subió porque un padre estaba en el hospital, o que la suscripción "sin usar" es lo único que mantiene cuerda a alguien, o que la persona decidió, con toda la información, que pagar primero la tarjeta pequeña vale el interés extra porque la motivación de cerrar una cuenta es real. El método bola de nieve existe precisamente porque los humanos no son hojas de cálculo.
+
+Así que el lenguaje del agente está moldeado para quedarse del lado de la información:
+
+```
+consejo (evitar):       "Deberías cancelar tus suscripciones de streaming."
+
+información (preferir): "Tienes tres suscripciones de streaming que suman
+                         un monto calculado por mes. Si quisieras liberar
+                         dinero para la tarjeta A, esta es una de las
+                         categorías flexibles más grandes. ¿Quieres ver
+                         qué cambia si quitas una?"
+```
+
+La segunda versión le da a la persona los hechos, los conecta con la meta que ya estableció, y ofrece un escenario. La decisión se queda con ella. Cuando los usuarios preguntan explícitamente "¿qué debería hacer?", el agente igual enmarca la respuesta como opciones con sus costos, y para cualquier cosa que involucre inversiones, impuestos o temas legales, dice claramente que eso está fuera de lo que puede responder con responsabilidad y sugiere hablar con un profesional calificado. Es el mismo patrón de rechazo honesto sobre el que escribí en [cuándo los modelos deberían decir "no sé"](/es/blog/when-models-should-say-i-dont-know), y importa aún más cuando el tema es el alquiler de alguien.
+
+<Callout type="info" title="El agente no puede ver toda la vida">
+Las transacciones te dicen qué pasó, no por qué. Un agente de finanzas que salta al consejo está fingiendo conocer un contexto que no tiene. Describe, cuantifica, ofrece escenarios, y deja que la persona con el panorama completo tome la decisión.
+</Callout>
+
+No juzgar también es parte de esto. La deuda carga vergüenza, y la gente ya la siente. Un agente que moraliza sobre una compra es un agente que la gente deja de abrir. El tono que busco es el de un amigo tranquilo que es bueno con las hojas de cálculo: claro, específico, nunca regañón.
+
+## 5. Los Datos de Transacciones Son los Datos Más Íntimos que Vas a Tener
+
+Paso mis días en TheGreyMatter.ai trabajando en seguridad de plataforma — cifrado de sobre para documentos, cifrado a nivel de campo para PII, registros de auditoría en cada mutación. Paso mis noches, en mi investigación de doctorado, pensando en datos clínicos. Y estoy convencido de que un flujo de transacciones bancarias es casi tan íntimo como un expediente médico.
+
+Piensa en lo que revelan unos pocos meses de transacciones. Dónde vive y trabaja alguien. Cuándo va a la farmacia y a cuál. Si apuesta, bebe, da a una iglesia, envía dinero a su familia en otro país, le paga a un abogado, visita una clínica. Las transacciones son un diario escrito por un lector de tarjetas.
+
+Así que el manejo de datos en BudgetCopilot sigue algunas reglas:
+
+- **Minimiza lo que ve el modelo.** El modelo recibe hechos calculados y las transacciones específicas necesarias para explicarlos, no el historial crudo completo. Números de cuenta, números de tarjeta, y cualquier cosa que parezca un identificador se eliminan antes de construir cualquier prompt.
+- **Usa el alcance de solo lectura del agregador.** Las conexiones bancarias pasan por un agregador con los permisos más estrechos disponibles. No hay alcance de escritura que se pueda usar por accidente.
+- **Nada de entrenar con datos de usuarios.** Los proveedores de modelos se configuran con retención cero donde está disponible, y las transacciones de los usuarios nunca se usan para ajustar nada.
+- **Borrar realmente borra.** Cuando alguien desconecta una cuenta o cierra su perfil, sus transacciones y hechos derivados se van con él, no a un archivo "por si acaso."
+- **Registra el acceso, no el contenido.** Cada vez que el sistema lee transacciones, ese acceso queda registrado. Los registros guardan qué se leyó y por qué, no las transacciones mismas.
+
+Nada de esto es exótico. Es la misma disciplina que aplico a sistemas clínicos y plataformas empresariales, y una herramienta de finanzas personales la merece igual, quizás más, porque las personas que la usan a menudo tienen el menor margen para recuperarse de una filtración.
+
+## Para Qué Sirve Realmente el Agente
+
+Después de todos esos "nunca," es justo preguntar qué queda. La respuesta es: casi todo lo que realmente me ayudó.
+
+El agente es excelente convirtiendo un mes desordenado en una historia clara. Categoriza transacciones y aprende de las correcciones. Nota la suscripción que subió de precio, la categoría que se desvió, la semana que se torció. Explica un plan de pago en lenguaje simple y hace visibles los costos de cada opción. Envía un recordatorio amable cuando se acerca una fecha de vencimiento. Celebra cuando una tarjeta llega a cero.
+
+Esa última parte suena pequeña. No lo es. Cuando estaba en lo peor, lo que más necesitaba no era un robot moviendo dinero. Era claridad, un plan que entendiera, y algo que notara cuando hacía progreso. Un agente humilde puede dar las tres cosas sin tocar nunca el dinero.
+
+## El Hilo
+
+Si tuviera que comprimir el diseño de BudgetCopilot en una oración: **deja que el código acierte con los números, deja que el modelo sea amable con la historia, y deja que el humano sea dueño de cada decisión.**
+
+Aritmética determinística fuera del modelo. Las cuentas a un toque. Acceso de solo lectura a las cuentas bancarias. Información por encima del consejo. Datos de transacciones tratados como el diario que son. Nada de esto hace un demo llamativo. Todo esto hace una herramienta en la que alguien puede confiar con lo que más ansiedad le causa.
+
+La construí porque la necesitaba. La humildad es lo que la hace segura para compartir.
+
+---
+
+*Si estás construyendo un producto de IA que toca dinero — o cualquier dato donde una respuesta equivocada dicha con seguridad tiene un costo real — y quieres un segundo par de ojos sobre dónde termina el modelo y empieza el código, [contáctame](/contact). Ya cometí los errores, en la mesa de mi propia cocina.*

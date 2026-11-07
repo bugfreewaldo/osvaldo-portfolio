@@ -1,0 +1,221 @@
+---
+title: "Dimensionar Trabajo de IA para Clientes No-Técnicos: Rangos, Spikes, y Escribir qué es 'Suficientemente Bueno'"
+description: "Cómo estimo proyectos de IA para personas que solo quieren saber cuánto tiempo y cuánto dinero. Lecciones de años de trabajo con pequeños negocios en Shining Image y de trabajo de plataforma en TheGreyMatter.ai: separa el trabajo determinístico del trabajo incierto, vende un spike de descubrimiento que termine en una decisión, da rangos en vez de puntos, y escribe qué significa 'suficientemente bueno' antes de que nadie escriba código."
+date: 2026-10-13
+published: true
+category: "Liderazgo de Ingeniería"
+tags: ["Liderazgo de Ingeniería", "Estimación", "Proyectos de IA", "Comunicación con Clientes", "Alcance"]
+author: "Osvaldo Restrepo"
+translationOf: "scoping-ai-work-non-technical-clients"
+tldr: "Los clientes no-técnicos hacen dos preguntas sobre el trabajo de IA: cuánto tiempo, y cuánto dinero. Responder con un solo número es como la mayoría de los proyectos de IA empiezan a mentirle a quienes los patrocinan. Lo aprendí a la mala construyendo agentes de voz para pequeños negocios en Shining Image, y aplico la misma disciplina al trabajo de plataforma ahora. El método tiene cuatro partes. Divide cada proyecto en la parte determinística, que puedes estimar como software normal, y la parte incierta, que depende de qué tan bien un modelo maneja datos reales. Vende un spike de descubrimiento corto y con tiempo fijo sobre la parte incierta que termine en una decisión explícita: seguir, acotar o parar. Da rangos, y nombra qué los mueve. Y antes de construir nada, escribe qué significa 'suficientemente bueno' como ejemplos concretos con los que el cliente esté de acuerdo. La meta no es una estimación perfecta. Es una estimación que no sorprenda a nadie."
+faqs:
+  - question: "¿No se va a desanimar un cliente con rangos en vez de un número fijo?"
+    answer: "Algunos sí, al principio. Pero en mi experiencia, a un cliente no-técnico le molesta mucho más un número seguro que resulta equivocado que un rango honesto que resulta correcto. El truco es hacer que el rango sea explicable: di qué parte del trabajo es predecible, qué parte no, y qué vas a aprender en las primeras semanas que lo va a estrechar. Un rango con un plan para achicarlo se lee como competencia, no como evasión."
+  - question: "¿Qué debería producir realmente un spike de descubrimiento?"
+    answer: "Una decisión, no un demo. El spike pone a prueba la suposición más riesgosa contra los datos reales del cliente, la mide contra la definición de 'suficientemente bueno' que escribieron juntos, y termina con un memo corto que recomienda una de tres cosas: seguir según lo planeado, acotar el alcance a la parte que funciona, o parar. Parar después de un spike barato es un éxito, porque le ahorró al cliente el costo del proyecto completo."
+  - question: "¿Cómo defines 'suficientemente bueno' con alguien que no sabe qué es un eval?"
+    answer: "No lo llamas eval. Te sientas con ellos y reúnes ejemplos reales — llamadas, correos, documentos — y preguntas, para cada uno, cómo se ve un buen resultado y qué sería inaceptable. Luego acuerdan cuántos de una muestra tienen que salir bien, y qué errores nunca se permiten. Esa lista son los criterios de aceptación. Es un set de evaluación disfrazado, y se convierte en el artefacto más útil de todo el proyecto."
+relatedPosts: ["why-ai-pilots-stall", "eval-set-is-the-spec", "building-for-small-business"]
+---
+
+Hace años en Shining Image, el dueño de un pequeño negocio de servicios me hizo una pregunta que he escuchado en cien variaciones desde entonces: "¿Puedes hacer que el teléfono se conteste solo cuando estamos ocupados? ¿Cuánto tiempo tomaría eso?"
+
+Le dije tres semanas.
+
+No estaba mintiendo. Tenía una imagen mental del trabajo: un número de Twilio, voz a texto, un modelo para entender a quien llama, una conexión al calendario, texto a voz de regreso. Había construido la mayoría de esas piezas antes. Tres semanas se sentía generoso.
+
+La integración telefónica estuvo lista en más o menos una semana. La conexión al calendario tomó unos días. Y luego pasé un tramo largo y humillante descubriendo que las personas reales que llaman no hablan como mis guiones de prueba. Murmuran direcciones. Llaman desde una camioneta con la ventana abajo. Hacen tres preguntas en un solo respiro y luego cambian de opinión sobre la segunda. Lograr que el agente manejara *esas* llamadas lo suficientemente bien como para confiarle un cliente real tomó mucho más que las tres semanas que había prometido para todo.
+
+El dueño fue comprensivo. Pero recuerdo la llamada donde tuve que explicar el retraso, y recuerdo que no pude explicar el *porqué* de una forma que tuviera sentido para alguien que no construye software. Para él, el teléfono contestaba o no contestaba. Contestó en la semana uno. ¿Qué seguía haciendo yo?
+
+Esa llamada me enseñó más sobre dimensionar trabajo de IA que cualquier cosa que haya leído desde entonces. Este es el método que uso ahora — para pequeños negocios, y para trabajo de plataforma en TheGreyMatter.ai, donde los interesados son distintos pero la pregunta es exactamente la misma.
+
+## La Pregunta Detrás de "¿Cuánto Tiempo Va a Tomar?"
+
+Cuando un cliente no-técnico pregunta cuánto tiempo tomará algo, rara vez está pidiendo un número. Está preguntando tres cosas a la vez:
+
+- ¿Puedo planificar alrededor de esto?
+- ¿Me voy a llevar una sorpresa?
+- ¿Esta persona me va a decir la verdad cuando las cosas cambien?
+
+Un solo número seguro responde la primera pregunta y falla en silencio las otras dos. Con software tradicional, normalmente te sales con la tuya, porque la incertidumbre está mayormente en el esfuerzo, y el esfuerzo se puede empujar. Con trabajo de IA, una gran parte de la incertidumbre está en *si la cosa funciona siquiera con los datos de este cliente*, y ninguna cantidad de esfuerzo garantiza que la respuesta sea sí.
+
+Esa es la raíz de casi todos los proyectos de IA estancados que he visto, y es por eso que escribí sobre [por qué se estancan los pilotos de IA](/es/blog/why-ai-pilots-stall). La mayoría no murieron por mala ingeniería. Murieron por una estimación que fingió que la parte incierta era cierta.
+
+## 1. Divide el Trabajo en Dos Montones
+
+Lo primero que hago con cualquier proyecto de IA es dividirlo, en papel, en dos montones.
+
+```
+                   ┌─────────────────────────────────────┐
+                   │        EL PROYECTO COMPLETO         │
+                   └──────────────────┬──────────────────┘
+                                      │
+              ┌───────────────────────┴───────────────────────┐
+              ▼                                               ▼
+   MONTÓN DETERMINÍSTICO                           MONTÓN INCIERTO
+   (estima como software normal)                   (estima como experimentos)
+
+   - número telefónico + enrutamiento              - ¿entiende el modelo a quienes
+   - integración de calendario / CRM                 llaman lo suficientemente bien?
+   - auth, almacenamiento, logs                    - ¿puede extraer los campos
+   - pantalla de admin para el dueño                 correctos de entradas confusas?
+   - respaldo: tomar un mensaje                    - ¿qué tan seguido necesita a un
+   - notificaciones, cobros                          humano, y está bien eso?
+
+   incógnitas conocidas, forma de esfuerzo         incógnitas desconocidas, forma de datos
+```
+
+El montón determinístico es software normal. Integraciones, pantallas, almacenamiento, auth, notificaciones. He construido suficientes de estos como para estimarlos de la forma normal, con el margen normal, y usualmente me acerco.
+
+El montón incierto es todo aquello cuyo éxito depende de cómo se comporta un modelo con entradas del mundo real. Entender voz. Extraer campos de documentos que nadie estandarizó. Clasificar solicitudes que no encajan limpiamente en categorías. Estas no son tareas de ingeniería en el sentido usual. Son experimentos, y los experimentos no tienen fechas de entrega. Tienen presupuestos.
+
+Mostrarle esta división a un cliente es, por sí solo, la mitad de la conversación. Las personas no-técnicas lo entienden de inmediato una vez que está dibujado. "Este lado es como construir un sitio web. Este lado es como entrenar a un empleado nuevo — no sabremos qué tan bueno es hasta verlo trabajar." Ese encuadre nunca me ha fallado.
+
+<Callout type="tip" title="La mayor parte del proyecto no es IA">
+En casi todos los proyectos de IA que he dimensionado, el montón determinístico es más grande que el incierto. Eso es una buena noticia: significa que la mayor parte del trabajo se puede estimar con confianza. Dilo. Los clientes se relajan cuando aprenden que la parte desconocida que da miedo es una tajada, no todo el pastel.
+</Callout>
+
+Un efecto secundario útil: la división a menudo revela que parte del montón incierto no necesita un modelo para nada. Una solicitud que sonaba como "la IA entiende al cliente" resulta ser "un menú desplegable y dos reglas." Mover trabajo del montón incierto al determinístico es la reducción de riesgo más barata que existe.
+
+## 2. Vende un Spike de Descubrimiento que Termine en una Decisión
+
+Para el montón incierto, no doy una estimación por adelantado. Vendo un spike.
+
+Un spike de descubrimiento es corto y con tiempo fijo — usualmente una o dos semanas, según el proyecto. Tiene exactamente un trabajo: poner a prueba la suposición más riesgosa contra los datos *reales* del cliente y regresar con una decisión. No un demo. Una decisión.
+
+La decisión tiene tres resultados posibles, y le digo al cliente los tres antes de empezar:
+
+```
+                    SPIKE DE DESCUBRIMIENTO
+                 (tiempo fijo, precio fijo)
+                            │
+         probar la suposición más riesgosa con datos reales
+         medir contra el "suficientemente bueno" acordado
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+        SEGUIR            ACOTAR            PARAR
+   funciona bastante   funciona para      todavía no funciona
+   bien                un subconjunto     lo suficiente
+   → estimación        → alcance menor,   → te ahorraste el costo
+     completa con        re-estimar         de construir todo
+     confianza
+```
+
+La opción "parar" importa más de lo que parece. Cuando un cliente sabe desde el primer día que parar es un resultado legítimo, incluso exitoso, el spike se vuelve una investigación honesta en vez de una presentación de ventas que estoy presionado a hacer funcionar. Y cuando un spike sí dice parar, el cliente gastó una cantidad pequeña y conocida para evitar una grande y desconocida. Varios de los clientes más agradecidos que he tenido fueron aquellos donde el spike dijo "todavía no."
+
+"Acotar" es el resultado más común, y el más valioso. El agente de voz que no puede manejar todas las llamadas podría manejar extremadamente bien la agenda de citas y tener problemas con cotizaciones complicadas. Entonces el alcance se vuelve: el agente agenda citas, y todo lo demás se convierte en un mensaje bien escrito para el dueño. Ese es un producto real, entregado antes, que hace una cosa de forma confiable.
+
+<Callout type="info" title="Un spike produce un memo, no un prototipo">
+El entregable de un spike de descubrimiento es un memo de una página: qué probamos, con qué datos, contra qué definición de suficientemente bueno, qué encontramos, y cuál de seguir, acotar o parar recomiendo. Los prototipos son seductores y se confunden con productos casi terminados. Un memo se lee como lo que es — evidencia para una decisión.
+</Callout>
+
+## 3. Da Rangos, y Nombra Qué los Mueve
+
+Después del spike, puedo estimar todo el proyecto. Igual doy un rango, no un punto.
+
+La diferencia es que ahora el rango es explicable. Puedo decir: "Las integraciones, pantallas y flujos de respaldo son más o menos tanto trabajo, y tengo confianza en esa parte. El trabajo del modelo es un rango porque depende de cuántos casos borde aparezcan una vez que clientes reales lo usen. Esto es lo que nos empujaría al extremo bajo, y esto es lo que nos empujaría al extremo alto."
+
+```
+malo:    "Va a tomar seis semanas."
+
+mejor:   "De cuatro a siete semanas.
+          - La integración y el trabajo de admin son unas tres semanas;
+            tengo confianza en eso.
+          - El ajuste del agente es de una a cuatro semanas. Cae en el
+            extremo bajo si tus llamadas se parecen a las que probamos en
+            el spike. Cae en el extremo alto si descubrimos tipos de
+            llamada que no hemos visto, como llamadas en español o
+            cotizaciones de varias propiedades.
+          - Al final de la semana dos te digo hacia qué extremo vamos."
+```
+
+La última línea es la importante. Un rango no es una forma de evitar el compromiso. Es un compromiso de *estrechar* el rango con un calendario. A los clientes no les molesta la incertidumbre ni de cerca tanto como les molesta no saber cuándo va a terminar.
+
+También mantengo los números ilustrativos aquí deliberadamente redondos. En la práctica, los números exactos dependen por completo del proyecto. Lo que se transfiere es la estructura: la parte segura, la parte incierta, qué la mueve, y cuándo sabrás más.
+
+## 4. Escribe Qué Significa "Suficientemente Bueno"
+
+Este es el paso que habría salvado mi promesa de tres semanas, y es el que ahora me niego a saltar.
+
+Antes de que empiece cualquier construcción real — idealmente durante el spike — me siento con el cliente y definimos, por escrito, qué significa "suficientemente bueno." No en métricas que no le importan. En ejemplos que reconoce.
+
+Para el agente de voz, esa conversación se ve así. Juntamos veinte o treinta llamadas reales, o recreaciones realistas de ellas. Para cada una, escribimos cuál es un buen resultado, y qué sería inaceptable. Luego acordamos una vara.
+
+```yaml
+# Criterios de aceptación — agente de llamadas fuera de horario (ilustrativo)
+suficientemente_bueno:
+  llamadas_de_agenda:
+    muestra: "las 30 llamadas que reunimos juntos"
+    meta: "agenda el servicio y la hora correctos en la mayoría"
+    fallo_aceptable: "toma un mensaje claro en vez de agendar"
+    nunca_permitido:
+      - "agenda la dirección equivocada"
+      - "confirma una hora que el calendario muestra ocupada"
+      - "da un precio"
+  todo_lo_demas:
+    comportamiento: "toma un mensaje con nombre, número y motivo, con cortesía"
+    nunca_permitido:
+      - "finge ser humano cuando se le pregunta directamente"
+  revision:
+    quien: "el dueño escucha una muestra de llamadas cada semana el primer mes"
+```
+
+Dos cosas sobre este documento importan. Primero, las listas de `nunca_permitido`. Los clientes usualmente tienen mucho más claro lo que nunca debe pasar que cómo se ve el éxito, y esas líneas se convierten en barandas duras en el sistema. Segundo, está escrito en el lenguaje del cliente — direcciones, precios, citas — no en el mío.
+
+Esto es un set de evaluación disfrazado. Escribí todo un post argumentando que [el set de evaluación es la especificación](/es/blog/eval-set-is-the-spec), y el dimensionamiento es donde esa idea paga primero. Los ejemplos que reunimos son contra lo que el spike mide, de lo que depende el rango, y contra lo que probamos cada versión después. Sin ellos, "terminado" es un sentimiento. Con ellos, "terminado" es una conversación que realmente puedes terminar.
+
+<Callout type="warning" title="Sin una vara escrita, la vara se mueve">
+Si "suficientemente bueno" no está escrito antes de construir, se definirá después — por la única mala llamada que el cliente casualmente escuche. Los sistemas de IA siempre tienen algunas fallas. Acordar de antemano cuáles son aceptables y cuáles nunca se permiten es lo que evita que un proyecto muera por una sola anécdota.
+</Callout>
+
+## El Mismo Método, a Escala de Plataforma
+
+Supuse que estas lecciones eran sobre pequeños negocios. No lo son.
+
+En TheGreyMatter.ai, trabajo en la plataforma detrás de una familia de aplicaciones verticales de IA, y las personas que preguntan "¿cuánto tiempo?" son líderes de producto y ejecutivos en vez de dueños de negocios. Son más agudos sobre software en general, pero están exactamente igual de expuestos a la misma trampa: una estimación segura sobre trabajo cuyo éxito depende de cómo se comporta un modelo con documentos y datos que nadie ha mirado de cerca todavía.
+
+El método se transfiere casi sin cambios. El montón determinístico a escala de plataforma son los servicios compartidos: auth, manejo de archivos, notificaciones, conectores, RBAC, registros de auditoría. Esos los estimo con confianza, porque son ingeniería bien entendida. El montón incierto son cosas como qué tan bien un agente extrae estructura de un nuevo tipo de documento, o qué tan confiable se sostiene un análisis entre los datos de distintas empresas. Esos reciben spikes, rangos, y una vara escrita, igual que el agente de voz.
+
+El vocabulario cambia. El memo recibe una plantilla más formal. Pero la forma — dos montones, un spike con una decisión, un rango con fecha para estrecharse, y lo suficientemente bueno por escrito — es la misma que aprendí en aquella llamada hace años.
+
+## Un Alcance de Una Página que Realmente Envío
+
+Cuando lo junto todo, el documento que recibe un cliente no-técnico cabe en una página:
+
+```
+PROYECTO: manejo de llamadas fuera de horario
+
+1. QUÉ ESTAMOS CONSTRUYENDO
+   Un párrafo, en tus palabras, no en las mías.
+
+2. LA PARTE PREDECIBLE              estimación: rango seguro
+   Integraciones, pantalla de admin, respaldo de mensajes, notificaciones.
+
+3. LA PARTE INCIERTA                estimación: después del spike
+   Qué tan bien maneja el agente tus llamadas reales.
+
+4. SPIKE DE DESCUBRIMIENTO          tiempo fijo, precio fijo
+   Prueba con tus llamadas reales. Termina en: seguir / acotar / parar.
+
+5. QUÉ SIGNIFICA "SUFICIENTEMENTE BUENO"
+   Los ejemplos que acordamos. Lo que nunca debe pasar.
+
+6. CUÁNDO SABRÁS MÁS
+   Fechas en que el rango se estrecha, y quién te avisa.
+```
+
+La sección seis es la que los clientes más mencionan cuando hablamos después. No es técnica en absoluto. Es una promesa sobre comunicación.
+
+## El Hilo
+
+Si comprimo todo esto en una oración: **separa lo que sabes de lo que estás adivinando, y cobra por averiguar antes de cobrar por construir.**
+
+Los clientes no-técnicos no están pidiendo certeza. Saben que el software se atrasa. Lo que piden es no llevarse sorpresas, y que se les diga la verdad con un calendario. Dos montones, un spike que termina en una decisión, un rango que se estrecha, y una definición escrita de suficientemente bueno son solo las herramientas que uso para cumplir esa promesa.
+
+Todavía pienso en esa estimación de tres semanas. El teléfono sí contestó en la semana uno. Todo lo que vino después era la parte que no había sabido cómo explicar. Ahora la explico primero.
+
+---
+
+*Si estás dimensionando un proyecto de IA para un cliente, un jefe, o una junta directiva que solo quiere saber cuánto tiempo y cuánto dinero, y quieres ayuda separando lo predecible de lo incierto, [contáctame](/contact). Una estimación honesta es la función más barata que cualquier proyecto de IA va a entregar.*

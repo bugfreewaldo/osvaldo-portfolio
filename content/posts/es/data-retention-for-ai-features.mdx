@@ -1,0 +1,237 @@
+---
+title: "Qué Guardar y Qué Olvidar: Retención de Datos en Funciones de IA"
+description: "En el momento en que agregas una función de IA, los datos de los usuarios empiezan a filtrarse a lugares que nadie diseñó para retención: logs de prompts, trazas, bases vectoriales, cachés, conjuntos de evaluación. Los prompts y las respuestas son datos del usuario, y merecen ventanas de retención, redacción y un borrado que de verdad se propague. Lecciones de construir MILA para familias de UCIN e infraestructura de IA compartida en TheGreyMatter."
+date: 2026-11-03
+published: true
+category: "Ética de IA"
+tags: ["Ética de IA", "Retención de Datos", "Privacidad", "Observabilidad de LLMs", "IA en Salud"]
+author: "Osvaldo Restrepo"
+translationOf: "data-retention-for-ai-features"
+tldr: "Cada función de IA multiplica en silencio los lugares donde viven los datos del usuario. El prompt va a un log, la respuesta a una traza, el documento a una base vectorial, la respuesta a un caché, y la falla interesante a tu conjunto de evaluación. La mayoría de los equipos diseñan la retención de su base de datos principal y se olvidan de todo lo demás. Mis reglas: trata los prompts y las respuestas como datos del usuario, no como telemetría; dale a cada almacén una ventana de retención elegida a propósito; registra trazas redactadas por defecto y guarda los payloads completos solo por poco tiempo y con control de acceso; construye el borrado como un abanico que llegue a cada copia, incluyendo embeddings, cachés y conjuntos de evaluación; y en dominios sensibles como salud, guarda menos de lo que crees que necesitas. Los datos que nunca guardaste no se pueden filtrar, no se pueden citar judicialmente y nunca hay que borrarlos."
+faqs:
+  - question: "¿Los logs de prompts no son solo telemetría operativa, como los logs de requests?"
+    answer: "No. Un log de requests registra que algo pasó. Un log de prompts registra lo que el usuario dijo, muchas veces en sus propias palabras, muchas veces con nombres, detalles de salud, finanzas o información de otras personas. Las respuestas pueden contener los mismos detalles, reformulados. Eso las convierte en datos del usuario en todo sentido que importa para la privacidad y para las solicitudes de borrado, y deberían gobernarse como el resto de los registros del usuario."
+  - question: "Si redacto las trazas, ¿cómo depuro problemas reales?"
+    answer: "La mayoría de la depuración necesita la forma de la interacción, no la identidad de la persona: qué herramientas se llamaron, cuánto tardó cada paso, conteo de tokens, la versión del prompt, los resultados de recuperación y el error. Las trazas redactadas conservan todo eso. Para el caso raro que necesita el payload completo, mantén un almacén de vida corta, con control de acceso y log de auditoría, o reproduce el problema con datos sintéticos. La depurabilidad y la privacidad están mucho menos en tensión de lo que la gente supone."
+  - question: "¿Cómo borras a un usuario de una base vectorial o de un conjunto de evaluación?"
+    answer: "Lo planeas al momento de escribir. Cada embedding, entrada de caché y ejemplo de evaluación necesita metadatos que apunten de vuelta al usuario o registro de origen, para que el borrado lo pueda encontrar. Entonces el borrado se vuelve un trabajo en abanico que recorre cada almacén, elimina o marca las entradas que coinciden, y registra que terminó. Para los conjuntos de evaluación, el mejor valor por defecto es nunca meter datos crudos de usuarios: reescribe el caso de forma sintética y conserva el comportamiento que querías probar."
+relatedPosts: ["consent-is-a-ux-problem", "observability-llm-production", "digital-health-compliance-guide"]
+---
+
+Durante una ronda temprana de pruebas de MILA, estaba persiguiendo un bug en el que un borrador de actualización para los padres salía con el tono equivocado. Hice lo que siempre hago: abrí los logs y busqué el request.
+
+Lo encontré. También encontré, en texto plano, en una traza de depuración que había agregado semanas antes y había olvidado, el primer nombre del bebé, una línea de las notas de enfermería de la noche, y el mensaje borrador dirigido a los padres.
+
+No pasó nada malo. Los logs eran internos, el acceso era limitado, y lo arreglé esa misma tarde. Pero recuerdo la sensación con mucha precisión, porque era la sensación de descubrir que mi sistema había estado guardando algo que yo nunca decidí guardar. Había diseñado la base de datos con cuidado. Había pensado en el consentimiento. Y después había construido una línea de logging perfectamente ordinaria que copiaba los datos más sensibles de todo el producto a un lugar sin ninguna política de retención.
+
+Ese es el problema central de la retención de datos en funciones de IA. No es que los equipos tomen malas decisiones sobre qué guardar. Es que nunca toman la decisión, porque los datos terminan en lugares que nadie pensó como almacenamiento.
+
+## Los Prompts y las Respuestas Son Datos del Usuario
+
+Este es el cambio mental del que depende todo lo demás.
+
+Los logs de requests tradicionales registran que algo pasó: un ID de usuario, un endpoint, un código de estado, una latencia. Los prompts son distintos. Un prompt contiene lo que el usuario realmente dijo, en sus propias palabras. En una herramienta de salud, puede ser un diagnóstico. En una herramienta de finanzas, un salario. En un agente de voz para un pequeño negocio, la dirección de quien llama y por qué necesita un plomero a las 11pm.
+
+Las respuestas no son más seguras. El modelo lee los datos del usuario y los escribe de vuelta, reformulados, resumidos, a veces combinados con documentos recuperados sobre otras personas. Una respuesta puede contener información más sensible que el prompt que la produjo.
+
+<Callout type="warning" title="Si contiene lo que el usuario dijo, son datos del usuario">
+Los prompts, las respuestas, los fragmentos recuperados, los argumentos de llamadas a herramientas y sus resultados cargan contenido del usuario. Pertenecen al mismo grupo de gobierno que los registros del usuario en tu base de datos principal: ventanas de retención, control de acceso y borrado. Llamarlos "telemetría" es cómo escapan de las tres.
+</Callout>
+
+## Mapea a Dónde Van Realmente los Datos
+
+Antes de poder elegir qué guardar, necesitas ver cada lugar donde una sola interacción de IA deja una copia. Cuando por fin dibujé esto para una función de IA, fue una lección de humildad.
+
+```
+                       mensaje del usuario
+                              │
+          ┌───────────────────┼─────────────────────┐
+          ▼                   ▼                     ▼
+   base de datos       logs de request /      almacén de trazas
+   de la app (la que   depuración (a menudo   LLM (spans con prompt,
+   diseñaste)          payloads completos     respuesta, herramientas)
+                       por accidente)
+          │                                         │
+          ▼                                         ▼
+   base vectorial ◄── embeddings de          caché de respuestas
+   (fragmentos +      documentos subidos     (por hash del prompt)
+    metadatos)
+          │                                         │
+          ▼                                         ▼
+   conjunto de evaluación              retención del proveedor
+   ("esta falla era interesante")      (revisa los términos de tu proveedor)
+          │
+          ▼
+   exportaciones para fine-tuning o analítica
+```
+
+La base de datos de arriba a la izquierda es la única caja para la que la mayoría de los equipos tiene una política de retención. Cada otra caja es una copia, y cada copia es algo de lo que tendrás que rendir cuentas cuando un usuario pida borrar sus datos, cuando una revisión de seguridad pregunte qué guardas, o cuando algo se filtre.
+
+En TheGreyMatter, la regla de federación ayuda aquí: cada app es dueña de su propia Cosmos DB, y compartir ocurre solo a través de APIs. Eso hace que la pregunta "¿dónde viven los datos?" sea mucho más respondible, porque no hay una base de datos compartida acumulando copias en silencio de diecisiete apps. Pero la federación por sí sola no cubre logs, trazas, embeddings ni cachés. Esos los tienes que mapear a propósito.
+
+## Elige una Ventana de Retención para Cada Almacén
+
+Una vez que existe el mapa, cada caja recibe una decisión. No un valor por defecto. Una decisión, escrita, con una razón.
+
+Esta es aproximadamente la forma que uso. Los números son ilustrativos; las ventanas correctas dependen de tu dominio, tus contratos y tu asesoría legal, y esa conversación debería ocurrir con alguien que conozca tu contexto regulatorio.
+
+```
+almacén                    qué guarda               ventana (ilustrativa)
+─────────────────────────  ───────────────────────  ──────────────────────
+base de datos de la app    registros del usuario    vida de la cuenta
+trazas redactadas          forma, tiempos, versión  semanas a pocos meses
+almacén de depuración      prompt + respuesta crudo días, acceso controlado
+caché de respuestas        respuestas por clave     horas a días
+base vectorial             fragmentos de docs       mientras exista el doc
+conjunto de evaluación     sintético o consentido   indefinido (sin PII cruda)
+exportaciones analíticas   solo agregados           según política analítica
+```
+
+Dos principios guían la tabla.
+
+**Los datos derivados nunca sobreviven a su fuente.** Un embedding de un documento no debería existir después de que se borre el documento. Una respuesta en caché sobre un contrato no debería sobrevivir al contrato. Suena obvio y se viola constantemente, porque la base vectorial y el caché los configuró otra persona, en otro momento, por otra razón.
+
+**Mientras más crudo el dato, más corta la ventana.** Los payloads completos son los más útiles para depurar y los más peligrosos de guardar. Reciben la ventana más corta y el acceso más estricto. Los datos redactados y estructurales son seguros de guardar por más tiempo porque dicen qué pasó sin decir a quién le pasó.
+
+## Registra Trazas Redactadas por Defecto
+
+Me importa mucho la observabilidad de los sistemas con LLMs; escribí un post entero sobre [observabilidad de LLMs en producción](/es/blog/observability-llm-production). Nada en este post argumenta a favor de volar a ciegas. El argumento es que la mayor parte de lo que necesitas para depurar una función de IA es estructural, y la estructura se puede registrar sin las palabras del usuario.
+
+Mi traza por defecto guarda lo que explica el comportamiento: la versión del prompt, el modelo, el conteo de tokens, la latencia por paso, qué herramientas se llamaron, qué fragmentos se recuperaron (por ID, no por contenido), el resultado de confianza o rechazo, y el error, si lo hubo. Las palabras del usuario y las del modelo se redactan antes de llegar al almacén de trazas.
+
+```typescript
+type TraceSpan = {
+  traceId: string;
+  promptVersion: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  toolCalls: { name: string; ok: boolean; latencyMs: number }[];
+  retrievedChunkIds: string[];
+  outcome: "answered" | "refused" | "error";
+  // Los campos de contenido se redactan salvo que el almacén de depuración esté habilitado
+  input: string;
+  output: string;
+};
+
+const PATTERNS: [RegExp, string][] = [
+  [/[\w.+-]+@[\w-]+\.[\w.]+/g, "[email]"],
+  [/\+?\d[\d\s().-]{7,}\d/g, "[telefono]"],
+  [/\b\d{3}-\d{2}-\d{4}\b/g, "[numero-id]"],
+];
+
+export function redact(text: string, knownNames: string[] = []): string {
+  let out = text;
+  for (const [pattern, label] of PATTERNS) out = out.replace(pattern, label);
+  // Los nombres que ya conocemos del registro son lo más confiable de eliminar
+  for (const name of knownNames) {
+    if (name.length > 1) out = out.replaceAll(name, "[nombre]");
+  }
+  return out;
+}
+
+export function toTrace(span: TraceSpan, ctx: { knownNames: string[] }): TraceSpan {
+  return {
+    ...span,
+    input: redact(span.input, ctx.knownNames),
+    output: redact(span.output, ctx.knownNames),
+  };
+}
+```
+
+La redacción basada en patrones no es perfecta, y no pretendo que lo sea. Las expresiones regulares se pierden cosas. Por eso importa el paso de nombres conocidos: en la mayoría de las funciones de IA, ya conoces las entidades sensibles porque vienen de tus propios registros (el paciente, el cliente, la cuenta). Eliminar los valores que ya tienes atrapa mucho más que cualquier patrón genérico. Y para los productos más sensibles, el valor por defecto más seguro es no registrar contenido en absoluto y aceptar una vida de depuración un poco más difícil.
+
+<Callout type="tip" title="Depura con la forma, no con la identidad">
+Cuando miro hacia atrás a los bugs que realmente he arreglado en funciones de IA, casi ninguno requirió saber quién era el usuario. Requirieron saber qué versión del prompt corrió, qué se recuperó, qué herramienta falló y cuánto tardó cada paso. Registra eso con generosidad. Registra las palabras con moderación, por poco tiempo y con un rastro de auditoría.
+</Callout>
+
+Cuando de verdad se necesita un payload completo, va a un almacén de depuración separado con una ventana corta, acceso restringido y una entrada en el log de auditoría por cada lectura. En TheGreyMatter, cada mutación ya pasa por un log de auditoría y los campos sensibles se cifran a nivel de campo con llaves guardadas en Azure Key Vault. Leer payloads crudos de IA merece la misma seriedad que leer registros crudos, porque son los mismos datos.
+
+## Un Borrado que de Verdad se Propague
+
+Esta es la prueba que ahora le hago a cada función de IA que construyo: si un usuario pide ser olvidado hoy, ¿puedo demostrar que cada copia desapareció para mañana?
+
+Para la base de datos principal, usualmente sí. Para todo lo demás en el mapa, la respuesta honesta en la mayoría de las empresas es "probablemente no." El embedding sigue en la base vectorial. La respuesta sigue en el caché. El caso de falla interesante que alguien copió al conjunto de evaluación hace seis meses todavía tiene el mensaje del usuario, palabra por palabra.
+
+Un borrado que funciona se diseña al momento de escribir, no al momento de borrar. Cada copia derivada necesita un puntero de vuelta a su origen.
+
+```typescript
+// Cada registro derivado lleva su linaje
+type Lineage = {
+  tenantId: string;
+  userId: string;
+  sourceId: string; // el documento, mensaje o registro de donde salió
+};
+
+interface DeletableStore {
+  name: string;
+  deleteByLineage(filter: Partial<Lineage>): Promise<number>;
+}
+
+export async function forgetUser(
+  tenantId: string,
+  userId: string,
+  stores: DeletableStore[],
+  audit: (event: object) => Promise<void>
+) {
+  const results = [];
+  for (const store of stores) {
+    const removed = await store.deleteByLineage({ tenantId, userId });
+    results.push({ store: store.name, removed });
+  }
+  await audit({ type: "user.forgotten", tenantId, userId, results, at: new Date() });
+  return results;
+}
+
+// Almacenes registrados: BD de la app, base vectorial, caché de respuestas,
+// almacén de depuración, cola de candidatos a evaluación, exportaciones analíticas.
+// Agregar un almacén nuevo sin registrarlo aquí no pasa la revisión.
+```
+
+El código es simple a propósito. Lo difícil no es el ciclo. Lo difícil es la disciplina de que cada almacén que guarda datos derivados de usuarios se registre aquí, y que cada registro en esos almacenes lleve metadatos de linaje. Una base vectorial donde los fragmentos no tienen `userId` ni `sourceId` en sus metadatos no se puede limpiar sin reindexar todo. Un caché indexado solo por el hash del prompt no se puede limpiar por usuario en absoluto; solo puede expirar. Lo cual está bien, si la ventana es corta, y justamente por eso la ventana del caché en la tabla de arriba es de horas a días.
+
+<Callout type="danger" title="Los conjuntos de evaluación son donde los usuarios borrados viven para siempre">
+Los conjuntos de evaluación se construyen a partir de fallas reales, que es lo que los hace valiosos y lo que los hace peligrosos. Un usuario que pidió ser borrado puede sobrevivir por años como "ejemplo 214" en un dataset dorado. Mi valor por defecto: nunca poner contenido crudo de usuarios en un conjunto de evaluación. Reescribe el caso con detalles sintéticos que preserven el comportamiento bajo prueba, y guarda un puntero solo si el usuario dio su consentimiento explícito.
+</Callout>
+
+Esa regla cuesta un poco de esfuerzo por ejemplo y ahorra una categoría entera de problemas. Además tiende a hacer mejores los casos de evaluación, porque reescribir un caso te obliga a decir exactamente qué comportamiento prueba.
+
+## La Salud Sube lo que Está en Juego
+
+Todo lo anterior es buena práctica en cualquier dominio. En salud, deja de ser buena práctica y se convierte en el piso.
+
+Con MILA, los datos son sobre bebés prematuros y familias asustadas. El mensaje de un padre de UCIN al equipo de cuidado puede incluir cosas que no le contaría ni a sus amigos más cercanos. Las notas de enfermería que lee MILA son registros clínicos. Los borradores que produce son, en efecto, comunicación clínica. No hay ninguna versión de "lo guardamos en los logs por accidente" que yo me sentiría cómodo explicándole a un padre.
+
+Así que MILA trabaja con un conjunto más estricto de valores por defecto:
+
+```
+Valores de retención por defecto en MILA
+
+  - nunca texto libre en los logs estándar
+  - las trazas guardan solo estructura: versiones, tiempos, resultados
+  - los borradores viven con el registro clínico, no en un almacén aparte
+  - nada de caché de respuestas para lo específico de un paciente
+  - los casos de evaluación son sintéticos, escritos para reflejar patrones reales
+  - cada acción de revisión humana queda auditada
+```
+
+El costo es real. Depurar es más lento. Algunos bugs necesitan una reproducción sintética en vez de una búsqueda rápida en los logs. He aceptado ese intercambio con gusto, y creo que cualquiera que construya IA clínica debería hacerlo también. Si trabajas en este espacio, [la guía de cumplimiento en salud digital](/es/blog/digital-health-compliance-guide) cubre el lado regulatorio; este post es sobre los hábitos de ingeniería que hacen que el cumplimiento sea posible en vez de aspiracional.
+
+## La Retención Es una Pregunta de Consentimiento
+
+La retención usualmente se archiva bajo seguridad o infraestructura. Creo que pertenece junto al consentimiento. Cuando un usuario escribe en una función de IA, está haciendo un juicio sobre qué pasa con sus palabras, usualmente con muy poca información. Argumenté en [el consentimiento es un problema de UX](/es/blog/consent-is-a-ux-problem) que el consentimiento solo significa algo cuando la gente realmente entiende a qué está accediendo. La retención es la otra mitad de esa promesa: lo que sea que les dijiste, tus sistemas tienen que hacerlo de verdad.
+
+Eso significa que la tabla de retención debería ser algo que puedas explicarle a un usuario en un párrafo sencillo. "Guardamos tu conversación con tu cuenta. Guardamos registros técnicos de cómo se comportó el sistema, sin tus palabras, por un tiempo limitado. No usamos tus conversaciones para probar el sistema sin preguntarte. Cuando borras tu cuenta, todo se va." Si no puedes escribir ese párrafo con honestidad, el problema no es la redacción. Es la arquitectura.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **cada función de IA multiplica los lugares donde viven los datos del usuario, así que la retención tiene que ser una decisión que tomas para cada copia, no un valor por defecto que heredas de tu logger.**
+
+Trata los prompts y las respuestas como datos del usuario. Mapea cada almacén que tocan. Dale a cada uno una ventana a propósito. Registra la forma, no las palabras. Construye el borrado como un abanico con linaje. Mantén a los usuarios reales fuera de los conjuntos de evaluación. Y cuando el dominio es sensible, guarda menos de lo que crees que necesitas.
+
+Los datos que nunca guardaste no se pueden filtrar, no te pueden sorprender en una sesión de depuración, y nunca hay que borrarlos. Ese es el control de privacidad más barato que existe.
+
+---
+
+*Si estás agregando funciones de IA a un producto que maneja datos sensibles y quieres un segundo par de ojos sobre a dónde terminan esos datos, [contáctame](/contact). Dibujar el mapa suele ser un ejercicio de una tarde, y tiende a ser la tarde más útil del trimestre.*

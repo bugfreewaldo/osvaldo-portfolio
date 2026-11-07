@@ -1,0 +1,198 @@
+---
+title: "Benchmarks Lie Politely: How I Actually Choose a Model"
+description: "Public leaderboards are not wrong. They are just measuring someone else's workload. How I pick a model for a real feature: a small task-specific eval built from sanitized production traffic, quality, latency, cost, and failure modes measured together, a re-run on every model release, and a healthy suspicion of my own vibes."
+date: 2026-08-25
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "Evals", "Model Selection", "LLMs", "Cost"]
+author: "Osvaldo Restrepo"
+tldr: "Public benchmarks are honest about what they measure. The problem is that what they measure is not your workload. A leaderboard tells you how a model does on someone else's questions, graded someone else's way, with no opinion about your latency budget, your cost per request, or the specific ways your users break things. I choose models with a small task-specific eval built from real, sanitized traffic, usually a few hundred cases. I score quality, latency, cost, and failure modes in the same run, because a model that wins on one and loses badly on another is not a winner. I re-run the whole thing on every model release, because the ranking changes more often than anyone admits. And I treat my own 'this one feels smarter' impression as a hypothesis to test, not a result."
+faqs:
+  - question: "Are public benchmarks useless for choosing a model?"
+    answer: "No. They are a good first filter. If a model is far behind on a broad public benchmark, it probably will not surprise you on your workload. But once you are choosing between a handful of strong candidates, the differences on public leaderboards are smaller than the differences your own task will reveal. Use benchmarks to build the shortlist, and your own eval to pick from it."
+  - question: "How big does a task-specific eval need to be?"
+    answer: "Smaller than people think to start. A few hundred well-chosen cases drawn from real traffic, with a deliberate slice of hard and weird inputs, will separate candidates on most product tasks. The point is coverage of your actual input distribution and failure modes, not statistical grandeur. You grow it every time production surprises you."
+  - question: "Why measure latency and cost in the same run as quality?"
+    answer: "Because they trade against each other and you only make one decision. A model that is slightly better on quality but noticeably slower at the tail and several times more expensive per request may be the wrong choice for a user-facing feature and the right choice for a nightly batch job. Measuring them separately invites you to optimize one and forget the others until the invoice or the support tickets arrive."
+relatedPosts: ["eval-set-is-the-spec", "llm-evaluation-pipelines", "pricing-ai-features-usage-costs"]
+---
+
+A few months ago a new model came out, and within about six hours my feeds were full of charts. It was ahead on this leaderboard, tied on that one, a clear jump on a reasoning suite I had heard of and two I had not. Someone I respect posted "this changes everything for agents." I read all of it with my coffee and felt the familiar itch: switch the default, ship it, ride the wave.
+
+So I did the thing I always do instead. I pointed it at the eval set for one of our document-analysis features, the one built from real uploads, scrubbed of anything identifying, and waited about forty minutes.
+
+It was fine. Genuinely fine. Slightly better on a couple of extraction categories, slightly worse on one we care about a lot, noticeably slower at the tail, and more expensive per document. For that feature, it was not the upgrade. For a different internal tool it turned out to be exactly the upgrade. Neither of those facts was on any chart.
+
+That is the whole post, really. Benchmarks are not lying in the sense of being false. They lie politely: they answer a question you did not ask, very precisely, and let you assume it was yours.
+
+## What a Leaderboard Actually Measures
+
+A public benchmark is a fixed set of someone else's questions, graded someone else's way, run under someone else's settings. That is not a criticism. That is what makes it a benchmark. It has to be fixed and general to be comparable across models.
+
+But read that sentence again with your product in mind:
+
+```
+public benchmark                  your feature
+─────────────────────────────     ─────────────────────────────
+someone else's questions          your users' actual inputs
+generic grading rubric            what "correct" means to you
+no latency budget                 a user is staring at a spinner
+no cost ceiling                   you pay per request, forever
+averages over everything          one bad failure mode can kill you
+fixed at publication              your traffic drifts every month
+```
+
+Every row on the right is something a leaderboard cannot know. And every row on the right is something that will decide whether your feature survives contact with users.
+
+There is a second, quieter problem. Popular benchmarks become targets. Once a number is the thing everyone quotes in a launch post, there is pressure, sometimes deliberate and sometimes just gravitational, for models to get good at that number. I am not accusing anyone of anything. I am saying that a benchmark that everyone optimizes for gradually measures how well you optimize for the benchmark.
+
+<Callout type="info" title="Use benchmarks for the shortlist, not the decision">
+Broad public benchmarks are a good coarse filter. If a model is far behind, it probably will not shock you on your task. But among the three or four strong candidates you are actually considering, leaderboard gaps are usually smaller than the gaps your own workload will expose. The leaderboard gets you to the shortlist. Your eval picks from it.
+</Callout>
+
+## Rule 1: Build a Small Eval From Real Traffic
+
+The eval that matters is the one made of your inputs. Not inputs you imagine users will send. The ones they actually sent.
+
+For our platform work at TheGreyMatter.ai, that means pulling a sample of real requests from a feature, running them through sanitization so nothing identifying survives, and then labeling what a good answer looks like. For the voice agents I built at Shining Image, it meant transcripts of real calls: people asking about hours while driving, people giving their address with a dog barking, people who wanted a human from the first word.
+
+A few hundred cases is a perfectly good start. I aim for a mix like this:
+
+```
+eval set composition (illustrative)
+─────────────────────────────────────
+~60%  representative traffic       the boring middle; most of your volume
+~25%  known hard cases             long docs, messy scans, ambiguous asks
+~10%  past production failures     every bug report becomes a case
+ ~5%  adversarial / out-of-scope   things it should refuse or escalate
+```
+
+The proportions are not sacred. What matters is that the boring middle is there (because that is where your cost lives) and that every past failure is there (because that is where your reputation lives).
+
+I have written before that [the eval set is the spec](/blog/eval-set-is-the-spec): if you cannot write down cases that define "correct," you do not have a feature yet, you have a demo. Model selection is just the first place that idea pays rent.
+
+<Callout type="warning" title="Sanitize before you sample, not after">
+Real traffic is the best eval material you will ever get, and also the riskiest. Strip names, identifiers, account numbers, and anything clinical or financial before it lands in a file someone can open on a laptop. An eval set is a dataset. It deserves the same care as the production data it came from.
+</Callout>
+
+## Rule 2: Measure Quality, Latency, Cost, and Failure Modes Together
+
+This is the rule I see skipped most often. Teams run a quality comparison, pick the winner, and then discover the latency in staging and the cost on the invoice.
+
+I want all four numbers from the same run, on the same cases, in one table. Something like this:
+
+```typescript
+type CaseResult = {
+  caseId: string;
+  model: string;
+  score: number;            // 0..1 from the grader for this task
+  latencyMs: number;        // wall clock, including retries
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;          // computed from current pricing
+  failure?: "schema_invalid" | "refused_wrongly" | "hallucinated_field"
+          | "timeout" | "over_refusal" | "wrong_language";
+};
+
+function summarize(results: CaseResult[]) {
+  const byModel = groupBy(results, (r) => r.model);
+  return Object.entries(byModel).map(([model, rs]) => ({
+    model,
+    meanScore: mean(rs.map((r) => r.score)),
+    p50Latency: percentile(rs.map((r) => r.latencyMs), 50),
+    p95Latency: percentile(rs.map((r) => r.latencyMs), 95),
+    costPer1k: (sum(rs.map((r) => r.costUsd)) / rs.length) * 1000,
+    failures: countBy(rs.filter((r) => r.failure), (r) => r.failure!),
+  }));
+}
+```
+
+Nothing clever. The point is that the summary forces you to look at all four at once. A model that is a little better on mean score but has a long p95 tail and costs several times more per thousand requests might be the right choice for a nightly batch job and a terrible choice for something a user waits on.
+
+And the failure column matters more than the mean. Two models with the same average score can fail in completely different ways:
+
+```
+model A                                model B
+──────────────────────────────────     ──────────────────────────────────
+mean score: similar                    mean score: similar
+fails by: refusing ambiguous docs      fails by: inventing a field value
+user sees: "please review this one"    user sees: a confident wrong number
+cost of failure: a few minutes         cost of failure: a bad decision
+```
+
+Same average. Very different products. I will take model A nearly every time, for the same reasons I wrote about in [two tones of wrong](/blog/two-tones-of-wrong-clinical-ai): a hedge gets checked, a confident error gets acted on.
+
+<Callout type="tip" title="Name your failure modes before you compare">
+Before running a comparison, write down the four or five specific ways this feature can fail badly. Tag every failing case with one of them. Then compare models on the failure distribution, not just the pass rate. The question is never only "how often is it wrong," it is "what does wrong look like here."
+</Callout>
+
+## Rule 3: Re-run on Every Release
+
+Model rankings for your task are not a fact you learn once. They are weather.
+
+Providers ship new versions. They update existing versions. Pricing changes. Your own prompts change. Your traffic drifts as users discover new things to ask. Any of those can flip which model is best for a given feature, and none of them will send you an email saying "your ranking changed."
+
+So the eval is not a one-time bake-off. It is a job. When a new model I care about shows up, the eval runs against it, and the result lands next to the incumbent in the same table. When I change a prompt, the eval runs. When a feature's traffic has shifted enough that I refresh the sample, the eval runs on the new sample against all current candidates.
+
+The pipeline itself is the boring part, and I have written about the plumbing in [LLM evaluation pipelines](/blog/llm-evaluation-pipelines). The habit is the part that matters: nobody switches the default model for a feature because of a launch post. They switch it because the eval says so, with all four columns in view.
+
+```
+new model announced
+        │
+        ▼
+add to candidates  ──▶  run task evals  ──▶  compare vs. incumbent
+                                                    │
+                    ┌───────────────────────────────┼─────────────────────┐
+                    ▼                               ▼                     ▼
+             clearly better on              mixed: better here,     worse or same
+             quality, ok on cost             worse there             at higher cost
+             and latency                           │                     │
+                    │                              ▼                     ▼
+                    ▼                     maybe split by feature     keep incumbent,
+             switch behind a flag,        (batch vs. interactive)    note the result
+             watch production
+```
+
+That middle branch is more common than people expect. "Better" is very often "better for some of your features." Routing different features to different models is not indecision. It is just taking the eval seriously.
+
+## Rule 4: Be Suspicious of Your Own Vibes
+
+This is the uncomfortable one, because I am as guilty as anyone.
+
+When I try a new model by hand, I ask it a handful of questions I find interesting. Those questions are not my users' questions. They are, almost by definition, the questions a person who writes about AI finds interesting. If the model answers them with a bit more flair, a cleaner structure, a confident tone, I come away thinking it is smarter.
+
+That impression is real data about one thing: how the model handles the ten prompts I happened to type on a Tuesday. It is not data about the few hundred cases that represent what my users send. It is especially not data about tone versus correctness, because a fluent, confident answer reads as "smart" to a tired human even when it is quietly wrong.
+
+I still play with new models. It is the fun part and it does tell me something about style. But I now write the impression down as a hypothesis ("this one seems better at long documents") and then go check whether the eval agrees. Sometimes it does. Fairly often the eval says "same, but slower," and I have learned to believe the eval.
+
+<Callout type="danger" title="Fluency is not accuracy">
+The most dangerous model upgrade is the one that writes more confidently without being more correct. It will win every informal side-by-side and lose you trust in production. If your comparison does not have ground-truth labels, you are mostly measuring how persuasive each model sounds.
+</Callout>
+
+## What This Looks Like in Practice
+
+To make it concrete, here is roughly how a model decision goes for a feature now:
+
+1. **Shortlist** two to four candidates from public benchmarks, provider docs, and what is realistic on price.
+2. **Pull** a fresh sample of sanitized traffic for that feature, plus every recorded past failure.
+3. **Run** all candidates on the same cases with the same prompt, same settings, same grader.
+4. **Read** the four-column table: quality, latency percentiles, cost per thousand, failure distribution.
+5. **Read** twenty or so failing cases from each model by hand. Numbers hide shapes; examples show them.
+6. **Decide** per feature, not per company. Write down why in a short note next to the result.
+7. **Ship** behind a flag, watch production metrics, and keep the eval in the release pipeline.
+
+Step five is the one people skip because it is slow. It is also where I learn the most. The table tells me model B has more "hallucinated field" failures. Reading the cases tells me they all happen on scanned documents with rotated tables, which tells me whether the fix is a different model or a better preprocessing step. Sometimes the right answer to "which model?" turns out to be "neither, fix the input."
+
+Cost deserves a sentence of its own. A per-request difference that looks trivial in a comparison becomes a line item at volume, which is why I think about it the way I described in [pricing AI features](/blog/pricing-ai-features-usage-costs). The cheaper model that is good enough for the boring middle often frees budget for the expensive model on the hard tail.
+
+## The Throughline
+
+If I had to compress this into one sentence: **a benchmark tells you how a model does on someone else's job, and your eval is the only thing that knows what your job is.**
+
+The leaderboard is a polite, honest answer to a general question. Your users are not asking a general question. They are uploading a crooked scan at 6 p.m., or calling while driving, or asking the one thing your feature was never meant to do. Build a small eval out of exactly that, measure the four things that matter in one place, re-run it every time the ground shifts, and treat your own excitement about a new model as the start of an experiment, not the end of one.
+
+The charts will keep coming every launch day. Let them build your shortlist. Let your own traffic make the call.
+
+---
+
+*If you are trying to choose between models for a real feature and the leaderboards are not helping, [reach out](/contact). I am always happy to talk through how to turn your own traffic into an eval that actually answers the question.*

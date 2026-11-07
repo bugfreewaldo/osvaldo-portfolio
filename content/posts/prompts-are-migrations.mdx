@@ -1,0 +1,262 @@
+---
+title: "Prompts Are Migrations: Ship Prompt Changes Like Schema Changes"
+description: "A prompt change can alter your product's behavior as much as a schema change can alter your data, yet most teams edit prompts in a dashboard and hope. I treat them like database migrations: versioned files in the repo, reviewed in pull requests, run against the eval set before merge, rolled out behind a flag, with a rollback path and a changelog. Here is the workflow and the code."
+date: 2026-11-06
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "Prompt Engineering", "LLM Evaluation", "Feature Flags", "DevOps"]
+author: "Osvaldo Restrepo"
+tldr: "A prompt is code that changes behavior in production, and it deserves the same discipline we already apply to database migrations. In my workflow, every prompt lives as a versioned file in the repo; a change is a new version, never an edit to a shipped one; every change goes through a pull request with a readable diff; the eval set runs in CI and blocks the merge on regressions; the new version rolls out behind a flag to a slice of traffic; the previous version stays deployable so rollback is a config flip; and a changelog records what changed and why. The one rule I do not bend: nobody edits a prompt in a dashboard in production. I learned that one the hard way, with a voice agent and a Friday evening."
+faqs:
+  - question: "Isn't this too much process for changing a few words in a prompt?"
+    answer: "A few words in a prompt can change refusal behavior, tool-calling, tone, and output format all at once, and you will not see it in a code diff of your application. The process is lighter than it sounds: a file, a PR, an automated eval run, and a flag. Most of it is automated after the first setup. The alternative is finding out about regressions from users."
+  - question: "Why not use a prompt management platform with a UI?"
+    answer: "You can, as long as it behaves like a migration system: immutable versions, review before activation, evals before rollout, and a recorded history you can roll back to. What I avoid is any setup where someone can change the live prompt in place, with no review and no eval run, and the change is visible only in a dashboard. If your platform enforces the workflow, great. If it only makes editing convenient, it makes the dangerous thing easy."
+  - question: "How big does the eval set need to be before this is worth it?"
+    answer: "Smaller than you think. Twenty to fifty well-chosen cases that cover your core behaviors, your known failure modes, and your refusal boundaries will catch most regressions that matter. The eval set grows over time, one case per incident. The workflow is worth setting up on day one, because it is what makes the eval set actually get used."
+relatedPosts: ["database-migration-strategies", "eval-set-is-the-spec", "llm-evaluation-pipelines"]
+---
+
+On a Friday evening, a few years ago, I changed one sentence in the system prompt of a voice agent I had built at Shining Image.
+
+The agent answered after-hours calls for a small business: booking appointments, answering questions about hours and pricing, and, for anything urgent, taking a message and passing it to the owner. The owner wanted the greeting to sound warmer. Reasonable request. I opened the prompt in the configuration where it lived, rewrote the opening paragraph, made a test call, liked how it sounded, and closed my laptop.
+
+What I did not notice was that, in rewriting the opening paragraph, I had folded in the line that told the agent what to do with urgent requests. The new version was warmer. It was also, it turned out, much more eager to try to book an appointment for everything, including the caller who needed someone that night.
+
+I found out on Monday, from the owner, who was gracious about it and also very clear. There was no diff to look at. No review. No record of what the prompt had said on Friday afternoon. I rebuilt the old version from memory and an old screenshot.
+
+That weekend is the reason I now treat every prompt change exactly the way I treat a database migration.
+
+## Why Migrations Are the Right Metaphor
+
+Database migrations exist because changing a schema in production is dangerous, and we learned, collectively and painfully, that dangerous changes need a specific shape. I wrote about that shape in [database migration strategies](/blog/database-migration-strategies): versioned, reviewed, tested, applied in a controlled way, with a plan for going back.
+
+Prompts have every property that made us invent that discipline:
+
+```
+                         schema migration        prompt change
+─────────────────────    ─────────────────       ─────────────────
+changes prod behavior    yes                     yes
+can break silently       yes                     very much yes
+effect visible in diff   in the migration        only in the prompt
+                         file                    file, if it exists
+needs testing against    representative data     the eval set
+realistic inputs
+needs a way back         down migration          previous version
+needs a history          migrations folder       prompts folder +
+                                                 changelog
+```
+
+The one difference makes prompts more dangerous, not less: a bad migration usually fails loudly. A bad prompt keeps running. It returns well-formed, confident, plausible output that is subtly wrong, and nothing in your monitoring turns red.
+
+<Callout type="warning" title="Prompts fail politely">
+A broken migration throws an error. A broken prompt keeps answering, fluently. That is exactly why prompt changes need more process than their size suggests: the failure mode is silent, and silent failures are found by users.
+</Callout>
+
+## Rule 1: Prompts Live in the Repo as Versioned Files
+
+The first step is the most important and the least glamorous. Prompts leave the dashboard, the environment variable, and the string literal buried in a service file. They become files in the repository, in a folder that exists just for them.
+
+```
+prompts/
+  booking-agent/
+    v001.md
+    v002.md
+    v003.md        ◄── current
+    CHANGELOG.md
+  parent-update-draft/
+    v001.md
+    v002.md        ◄── current
+    CHANGELOG.md
+```
+
+Each file has a small header with metadata, then the prompt itself:
+
+```markdown
+---
+id: booking-agent
+version: 3
+model: claude-sonnet
+temperature: 0.3
+evalSuite: evals/booking-agent
+---
+You are the after-hours assistant for {{businessName}}.
+You can help with appointments, hours, and quotes.
+For anything urgent, do not try to book. Take a message
+and tell the caller the owner will be notified tonight.
+...
+```
+
+The key property, borrowed straight from migrations: **a shipped version is immutable.** You never edit `v003.md` once it has run in production. If you want a change, you create `v004.md`. That sounds pedantic until the first time you need to know exactly what the agent was told on a specific day. With immutable versions, the answer is a file name.
+
+A tiny loader keeps the application honest about which version it runs:
+
+```typescript
+import { readFileSync } from "node:fs";
+import matter from "gray-matter";
+
+export type PromptVersion = {
+  id: string;
+  version: number;
+  model: string;
+  temperature: number;
+  body: string;
+};
+
+export function loadPrompt(id: string, version: number): PromptVersion {
+  const file = `prompts/${id}/v${String(version).padStart(3, "0")}.md`;
+  const { data, content } = matter(readFileSync(file, "utf8"));
+  if (data.id !== id || data.version !== version) {
+    throw new Error(`Prompt header mismatch in ${file}`);
+  }
+  return { id, version, model: data.model, temperature: data.temperature, body: content.trim() };
+}
+```
+
+Every trace the application emits includes the prompt ID and version. When something looks wrong in production, the first question, "which prompt was running?", has an exact answer.
+
+## Rule 2: Every Change Goes Through a Pull Request
+
+Once a prompt is a file, a change is a diff, and a diff can be reviewed.
+
+This is where the Friday evening bug would have died. A reviewer looking at the diff between v002 and v003 would have seen the urgent-handling line disappear. It is right there, in red. Nobody needs to understand LLMs deeply to say "wait, where did the urgent-calls instruction go?"
+
+I ask for two things in a prompt PR description:
+
+```
+## What behavior should change
+"Greeting sounds warmer. Nothing else should change."
+
+## What behavior must not change
+"Urgent requests still go to message-taking, never booking.
+ Refusal for medical or legal questions unchanged."
+```
+
+The second section is the important one. Writing down what must not change tells the reviewer where to look, and it tells you which eval cases matter most for this change. I wrote about reviewing small changes deeply in [small commits, deep reviews](/blog/small-commits-deep-reviews); prompt diffs are the ultimate small commit, which is exactly why they deserve a deep review.
+
+## Rule 3: The Eval Set Runs Before Merge
+
+A reviewer catches what they can see. The eval set catches what they cannot.
+
+If you have read [the eval set is the spec](/blog/eval-set-is-the-spec), you know my position: the eval set is the actual definition of what your AI feature is supposed to do. A prompt change that has not been run against it has not been tested, in the same way that a migration that has not been run against representative data has not been tested.
+
+In CI, any change under `prompts/` triggers the eval suite for that prompt, comparing the new version against the current production version:
+
+```typescript
+import { loadPrompt } from "./prompts";
+import { runSuite } from "./evals";
+
+async function gate(id: string, current: number, candidate: number) {
+  const base = await runSuite(loadPrompt(id, current));
+  const next = await runSuite(loadPrompt(id, candidate));
+
+  const regressions = next.cases.filter(
+    (c) => c.passed === false && base.byId[c.id]?.passed === true
+  );
+  const critical = regressions.filter((c) => c.tags.includes("must-not-change"));
+
+  console.log(`pass rate: ${base.passRate} -> ${next.passRate}`);
+  for (const r of regressions) console.log(`REGRESSION ${r.id}: ${r.reason}`);
+
+  if (critical.length > 0 || next.passRate < base.passRate) {
+    process.exit(1); // block the merge
+  }
+}
+```
+
+Two details matter here. First, the gate compares against the current production version, not against a fixed threshold, so you see regressions relative to what users get today. Second, cases tagged `must-not-change` block the merge on a single failure. "Urgent calls never get booked" is a must-not-change case. It does not get averaged away by a nicer greeting.
+
+At TheGreyMatter, a Playwright and Vitest harness gates releases for the application code. That is the model I follow for prompts: evals belong in the same pipeline, with the same authority. A prompt that fails its evals does not ship, the same way a component that fails its tests does not ship.
+
+<Callout type="tip" title="Every incident becomes an eval case">
+After that Friday, the very first case I wrote was "caller says there is water coming through the ceiling; agent must not offer a booking." Every prompt incident since has added at least one case. The eval set is the scar tissue of your product, and it is what keeps old bugs from coming back in new prompts.
+</Callout>
+
+## Rule 4: Roll Out Behind a Flag
+
+Passing evals means the new prompt is probably fine. Probably is not certainly. Real traffic always contains inputs your eval set does not.
+
+So a new prompt version reaches users the same way a risky migration does: gradually. A flag decides which version a request gets.
+
+```typescript
+type PromptRollout = { id: string; stable: number; candidate?: number; percent: number };
+
+export function pickVersion(r: PromptRollout, requestKey: string): number {
+  if (!r.candidate || r.percent <= 0) return r.stable;
+  const bucket = hash(requestKey) % 100; // stable per user or session
+  return bucket < r.percent ? r.candidate : r.stable;
+}
+
+// config: { id: "booking-agent", stable: 2, candidate: 3, percent: 10 }
+```
+
+Ten percent of traffic, by session, so the same caller does not bounce between versions mid-conversation. Watch the traces, sliced by prompt version: refusal rate, tool-call errors, conversation length, escalation rate, whatever signals matter for that feature. If they look the same or better, move to fifty, then to a hundred, then make the candidate the new stable.
+
+This is ordinary feature-flag practice. The only new idea is that the thing behind the flag is a prompt version rather than a code path. Once you see it that way, all the tooling you already have for gradual rollout applies.
+
+## Rule 5: Rollback Is a Config Flip
+
+Because shipped versions are immutable and still in the repo, rollback is trivial: set `stable` back to the previous version, or set `percent` to zero. No rebuilding the old prompt from memory. No screenshots. No guessing.
+
+```
+incident                              rollback
+─────────────────────────────────     ──────────────────────────────
+v003 at 50%, escalations drop          set percent: 0
+                                       → all traffic on v002 in seconds
+                                       → open issue, add eval case
+                                       → fix as v004, start over
+```
+
+Notice what the rollback is not: it is not editing v003 to remove the problem. You do not edit an applied migration; you write a new one. Same here. The broken version stays in the history, labeled, so the next person can see what went wrong and why.
+
+Compare that to my Friday evening, where rollback meant reconstructing text from an old screenshot. The difference between those two experiences is the entire argument of this post.
+
+<Callout type="info" title="Pin the model, too">
+A prompt version only means something alongside the model it was tested with. Keep the model identifier in the prompt header, and treat a model upgrade exactly like a prompt change: new version, eval run, flag, rollback path. A new model with an old prompt is a new prompt.
+</Callout>
+
+## Rule 6: Keep a Changelog
+
+The last piece is the one people skip because it feels like paperwork. It is a few lines per version:
+
+```markdown
+# booking-agent changelog
+
+## v003 (2026-...)
+- Warmer greeting, per owner request.
+- Restored explicit urgent-call rule (lost in draft, caught by eval case U-01).
+- Evals: pass rate unchanged; all must-not-change cases pass.
+- Rollout: 10% → 50% → 100% over three days, no regressions in traces.
+
+## v002
+- Added refusal for medical and legal questions.
+```
+
+The changelog answers the question code history alone cannot: why. Six months later, when someone wonders why the agent says something in a slightly odd way, the answer is one file away. It is also, increasingly, context for the AI coding assistants that touch the repo: an agent proposing a prompt edit can read what was tried and what broke.
+
+## The One Rule I Do Not Bend
+
+Everything above can be adapted. Your flag system will be different. Your eval runner will be different. Maybe you use a prompt platform instead of markdown files, and that is fine if it enforces the same workflow.
+
+But one rule is absolute for me: **nobody edits a prompt in a dashboard in production.** Not me, not a product manager fixing a typo, not a founder who wants the tone to be friendlier before a demo. Every change goes through the same path, because the one change that skips the path is always the one that seemed too small to matter.
+
+```
+dashboard edit                        migration workflow
+
+  edit live text                        new file, new version
+  test once by hand                     PR with readable diff
+  no record                             eval run blocks regressions
+  no review                             flag: 10% → 50% → 100%
+  rollback = memory + screenshots       rollback = config flip
+  found by users                        found by CI, or by you, first
+```
+
+## The Throughline
+
+If I had to compress this into one sentence: **a prompt change is a behavior change in production, so ship it like a migration: versioned, reviewed, tested, flagged, and reversible.**
+
+None of this is new engineering. It is the discipline we already built for schema changes, applied to the part of the system that is most likely to fail quietly. The voice agent taught me that the hard way, over one weekend and one very polite phone call from an owner. You do not need your own Friday evening to learn it.
+
+---
+
+*If your team's prompts still live in a dashboard and you want to move them into a workflow you can trust, [reach out](/contact). Setting up the folder, the eval gate, and the flag usually takes days, not weeks, and the first rollback pays for all of it.*

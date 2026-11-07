@@ -1,0 +1,183 @@
+---
+title: "El Documento de Diseño que Nadie Pidió: Por Qué Escribo Una Página Antes de Construir"
+description: "Nadie en una empresa pequeña y rápida exige un documento de diseño, y justamente por eso escribo uno. Como ingeniero remoto trabajando desde Panamá, un documento de una página es la herramienta de alineación más barata que tengo: saca a la luz los desacuerdos cuando todavía cuestan un comentario y no una reescritura. Esta es la plantilla que uso (contexto, decisión, alternativas, riesgos, despliegue) y las reglas que lo mantienen corto."
+date: 2026-10-27
+published: true
+category: "Liderazgo de Ingeniería"
+tags: ["Liderazgo de Ingeniería", "Documentos de Diseño", "Trabajo Remoto", "Comunicación Asíncrona", "Escritura Técnica"]
+author: "Osvaldo Restrepo"
+translationOf: "design-doc-nobody-asked-for"
+tldr: "La mayoría de los equipos con los que trabajo no exigen documentos de diseño, y la mayoría de las funciones no necesitan un RFC de veinte páginas. Pero casi todo cambio no trivial se beneficia de una página honesta escrita antes del primer commit. Para un ingeniero remoto, esa página es alineación asíncrona: permite que personas en otras zonas horarias no estén de acuerdo contigo mientras el desacuerdo todavía es barato. Mi plantilla tiene cinco partes: contexto, decisión, alternativas, riesgos y despliegue. Las reglas son simples: una página, lenguaje sencillo, la decisión en el primer párrafo, alternativas que sean reales, y una sección de despliegue que diga cómo lo vas a deshacer. El documento no es burocracia. Es la revisión de código más barata que vas a tener, porque revisa el código antes de que exista."
+faqs:
+  - question: "¿No es más lento escribir un documento de diseño que simplemente construir la cosa?"
+    answer: "Para un cambio de una hora, sí, así que no escribas uno. Para cualquier cosa que toque más de un servicio, cambie la forma de los datos o vaya a tomar más de unos días, el documento es más rápido en total. Cuesta una o dos horas al inicio y rutinariamente ahorra días de retrabajo, porque los desacuerdos caros aparecen como comentarios en una página y no como cambios solicitados en un pull request terminado."
+  - question: "¿Y si nadie lo lee?"
+    answer: "Algunos documentos no recibirán comentarios, y está bien. Escribirlo igual te obliga a decir la decisión y las alternativas con claridad, lo que atrapa una cantidad sorprendente de tus propias malas ideas. Y un documento sin comentarios sigue siendo un registro fechado de por qué el sistema se ve como se ve, algo que la próxima persona (a menudo tú, seis meses después) va a agradecer."
+  - question: "¿En qué se diferencia de un registro de decisiones de arquitectura (ADR)?"
+    answer: "Son primos cercanos. Un ADR normalmente registra una decisión después de tomarla. El documento de diseño de una página se escribe antes de construir, para invitar al desacuerdo mientras todavía es barato. En la práctica, un buen documento de diseño se convierte en el ADR una vez que la decisión está tomada: agregas el resultado y una fecha, y lo mueves a donde vivan tus decisiones."
+relatedPosts: ["technical-decision-making", "small-commits-deep-reviews", "working-from-panama-building-global"]
+---
+
+Unos meses después de empezar a trabajar en TheGreyMatter, abrí un pull request para una pieza de infraestructura compartida de la que estaba bastante orgulloso. Estaba limpio. Tenía pruebas. Resolvía el problema que yo creía que teníamos.
+
+El primer comentario, de alguien que iba ocho horas dentro de un día que para mí apenas empezaba, fue una sola pregunta: "¿Por qué esto vive aquí y no en cada app?"
+
+Era una buena pregunta. Era, de hecho, la pregunta. Y llegó después de que yo ya había escrito unos dos días de código construido alrededor de una respuesta que nunca había dicho en voz alta. Lo conversamos, la respuesta resultó ser "debería vivir en un servicio compartido, pero los datos que toca deberían quedarse con cada app," y reescribí buena parte de lo que había construido. Nadie se molestó. El código quedó mejor. Pero esa noche, en Ciudad de Panamá, me quedé sacando la cuenta de cuánto más barata habría sido esa conversación si hubiera pasado en una página en vez de en un diff.
+
+Nadie me había pedido un documento de diseño. No había plantilla, ni comité de revisión, ni proceso. Ese era el problema. Desde entonces escribo uno de todas formas, para casi todo lo no trivial, y se ha convertido en el hábito de mayor apalancamiento que tengo como ingeniero remoto.
+
+## Por Qué Nadie los Pide
+
+En las empresas grandes, los documentos de diseño suelen ser obligatorios, y se ganan mala fama por la misma razón que la suelen ganar las cosas obligatorias. Se vuelven largos, defensivos, escritos para ser aprobados más que para pensar. La gente aprende a escribir quince páginas que no dicen nada arriesgado.
+
+En las empresas pequeñas y rápidas el péndulo se va al otro lado. Nadie quiere proceso. Los fundadores quieren ver cosas saliendo. La regla no dicha es "constrúyelo y revisamos el PR." Para cambios pequeños, esa regla es correcta.
+
+Para cambios más grandes falla en silencio, porque un pull request es un pésimo lugar para discutir una decisión. Para cuando existe un PR, la decisión ya está codificada en cientos de líneas. Los revisores pueden comentar sobre nombres, casos borde, cobertura de pruebas. Lo que casi nunca hacen es decir "creo que todo este enfoque está mal," porque decirle eso a un PR terminado se siente grosero, le cuesta días al autor, y usualmente se negocia hasta quedar en "lo arreglamos después." El después rara vez llega.
+
+<Callout type="info" title="El PR es el lugar equivocado para la pregunta grande">
+La revisión de código es excelente atrapando errores locales y pésima cambiando de dirección. Si la pregunta más importante sobre un cambio es "¿deberíamos hacerlo así en absoluto?", esa pregunta tiene que hacerse antes de que exista el código, sobre algo lo bastante barato como para tirarlo.
+</Callout>
+
+## Por Qué Importa Más Cuando Eres Remoto
+
+Trabajo desde Panamá con compañeros repartidos en varias zonas horarias. Esa forma de trabajar tiene mucho a su favor, y escribí sobre ello en [trabajando desde Panamá](/es/blog/working-from-panama-building-global). Pero tiene una debilidad estructural: la conversación de pasillo no existe.
+
+En una oficina, el documento de diseño muchas veces ocurre de manera informal. Mencionas la idea en el almuerzo, alguien frunce el ceño, ajustas. Siendo remoto, ese ceño fruncido nunca te llega. Construyes en silencio por tres días y el ceño llega como comentario en el PR, justo cuando es más caro.
+
+Un documento de una página reemplaza el pasillo. Es asíncrono por naturaleza. Alguien en otra zona horaria lo puede leer con su café de la mañana y dejar el ceño fruncido como comentario mientras tú duermes. Te despiertas con el desacuerdo en vez de descubrirlo al final.
+
+```
+  sin documento                         con documento de una página
+
+  día 1   construir                      día 1   escribir página (1-2 h)
+  día 2   construir                              compartirla, seguir con
+  día 3   abrir PR                               piezas de bajo riesgo
+  día 4   "¿por qué no en cada app?"     día 2   llegan comentarios de noche
+  día 5   reescribir                             ajustar el plan
+  día 6   reescribir                     día 3   construir lo acordado
+  día 7   volver a revisar               día 4   PR: la revisión es sobre
+                                                 código, no dirección
+```
+
+El diagrama es ilustrativo, no un estudio de tiempos. Pero la forma es real, y he vivido las dos columnas.
+
+## La Plantilla: Cinco Secciones, Una Página
+
+Mi plantilla es aburrida a propósito. Cinco secciones, cada una de unas pocas oraciones o una lista corta. Si no cabe en una página, el problema es demasiado grande para un documento o todavía no lo entiendo. Ambas cosas son útiles de descubrir.
+
+```markdown
+# [Nombre corto del cambio]
+Autor: Osvaldo · Fecha: 2026-10-27 · Estado: borrador | acordado | reemplazado
+
+## Contexto
+¿Qué es cierto hoy, y qué problema causa eso?
+Dos a cinco oraciones. Enlaza el ticket o el incidente.
+
+## Decisión
+Lo que propongo hacer, en un párrafo. Dicho claramente,
+como si ya estuviera acordado. Sin rodeos.
+
+## Alternativas
+2-3 opciones que consideré en serio, incluyendo "no hacer nada".
+Una línea cada una sobre por qué no las elegí.
+
+## Riesgos
+Qué podría salir mal, de qué no estoy seguro,
+y qué me haría cambiar de opinión.
+
+## Despliegue
+Cómo sale (flag, migración, por fases), cómo sabremos
+que funciona, y exactamente cómo lo deshacemos si no.
+```
+
+Eso es todo. Déjame explicar por qué cada pieza se gana su lugar.
+
+### Contexto: haz que el problema sea innegable
+
+La sección de contexto existe para que un lector que no sabe nada pueda estar de acuerdo en que el problema es real antes de ver tu solución. Si la gente no está de acuerdo con tu contexto, encontraste el desacuerdo más barato posible: ni siquiera están resolviendo el mismo problema. Eso pasa más seguido de lo que crees, y es mucho mejor descubrirlo en el primer párrafo que en la segunda semana.
+
+### Decisión: ponla primero, dila claramente
+
+El error más común que veo en documentos de diseño (y que cometí yo mismo por años) es construir hacia la decisión como si fuera una novela de misterio. Tres páginas de exploración y luego, por fin, la revelación. Los lectores leen por encima, se la pierden, y comentan sobre lo que no es.
+
+Di la decisión cerca del inicio, con la voz de algo ya acordado. "Vamos a mover la firma de webhooks al servicio de archivos compartido y cada app verificará las firmas con el SDK." Las decisiones claras atraen desacuerdos claros, que es exactamente el punto. Las decisiones vagas atraen asentimientos educados y después caras de sorpresa en la revisión.
+
+### Alternativas: reales, incluyendo "no hacer nada"
+
+Esta sección es donde el documento se gana el sueldo. Si tus alternativas son hombres de paja, los lectores lo notan y dejan de confiar en el resto. Escribe las opciones que de verdad sopesaste, y siempre incluye "no hacer nada," porque a veces es la respuesta correcta y es una disciplina sana argumentar en su contra por escrito.
+
+Cuando escribí el documento que debería haber existido antes de ese PR, las alternativas eran: poner la lógica en cada app, poner la lógica y los datos en un servicio compartido, o poner la lógica en un servicio compartido y dejar los datos con cada app. Ver las tres lado a lado hizo la respuesta obvia de una forma que dos días de código no habían logrado. Es el mismo enfoque que describo en [toma de decisiones técnicas](/es/blog/technical-decision-making): la decisión se vuelve más fácil en el momento en que las opciones están escritas una al lado de la otra con sus costos reales.
+
+<Callout type="tip" title="La sección de alternativas es para tus propios puntos ciegos">
+Escribir dos alternativas serias te obliga a argumentar contra tu propio plan. Más de una vez he cambiado mi decisión mientras escribía la sección de alternativas, antes de que nadie más leyera una palabra. Esa es la revisión más barata que existe.
+</Callout>
+
+### Riesgos: di lo que te asusta
+
+Esta es la sección que más tienta saltarse o maquillar. No lo hagas. Escribe aquello de lo que de verdad no estás seguro. "No sé cómo se comporta esto con cargas masivas." "Estoy asumiendo que el límite de tasa de la API de QuickBooks es por empresa; si es por app, este diseño necesita una cola."
+
+Nombrar un riesgo no es confesar debilidad. Es una invitación para que la única persona que sabe la respuesta te la diga. En un equipo remoto, esa persona puede estar en una zona horaria con la que casi no coincides. La sección de riesgos es cómo la encuentras.
+
+### Despliegue: cómo sale y cómo se des-sale
+
+La última sección es la que la mayoría de los documentos de diseño omiten, y es la que hace que los revisores se relajen. ¿Cómo llega esto a producción? ¿Detrás de un flag? ¿Por fases, app por app? ¿Hay una migración de datos? Y lo crítico: si sale mal, ¿qué hacemos exactamente?
+
+Si no puedes escribir el rollback en dos oraciones, aprendiste algo importante sobre el riesgo del cambio. Es una señal para hacerlo más pequeño, agregar un flag, o dividir la migración, antes de haber construido algo que haga caros esos cambios.
+
+## Cinco Reglas que lo Mantienen Corto
+
+La plantilla es la mitad. La otra mitad es disciplina, porque los documentos de diseño tienen una tendencia natural a crecer hasta que nadie los lee.
+
+**1. Una página, límite estricto.** Si se desborda, corto o divido. Un documento para "el servicio de conectores" es demasiado grande. Un documento para "cómo el servicio de conectores guarda tokens de OAuth" es del tamaño correcto.
+
+**2. Escribe para alguien cansado.** Lenguaje sencillo, oraciones cortas, nada de jerga interna que un compañero nuevo no conocería. Si una oración necesita leerse dos veces, necesita reescribirse una.
+
+**3. Ponle tiempo límite a la escritura.** Una a dos horas. Si sigo escribiendo después de eso, usualmente todavía no entiendo el problema, y lo mejor es un experimento rápido o una conversación, y después volver a la página.
+
+**4. Define una ventana de comentarios.** "Empiezo a construir el jueves a menos que alguien se oponga." Eso convierte el silencio en consentimiento y evita que el documento se vuelva una excusa para frenar. La alineación asíncrona necesita una fecha límite, o se convierte en espera asíncrona.
+
+**5. Actualiza el estado, y después deja de tocarlo.** Cuando la decisión se acuerda, lo marco como acordado y agrego una línea sobre qué cambió respecto al borrador. Cuando después se reemplaza, lo marco como reemplazado y enlazo el nuevo. El documento es un registro fechado, no una especificación viva.
+
+<Callout type="warning" title="Un documento de diseño no es una especificación">
+Un documento de una página registra una decisión y sus razones. No describe cada firma de función ni cada campo. Si te encuentras escribiendo la implementación en prosa, para: eso pertenece al código y sus pruebas. El documento debería seguir siendo cierto después de que el código cambie una docena de veces.
+</Callout>
+
+## Qué Cambia Cuando lo Haces con Regularidad
+
+El beneficio obvio es menos reescrituras. Los beneficios menos obvios me tomaron más tiempo notarlos.
+
+**Las revisiones mejoran.** Cuando la dirección ya está acordada en una página, la revisión del PR se puede enfocar en lo que las revisiones de PR hacen bien: correctitud, casos borde, legibilidad. Los revisores dejan de volver a litigar el enfoque, porque el enfoque tiene un enlace. Combina bien con el hábito que describo en [commits pequeños, revisiones profundas](/es/blog/small-commits-deep-reviews): primero acuerda la forma, después envíala en piezas pequeñas fáciles de revisar.
+
+**El onboarding se vuelve más fácil.** Una carpeta de documentos de decisión de una página es el mejor material de onboarding que he visto, porque responde la pregunta que tiene todo ingeniero nuevo: "¿por qué rayos está construido así?" La respuesta está escrita, con las alternativas que se rechazaron y los riesgos que se conocían en su momento.
+
+**Los agentes también los leen.** Cada vez más de mi día involucra asistentes de código con IA. Un documento de diseño corto en el repo es un contexto excelente para ellos: le dice al agente qué se decidió y qué se descartó, así deja de sugerir la alternativa que ya rechazamos. Un documento escrito para un humano cansado resulta tener buena forma para un modelo también.
+
+**Te conviertes en la persona que hace las decisiones legibles.** Esta es la parte de liderazgo, y es la parte que nadie pone en una descripción de puesto. No necesitas un título para escribir un documento de una página. Pero cuando consistentemente haces visibles las decisiones, invitas al desacuerdo temprano, y escribes cómo deshacer las cosas, la gente empieza a traerte las preguntas difíciles. Así se ve la influencia senior en un equipo remoto. Es mayormente escribir.
+
+## Cuándo No Escribir Uno
+
+No escribo un documento para todo. Un arreglo de bug no lo necesita. Un cambio de texto en la UI no lo necesita. Un refactor dentro de un módulo, sin cambiar su interfaz, usualmente no lo necesita.
+
+Mi prueba aproximada:
+
+```
+escribe un documento de una página si alguna de estas es cierta:
+
+  - toca más de un servicio o app
+  - cambia una forma de datos de la que alguien más depende
+  - va a tomar más de ~3 días de trabajo
+  - es difícil o imposible de revertir
+  - puedes imaginar a un colega razonable en desacuerdo
+```
+
+La última es la prueba de verdad. Si una persona razonable podría estar en desacuerdo, quieres ese desacuerdo en una página, no en un PR.
+
+## El Hilo
+
+Si tuviera que comprimirlo en una oración: **un documento de diseño de una página es la revisión de código más barata que vas a tener, porque revisa el código antes de que exista.**
+
+Nadie me pidió escribirlos. Nadie tenía que hacerlo. El PR que tuve que reescribir me enseñó lo que cuesta el silencio en un equipo remoto, y una página de escritura sencilla es la forma más barata que conozco de romper ese silencio temprano. Contexto, decisión, alternativas, riesgos, despliegue. Una página. Una fecha límite para comentarios. Después, a construir.
+
+---
+
+*Si estás en un equipo donde las decisiones se siguen tomando en pull requests y quieres probar una forma más liviana, [contáctame](/contact). Con gusto comparto la plantilla y conversamos cómo podría verse un primer documento de una página para tu próximo cambio.*

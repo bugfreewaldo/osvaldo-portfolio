@@ -1,0 +1,247 @@
+---
+title: "Los Webhooks Son Promesas: Firmas, Reintentos e Idempotencia Bien Hechos"
+description: "Un webhook no es una llamada HTTP de disparar y olvidar. Es una promesa de avisarle a otro sistema que algo pasó, exactamente como pasó, tarde o temprano. Lecciones de construir webhooks firmados con HMAC para un servicio central de archivos: firmas con marca de tiempo para frenar repeticiones, reintentos con backoff y jitter, llaves de idempotencia en el receptor, una cola de mensajes muertos que de verdad reprocesas, y por qué nunca debes asumir orden."
+date: 2026-08-11
+published: true
+category: "Ingeniería Backend"
+tags: ["Webhooks", "HMAC", "Idempotencia", "Sistemas Distribuidos", "TypeScript"]
+author: "Osvaldo Restrepo"
+translationOf: "webhooks-are-promises"
+tldr: "La primera versión de los webhooks de nuestro servicio central de archivos era un solo HTTP POST después de cada evento, y funcionó hasta que una app receptora estaba en medio de un deploy y se perdió un evento de 'extracción completa', dejando un documento atascado en 'procesando' para siempre. Un webhook es una promesa: esto pasó, de verdad vino de nosotros, y te vas a enterar aunque estés caído ahora mismo. Cumplir esa promesa requiere cinco cosas. Firma cada payload con HMAC-SHA256 sobre una marca de tiempo más el cuerpo crudo, y rechaza marcas de tiempo viejas para frenar repeticiones. Reintenta con backoff exponencial y jitter. Haz a los receptores idempotentes usando el ID del evento. Manda lo que no se pueda entregar a una cola de mensajes muertos que de verdad reproceses. Y nunca prometas orden; envía eventos delgados y deja que los receptores consulten el estado actual."
+faqs:
+  - question: "¿Por qué incluir una marca de tiempo en la firma del webhook?"
+    answer: "Sin una marca de tiempo, una solicitud firmada válida puede capturarse y repetirse después, y la firma seguirá siendo válida porque el cuerpo no cambió. Firmar la marca de tiempo junto con el cuerpo, y rechazar solicitudes cuya marca de tiempo tenga más de unos minutos, reduce la ventana de repetición a esa tolerancia. Combínalo con idempotencia sobre el ID del evento y una repetición dentro de la ventana se vuelve inofensiva."
+  - question: "¿Por qué usar timingSafeEqual en vez de comparar las firmas con ===?"
+    answer: "Una comparación normal de strings se detiene en el primer carácter distinto, así que el tiempo que tarda revela cuánto de la firma era correcto. Con suficientes solicitudes, un atacante puede usar esa diferencia de tiempo para adivinar una firma válida byte por byte. Una comparación de tiempo constante como crypto.timingSafeEqual de Node tarda lo mismo sin importar dónde esté la diferencia, lo que elimina ese canal lateral."
+  - question: "¿Los eventos de webhook deberían entregarse en orden?"
+    answer: "Deberías diseñar como si no fuera así. Los reintentos, la entrega en paralelo y los retrasos de red reordenan eventos, y garantizar un orden estricto en un sistema distribuido es caro y frágil. El patrón robusto es enviar eventos delgados que digan 'este recurso cambió' con un ID y una versión, y que el receptor consulte el estado actual en la API, ignorando cualquier evento más viejo que lo que ya procesó."
+relatedPosts: ["event-driven-data-pipelines", "envelope-encryption-documents-ai-reads", "api-design-lessons-learned"]
+---
+
+El reporte de bug decía que un documento llevaba dos días "procesando."
+
+Nada estaba procesando. El archivo se había subido, cifrado, extraído y analizado en un par de minutos desde que llegó. El servicio de archivos había hecho todo su trabajo y luego, al final, mandó un webhook a la app dueña del documento, diciendo "extracción completa." Un HTTP POST. La app receptora justo estaba en medio de un deploy en ese momento. El POST recibió un 503. Mi código registró la falla, se encogió de hombros y siguió.
+
+La app receptora nunca se enteró. Su UI siguió mostrando un spinner. El usuario, razonablemente, subió el mismo documento otra vez, lo que disparó una segunda extracción completa y un segundo análisis de IA sobre un archivo que ya habíamos procesado. Nadie salió perjudicado, pero fue el tipo de falla silenciosa que hace que una plataforma se sienta frágil, y fue completamente culpa mía.
+
+Lo que había construido no era un sistema de webhooks. Era una esperanza. Había tratado el webhook como una notificación que yo enviaba, mientras la app receptora lo trataba como una garantía sobre la que podía construir.
+
+Eso es lo que quiero argumentar en este artículo: **un webhook es una promesa.** Específicamente, son tres promesas a la vez.
+
+```
+   UN WEBHOOK PROMETE:
+
+   1. AUTENTICIDAD   esto de verdad vino de nosotros, y nadie lo cambió
+   2. ENTREGA        te vas a enterar, aunque estés caído ahora mismo
+   3. VERDAD         lo que te decimos refleja lo que realmente pasó
+                     (aunque te lo digamos dos veces, o fuera de orden)
+```
+
+Todo lo que sigue es cómo cumplo esas promesas en el servicio de archivos que está debajo de las apps de GreyMatter. Nada de esto es novedoso. Todo es fácil de saltarse, y yo me salté la mayor parte la primera vez.
+
+## 1. Firma Todo, Incluida la Hora
+
+El receptor de un webhook tiene un problema incómodo: su endpoint de webhook es una URL pública que acepta POSTs. Cualquiera que descubra la URL puede mandarle un evento falso de "archivo listo." Así que la primera promesa, autenticidad, tiene que ser demostrable, no asumida.
+
+La respuesta estándar es una firma HMAC. El emisor y el receptor comparten un secreto por suscripción. El emisor calcula HMAC-SHA256 del payload con ese secreto y lo pone en un header. El receptor lo recalcula y compara.
+
+Pero firmar solo el cuerpo deja un hueco. Si un atacante captura una solicitud firmada legítima, puede repetirla la próxima semana, y la firma seguirá siendo perfectamente válida, porque nada en ella cambió. Así que firmamos la marca de tiempo junto con el cuerpo, y el receptor rechaza cualquier cosa demasiado vieja.
+
+Nuestro header se ve así:
+
+```
+X-Signature: t=1754900000,v1=5f2b9c...e41a
+```
+
+El string firmado es la marca de tiempo, un punto y el cuerpo crudo de la solicitud. Esta es la verificación del lado del receptor que enviamos en nuestro SDK de TypeScript, más o menos textual:
+
+```typescript
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+const TOLERANCE_SECONDS = 300; // 5 minutos
+
+export function verifyWebhook(
+  rawBody: string,          // los bytes exactos recibidos, NO JSON re-serializado
+  signatureHeader: string,  // "t=1754900000,v1=5f2b9c..."
+  secret: string,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): boolean {
+  const parts = Object.fromEntries(
+    signatureHeader.split(",").map((kv) => kv.split("=", 2) as [string, string]),
+  );
+  const timestamp = Number(parts.t);
+  const received = parts.v1;
+  if (!Number.isFinite(timestamp) || !received) return false;
+
+  // Rechaza marcas de tiempo viejas o del futuro lejano: esta es la ventana de repetición.
+  if (Math.abs(nowSeconds - timestamp) > TOLERANCE_SECONDS) return false;
+
+  const expected = createHmac("sha256", secret)
+    .update(`${timestamp}.${rawBody}`)
+    .digest("hex");
+
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(received, "hex");
+  // timingSafeEqual lanza error si las longitudes difieren, así que verifica primero.
+  if (a.length !== b.length) return false;
+
+  return timingSafeEqual(a, b);
+}
+```
+
+Tres detalles ahí le han mordido a alguien que conozco.
+
+**Usa el cuerpo crudo.** Si tu framework parsea el JSON y lo re-serializas antes de verificar, el orden de las llaves o los espacios pueden cambiar y la firma fallará en solicitudes perfectamente legítimas. Captura los bytes crudos antes de cualquier parseo. Este es el ticket de "los webhooks están rotos" más común que he visto.
+
+**Compara en tiempo constante.** Un `===` simple sobre dos strings se detiene en el primer carácter distinto. Esa diferencia de tiempo es pequeña, pero es medible con suficientes solicitudes, y le permite a un atacante descubrir una firma válida un byte a la vez. `timingSafeEqual` tarda lo mismo sin importar dónde esté la diferencia.
+
+**La ventana de tolerancia es un compromiso.** Cinco minutos cubren la desviación normal de reloj entre servidores sin dejar una ventana de repetición amplia. Y como el receptor también es idempotente (regla 3), una repetición dentro de esos cinco minutos es un duplicado, no un desastre.
+
+<Callout type="warning" title="Los secretos rotan, así que acepta dos">
+En algún momento vas a necesitar rotar un secreto de webhook. Si el receptor solo acepta un secreto, rotar significa una ventana de entregas fallidas. Deja que las suscripciones tengan un secreto actual y uno anterior, firma con el actual, y haz que el SDK acepte cualquiera de los dos durante la transición. La rotación se vuelve un no-evento en vez de un incidente.
+</Callout>
+
+## 2. Reintenta en Serio
+
+La segunda promesa es la entrega. Que un receptor esté caído, haciendo deploy, con límite de tasa o simplemente lento no es un evento excepcional. Es un martes cualquiera. Si el emisor se rinde en la primera falla, la promesa no vale nada.
+
+Así que cada intento de entrega que no recibe un 2xx se reintenta según un calendario con backoff exponencial y jitter:
+
+```
+intento   retraso máx. (jitter lo acorta)   acumulado (peor caso)
+───────   ───────────────────────────────   ─────────────────────
+   1      inmediato                         0
+   2      30s                               ~30s
+   3      2m                                ~2.5m
+   4      8m                                ~10m
+   5      32m                               ~45m
+   6      ~2h                               ~3h
+   7      ~8.5h                             ~11h
+   8      24h (tope)                        ~35h      ──▶  luego mensajes muertos
+```
+
+El backoff le da a un receptor con problemas espacio para recuperarse en vez de ser martillado. El jitter importa más de lo que la gente espera: sin él, cuando un receptor vuelve después de una caída, cada evento en cola se reintenta en el mismo instante y lo vuelve a tumbar. Un poco de aleatoriedad dispersa a la manada.
+
+```typescript
+function nextDelayMs(attempt: number): number {
+  const base = 30_000;                       // 30s
+  const cap = 24 * 60 * 60 * 1000;           // 24h
+  const exp = Math.min(cap, base * 4 ** (attempt - 2));
+  return Math.floor(exp / 2 + Math.random() * (exp / 2)); // "equal jitter"
+}
+```
+
+Dos reglas más del lado del emisor. Primero, un timeout corto por intento. Si el receptor no ha respondido en unos diez segundos, cuéntalo como falla y sigue; una conexión colgada nunca debería detener la cola. Segundo, trata 4xx y 5xx de forma distinta. Un 500 o 503 significa "intenta más tarde." Un 400 o 401 usualmente significa "esto nunca va a funcionar," a menudo una firma mala o un endpoint borrado. Igual reintentamos los 4xx un par de veces, porque los receptores a veces devuelven el código equivocado durante los deploys, pero no gastamos todo el calendario en ellos.
+
+El mismo instinto aplica a llamar a un LLM, por cierto. Escribí sobre [reintentos y alternativas para llamadas a modelos](/es/blog/designing-llm-retry-fallbacks), y la forma es casi idéntica: asume que fallar es normal, retrocede, agrega jitter y sabe cuándo parar.
+
+## 3. El Receptor Debe Ser Idempotente
+
+Esta es la consecuencia incómoda de la regla 2: si reintentas, a veces vas a entregar el mismo evento dos veces.
+
+Pasa más seguido de lo que pensarías. El receptor procesa el evento, empieza a escribir su respuesta 200, y la conexión se cae. Desde el lado del emisor, ese intento falló, así que reintenta. El receptor ahora ve un evento que ya manejó. Ninguna astucia del lado del emisor puede prevenir esto. Es la naturaleza de las redes.
+
+Así que entregamos **al menos una vez**, y el receptor es responsable de hacer que "al menos una vez" se comporte como "exactamente una vez." La herramienta para eso es una llave de idempotencia, y el ID del evento es la natural. Cada evento que enviamos tiene un ID único y estable que se mantiene igual en cada reintento.
+
+```typescript
+export async function handleFileEvent(event: FileEvent, store: EventStore) {
+  // Registra el ID del evento de forma atómica. Si ya existe, ya lo vimos.
+  const firstTime = await store.claim(event.id, { ttlDays: 7 });
+  if (!firstTime) return; // entrega duplicada, ya manejada — igual devuelve 200
+
+  switch (event.type) {
+    case "file.extraction.completed":
+      await markDocumentReady(event.data.fileId);
+      break;
+    // ...
+  }
+}
+```
+
+El `claim` debe ser atómico — una inserción con restricción de unicidad, o una escritura condicional — no un par de "verificar, luego insertar," que permite que dos entregas concurrentes crean ser la primera. Y el handler debería devolver un 2xx para los duplicados. Un duplicado no es un error; es el sistema funcionando como fue diseñado. Si devuelves un error, el emisor reintenta otra vez, y construiste un pequeño bucle.
+
+<Callout type="tip" title="Haz idempotente también el handler, no solo la puerta">
+La verificación del ID del evento es tu primera línea de defensa. La segunda es escribir handlers cuyos efectos sean naturalmente idempotentes: "pon el estado en listo" en vez de "incrementa el contador," upserts en vez de inserts. Cuando la puerta falle por alguna razón imprevista, los efectos idempotentes significan que un duplicado igual no hace daño.
+</Callout>
+
+## 4. La Cola de Mensajes Muertos Es una Cola, No una Papelera
+
+Eventualmente algunas entregas agotan todos los reintentos. El receptor estuvo caído dos días, o su endpoint fue borrado, o un bug está rechazando cada evento de un tipo. Esos eventos van a una cola de mensajes muertos (dead-letter).
+
+La mayoría de los equipos construye la cola de mensajes muertos y luego nunca la mira. Eso convierte la promesa en "te vas a enterar, a menos que hayas estado caído un rato, en cuyo caso buena suerte."
+
+Lo que hace útil a una cola de mensajes muertos:
+
+- **Alerta sobre ella.** No por cada evento, sino por la tasa. Una acumulación repentina para una suscripción es la señal más temprana posible de que una app consumidora está rota.
+- **Haz que reprocesar sea un botón, no un script.** Cualquiera en el equipo debería poder reprocesar todos los eventos muertos de una suscripción después de que se arregle el receptor. Como el receptor es idempotente, reprocesar con generosidad es seguro.
+- **Desactiva, no borres, los endpoints muertos.** Si un endpoint lleva días fallando todo, pausa la suscripción y avísale a su dueño. Los eventos siguen acumulándose en la cola y se pueden reprocesar cuando alguien la vuelva a encender.
+
+El documento atascado en "procesando" del inicio se habría arreglado con cualquiera de estas. Con alertas, habríamos visto la falla. Con reprocesamiento, lo habríamos reenviado. Con reintentos, nunca habría llegado a la cola de mensajes muertos.
+
+## 5. Nunca Prometas Orden
+
+Esta es la que más sorprende a la gente. Con reintentos, workers de entrega en paralelo y el jitter normal de la red, los eventos llegan fuera de orden. Un `file.updated` puede llegar antes del `file.created` del que depende. Un `file.deleted` puede llegar y luego, treinta segundos después, un `file.extraction.completed` reintentado para el mismo archivo.
+
+Puedes intentar garantizar el orden. Requiere colas por recurso, entrega serializada y mucho cuidado, y hace que un evento atascado bloquee todos los eventos detrás de él. Probé una versión de eso una vez y la revertí.
+
+Lo que funciona mejor es dejar de enviar el estado en el evento, y enviar el hecho de que el estado cambió:
+
+```
+EVENTO GORDO (frágil)                      EVENTO DELGADO (robusto)
+─────────────────────                      ────────────────────────
+{                                          {
+  "type": "file.updated",                    "id": "evt_01J9...",
+  "data": {                                  "type": "file.updated",
+    "fileId": "f_123",                       "data": {
+    "status": "ready",                         "fileId": "f_123",
+    "pages": 42,                               "version": 7
+    "title": "Q3 board deck",                }
+    ...                                    }
+  }
+}                                          receptor: si la versión es más vieja
+                                           que la que tengo, ignorar; si no, GET /files/f_123
+el receptor aplica lo que llegue,
+posiblemente estado viejo sobre nuevo
+```
+
+Un evento delgado lleva un ID, un tipo, el ID del recurso y un número de versión. El receptor compara la versión con lo que ya tiene, ignora cualquier cosa más vieja, y si no, consulta el estado actual en la API. El orden deja de importar, porque el receptor siempre termina con la verdad más reciente, sin importar cómo llegaron los eventos.
+
+Los eventos delgados tienen un segundo beneficio que importa mucho en nuestra plataforma: no llevan contenido. Nuestra regla es que los payloads de webhooks contienen IDs y tipos de evento, nunca contenido de archivos ni datos personales. El receptor consulta los datos reales mediante una llamada autenticada a la API, que pasa por las mismas verificaciones de acceso y el mismo registro de auditoría que todo lo demás. El webhook se vuelve un timbre, no un camión de reparto. Eso encaja con la misma [forma de ingesta orientada a eventos](/es/blog/event-driven-data-pipelines) que usamos en todos lados, y significa que un payload de webhook filtrado no filtra casi nada.
+
+<Callout type="info" title="El webhook es un timbre">
+Trata el evento como 'algo cambió, ven a ver' en vez de 'aquí está el nuevo estado.' Los eventos delgados con versión sobreviven al reordenamiento, la duplicación y el reprocesamiento sin manejo especial, y mantienen los datos sensibles detrás de los controles de acceso de tu API en vez de en los logs de solicitudes de alguien más.
+</Callout>
+
+## 6. Responde Rápido, Trabaja Después
+
+Una última regla para receptores, porque causa una cantidad sorprendente de reintentos. Tu handler de webhook debería verificar la firma, registrar el evento, encolar el trabajo y devolver 200, rápido. No debería correr el análisis de IA, llamar a otros tres servicios y luego responder.
+
+Si el handler tarda treinta segundos, el timeout del emisor se dispara, el emisor lo cuenta como falla y reintenta, mientras el primer intento sigue corriendo. Ahora estás procesando el mismo evento dos veces en paralelo, y tu puerta de idempotencia es lo único que se interpone entre tú y un duplicado. Confirma rápido y haz el trabajo pesado de forma asíncrona.
+
+## El Contrato, por Escrito
+
+Todo esto es inútil si solo vive en mi cabeza, así que el servicio de archivos lo publica como parte de su documentación de eventos. Este es el resumen que recibe cada equipo consumidor:
+
+```
+ENTREGA         al menos una vez. Habrá duplicados.
+ORDEN           no garantizado. Usa data.version; consulta el estado actual.
+FIRMA           X-Signature: t=..,v1=.. — HMAC-SHA256 sobre "t.rawBody".
+                Rechaza si |ahora - t| supera 300s. Comparación de tiempo constante.
+REINTENTOS      backoff exponencial + jitter, 8 intentos en ~1.5 días.
+TIMEOUT         responde 2xx en 10s o el intento cuenta como fallido.
+PAYLOAD         solo IDs y tipos. Sin contenido de archivos. Sin PII.
+MENSAJES MUERTOS después del último reintento. Reprocesables por suscripción.
+VERSIONES       cambios incompatibles del payload salen como nueva versión del evento.
+```
+
+Cada línea ahí es una promesa que hace el emisor o una expectativa que el receptor debe cumplir. Escribirlo me obligó a notar qué promesas estaba cumpliendo de verdad, y cuáles solo estaba esperando cumplir.
+
+## El Hilo
+
+Si tuviera que comprimir este artículo en una oración: **un webhook es una promesa de que algo pasó, hecha por un emisor que va a seguir intentando y recibida por alguien que debe esperar oírla dos veces, tarde y fuera de orden.**
+
+La firma demuestra quién hizo la promesa. Los reintentos y la cola de mensajes muertos la cumplen. La idempotencia y los eventos delgados hacen seguro cumplirla de forma imperfecta. Ninguna de estas cosas es difícil por sí sola. Lo difícil es aceptar, antes del primer reporte de bug, que un solo POST nunca fue una promesa. Era una esperanza con código de estado.
+
+---
+
+*Si estás diseñando webhooks para una plataforma, o estás del lado receptor de los de alguien más y te preguntas por qué se pierden cosas, [contáctame](/contact). Casi siempre es una de estas cinco, y es mucho más barato arreglarlo antes de que el primer documento se quede atascado en "procesando."*

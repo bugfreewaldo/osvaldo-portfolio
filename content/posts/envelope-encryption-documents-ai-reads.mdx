@@ -1,0 +1,256 @@
+---
+title: "Envelope Encryption for Documents an AI Has to Read"
+description: "Every document in GreyMatter's central file service is encrypted with AES-256-GCM envelope encryption — per-file data keys wrapped by Key Vault keys. And yet the AI pipelines have to read those documents to do their job. This is how I decide where plaintext is allowed to exist, for how long, what the LLM call is allowed to log, how rotation works without re-encrypting the world, and why I decrypt at the edge of the extraction step and nowhere else."
+date: 2026-06-02
+published: true
+category: "Security"
+tags: ["Security", "Encryption", "Azure Key Vault", "AI Pipelines", "GreyMatter"]
+author: "Osvaldo Restrepo"
+tldr: "Encrypting documents at rest is the easy part. The hard part starts when an AI pipeline needs to read them, because every step that touches plaintext becomes part of your attack surface. In the GreyMatter central file service, every file gets its own AES-256-GCM data key, and that data key is wrapped by a key held in Azure Key Vault. The rule I build around is simple: plaintext exists only inside the extraction step, only in memory, only for as long as the step runs. Logs carry identifiers and hashes, never content. Rotation re-wraps data keys instead of re-encrypting files. And the LLM call is treated as a place where data leaves your control, so it gets the minimum text it needs and nothing gets logged by default. Encryption is not a property of storage. It is a property of the whole pipeline."
+faqs:
+  - question: "Why use envelope encryption instead of just encrypting files with one master key?"
+    answer: "Because one master key makes every operation expensive and every mistake catastrophic. With envelope encryption, each file has its own data key, so a leaked data key exposes one file, not the whole store. The master key never leaves Key Vault, which means you never have it in application memory. And rotation becomes cheap: you re-wrap the small data keys under a new master key version instead of re-encrypting every document."
+  - question: "If the AI has to read the plaintext anyway, isn't encryption at rest just theater?"
+    answer: "Only if plaintext leaks out of the step that needs it. Encryption at rest protects you from the storage layer: a misconfigured container, a stolen backup, an over-broad access grant. The pipeline discipline protects you from everything else. The point is to make plaintext exist in exactly one well-understood place for a short time, instead of in blob storage, queues, caches, logs, and LLM traces all at once."
+  - question: "What should an LLM call be allowed to log when it processes sensitive documents?"
+    answer: "By default: identifiers, sizes, timings, token counts, model version, and hashes of the input and output. Not the prompt text and not the response text. If you need content for debugging, make it an explicit, time-boxed, access-controlled capture with its own audit trail, not a default logging level someone forgot to turn down."
+relatedPosts: ["event-driven-data-pipelines", "data-retention-for-ai-features", "observability-llm-production"]
+---
+
+The moment this post comes from was not dramatic. Nobody got breached. I was reading a log stream in the Azure portal while chasing a slow extraction job, scrolling past lines of perfectly normal telemetry, and then I saw it: the first few hundred characters of a document, sitting right there in a trace, in plain English.
+
+It was a debug line I had added myself, weeks earlier, to check that text extraction was producing something sensible. "Just for now." It had survived three deploys.
+
+The file it came from was encrypted at rest with AES-256-GCM. Per-file data key, wrapped by a key in Azure Key Vault, the whole respectable setup. And none of that mattered, because I had built a very secure vault and then left a photocopy of the contents on the front desk.
+
+That is the real problem with documents an AI has to read. Encryption at rest is the easy part. The hard part is everything that happens after you decrypt.
+
+## The Setup: Envelope Encryption in the File Service
+
+At TheGreyMatter.ai, the GreyMatter 3.0 platform sits behind more than seventeen vertical AI apps — DueDiligence9, Contracts9, Forecast9, Board9 and the rest. None of them store files on their own. They all go through a central file service, and that service encrypts every document with envelope encryption.
+
+If you have not met the pattern, it is two layers of keys:
+
+```
+   ┌──────────────────────────────┐
+   │   Azure Key Vault            │
+   │   key-encryption key (KEK)   │   never leaves the vault
+   └──────────────┬───────────────┘
+                  │ wrap / unwrap
+                  ▼
+   ┌──────────────────────────────┐
+   │   data-encryption key (DEK)  │   one per file, random,
+   │   stored WRAPPED, next to    │   256 bits
+   │   the file metadata          │
+   └──────────────┬───────────────┘
+                  │ AES-256-GCM
+                  ▼
+   ┌──────────────────────────────┐
+   │   ciphertext + IV + auth tag │   what lives in blob storage
+   └──────────────────────────────┘
+```
+
+Each file gets a fresh random data key. That key encrypts the file locally with AES-256-GCM, which gives you confidentiality and integrity in one pass — if anyone flips a bit in the ciphertext, decryption fails instead of returning garbage. Then the data key itself is sent to Key Vault to be wrapped by the key-encryption key, and only the wrapped version is stored.
+
+The master key never enters application memory. A leaked data key exposes one file. A leaked blob container exposes a pile of ciphertext and a pile of wrapped keys that are useless without Key Vault access.
+
+Here is the core of it in TypeScript with Node's built-in crypto and the Key Vault keys SDK:
+
+```typescript
+import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
+import { CryptographyClient } from "@azure/keyvault-keys";
+
+type EncryptedFile = {
+  ciphertext: Buffer;
+  iv: Buffer;          // 12 bytes, unique per encryption
+  authTag: Buffer;     // 16 bytes, GCM integrity tag
+  wrappedKey: Buffer;  // the DEK, wrapped by Key Vault
+  kekId: string;       // which KEK version wrapped it
+  aad: string;         // bound context, e.g. tenant + file id
+};
+
+export async function encryptFile(
+  plaintext: Buffer,
+  kek: CryptographyClient,
+  aad: string
+): Promise<EncryptedFile> {
+  const dek = randomBytes(32);
+  const iv = randomBytes(12);
+
+  const cipher = createCipheriv("aes-256-gcm", dek, iv);
+  cipher.setAAD(Buffer.from(aad, "utf8"));
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  const wrapped = await kek.wrapKey("RSA-OAEP-256", dek);
+  dek.fill(0); // best effort: do not leave the raw key lying around
+
+  return {
+    ciphertext,
+    iv,
+    authTag,
+    wrappedKey: Buffer.from(wrapped.result),
+    kekId: wrapped.keyID ?? "",
+    aad,
+  };
+}
+
+export async function decryptFile(
+  file: EncryptedFile,
+  kek: CryptographyClient
+): Promise<Buffer> {
+  const unwrapped = await kek.unwrapKey("RSA-OAEP-256", file.wrappedKey);
+  const dek = Buffer.from(unwrapped.result);
+
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", dek, file.iv);
+    decipher.setAAD(Buffer.from(file.aad, "utf8"));
+    decipher.setAuthTag(file.authTag);
+    return Buffer.concat([decipher.update(file.ciphertext), decipher.final()]);
+  } finally {
+    dek.fill(0);
+  }
+}
+```
+
+Two details in there matter more than they look.
+
+The **additional authenticated data** binds the ciphertext to its context — tenant and file identifier. If someone copies an encrypted blob from one tenant's record into another's, decryption fails, because the AAD no longer matches. It costs one line and closes a whole category of confused-deputy bugs.
+
+The **`kekId`** records which version of the master key wrapped this data key. That is what makes rotation cheap, which I will get to.
+
+<Callout type="info" title="GCM nonces are not optional">
+AES-GCM is only safe if you never reuse an IV with the same key. With a fresh random data key per file, that risk mostly disappears — but if you ever re-encrypt a file with its existing data key, generate a new IV. Reusing one is not a small weakness. It breaks both confidentiality and integrity.
+</Callout>
+
+So far, this is textbook. Now the AI shows up.
+
+## The Problem: The Pipeline Needs Plaintext
+
+The ingestion flow in GreyMatter is event-driven: a file is uploaded, an extraction step pulls text and structure out of it, an AI analysis step runs Claude over the extracted content, and a notification goes out when the results are ready. Four stages, loosely coupled by events, each one an Azure Function.
+
+Every one of those stages is a place plaintext *could* exist. And plaintext has a way of spreading. It gets copied into a queue message because that was convenient. It gets cached in a temp file because the PDF library wanted a path. It gets logged because someone was debugging. It ends up in an LLM trace because the observability tool captures prompts by default.
+
+Each of those copies is unencrypted, and none of them is protected by the envelope you worked so hard on.
+
+So the question I care about is not "is the file encrypted?" It is: **where is plaintext allowed to exist, and for how long?**
+
+## Rule 1: Decrypt at the Edge of the Extraction Step
+
+My answer is that plaintext is allowed to exist in exactly one place: inside the extraction step, in memory, for the duration of that step. Everything upstream and downstream moves identifiers, not content.
+
+```
+   BEFORE (convenient)                 AFTER (decrypt at the edge)
+
+   upload ──▶ queue msg contains       upload ──▶ queue msg contains
+              decrypted text                      fileId + tenantId
+                │                                   │
+                ▼                                   ▼
+   extract ──▶ writes text to temp     extract ──▶ decrypt in memory
+              file + another queue                 extract text
+                │                                   encrypt result
+                ▼                                   wipe buffers
+   analyze ──▶ reads text from queue                │
+              logs prompt "for debug"               ▼
+                │                      analyze ──▶ fetch + decrypt
+                ▼                                  extracted text,
+   notify  ──▶ includes a snippet                  call model,
+              in the email                         encrypt output
+                                                    │
+                                                    ▼
+                                       notify  ──▶ "your analysis is
+                                                   ready" + a link
+```
+
+The event that travels between stages carries a file identifier, a tenant identifier, and a version. Never content. If a queue gets inspected, replayed, or dead-lettered, there is nothing sensitive in it.
+
+The extraction step's output — the extracted text, the structured fields — is itself sensitive, so it goes back through the file service and gets its own envelope. The analysis step decrypts it, calls the model, and encrypts the result. Each stage opens the envelope, does one job, and seals it again.
+
+Is this slower than passing text through queues? A little. One extra Key Vault unwrap per stage, and you can cache unwrapped data keys in memory for a short window if it matters. In practice the model call dwarfs all of it. I would trade those milliseconds for a pipeline where a dead-letter queue is boring every single time.
+
+<Callout type="tip" title="Move identifiers, not content">
+The simplest test for a document pipeline: open any queue, any dead-letter store, any event log. If you can read a sentence from a customer's document, plaintext has escaped its step. Events should be pointers. The content stays behind the envelope until the one function that needs it opens it.
+</Callout>
+
+## Rule 2: The LLM Call Is Where Data Leaves Your Control
+
+The analysis step is the uncomfortable one, because it does the one thing envelope encryption cannot help with: it sends plaintext to a model.
+
+I treat the model call as an egress point, the same way I would treat sending an email or calling a third-party API. That framing changes a few decisions.
+
+**Send the minimum text.** The analysis step does not get the whole document by default. It gets the sections the task needs. A contract review does not need the signature page. A financial analysis does not need personal contact details. Less text in the prompt is less text anywhere downstream of the prompt. (It is also cheaper, which I wrote about in [context windows are a budget](/blog/context-windows-are-a-budget).)
+
+**Redact what the model does not need.** Field-level PII encryption already exists in the platform for structured data through Key Vault. For free text, the extraction step can swap obvious identifiers for placeholders before the analysis step ever sees them, and map them back in the result if needed.
+
+**Know the provider's retention terms.** What the API provider does with your prompts is a contract question, not an engineering one, but engineering has to know the answer. It decides what you are allowed to send at all.
+
+## Rule 3: Logs Carry Shapes, Not Content
+
+The debug line from my opening was a logging problem pretending to be a debugging convenience. So the analysis step has a strict logging contract:
+
+```typescript
+type LlmCallLog = {
+  tenantId: string;
+  fileId: string;
+  step: "extraction" | "analysis";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  inputSha256: string;   // lets you prove what was sent, without storing it
+  outputSha256: string;
+  outcome: "ok" | "refused" | "error";
+};
+```
+
+No prompt text. No response text. No "first 200 characters for context." Hashes let me answer "was this exact input processed?" and "did the output change between runs?" without keeping the content. Token counts and latency give me everything I need for cost and performance work, which is what I wrote about in [observability for LLMs in production](/blog/observability-llm-production).
+
+When I genuinely need content to debug a bad extraction, that is an explicit capture: scoped to one file, time-boxed, written to an encrypted location, with an audit entry saying who turned it on and why. It is not a log level. Log levels get left on. Captures expire.
+
+<Callout type="warning" title="Your observability tool is a data store">
+Many LLM tracing tools capture full prompts and responses by default, because that is what makes them useful for debugging. That also makes them a second copy of every sensitive document you process, usually with weaker access controls than your file store. Check the defaults before you wire one up, not after.
+</Callout>
+
+## Rule 4: Rotation Re-Wraps Keys, Not Files
+
+Key rotation is where envelope encryption pays for itself.
+
+When the key-encryption key rotates in Key Vault, nothing about the encrypted files changes. The ciphertext is still the ciphertext. Only the wrapped data keys are tied to the old key version. So rotation is a background job that walks the file metadata, unwraps each data key with the old version, and wraps it again with the new one:
+
+```
+   for each file where kekId != currentKekVersion:
+       dek     = unwrap(file.wrappedKey, file.kekId)
+       wrapped = wrap(dek, currentKekVersion)
+       update metadata: wrappedKey = wrapped, kekId = currentKekVersion
+       wipe dek
+```
+
+Re-wrapping a 32-byte key is fast. Re-encrypting a large document library would be a project. And because each record stores its `kekId`, the job is resumable and safe to run alongside live traffic: old versions stay enabled for unwrap until the job confirms nothing references them anymore, and only then are they disabled.
+
+Rotating the data keys themselves — actually re-encrypting a file — is a separate, rarer operation. I reserve it for when a specific file's key might have been exposed, not as a routine.
+
+## Rule 5: Plaintext Has a Lifetime, and You Should Know It
+
+The last rule is about time, and it is the one I see skipped most.
+
+Every piece of plaintext in the pipeline should have a known maximum lifetime. For the extraction step, that is "the duration of the function invocation." Buffers are wiped in `finally` blocks. Nothing is written to the local temp directory if the library can work from memory; if it cannot, the temp file is deleted in the same `finally`, and the function's storage is not shared across tenants.
+
+I am honest with myself that this is best effort. JavaScript does not give you real control over memory, and the garbage collector will keep copies of strings for as long as it likes. Wiping a buffer is hygiene, not a guarantee. The real guarantee comes from the architecture: plaintext only enters a short-lived process, never a durable store. If the process dies, the plaintext dies with it.
+
+That also connects to the derived data. The extracted text and the AI analysis are new documents with their own lifetimes, and they need a retention policy just like the original upload. That is a whole topic of its own, which I come back to in [data retention for AI features](/blog/data-retention-for-ai-features).
+
+## What I Got Wrong First
+
+Since I promised candor: my first version of this pipeline passed extracted text through the queue. It was faster to build, the payloads were small, and it worked fine in testing. I only rebuilt it after I sat down and listed every place a single document's content could end up. The list had nine entries. Only one of them was encrypted.
+
+That exercise — list every place plaintext can exist — is the most useful thing in this post. It takes an hour, and the first time you do it the result will probably embarrass you a little. Mine did.
+
+## The Throughline
+
+If I had to compress it into one sentence: **encryption is not a property of your storage, it is a property of your whole pipeline, and the pipeline is only as encrypted as its most convenient shortcut.**
+
+Envelope encryption gives you a great foundation: per-file keys, a master key that never leaves the vault, cheap rotation, integrity checks for free. But an AI pipeline that reads documents will keep trying to spread plaintext around, through queues, temp files, logs, traces, and prompts. The job is to decide, on purpose, the one place plaintext lives, how long it lives there, and what is allowed to leave. Then you hold that line every time someone, including you, wants to add a debug line "just for now."
+
+---
+
+*If you are building AI pipelines over sensitive documents and want a second pair of eyes on where your plaintext actually goes, [reach out](/contact). The plaintext inventory exercise is a lot more fun with someone else in the room.*

@@ -1,0 +1,219 @@
+---
+title: "Scoping AI Work for Non-Technical Clients: Ranges, Spikes, and Writing Down 'Good Enough'"
+description: "How I estimate AI projects for people who just want to know how long and how much. Lessons from years of small-business work at Shining Image and platform work at TheGreyMatter.ai: split the deterministic work from the uncertain work, sell a discovery spike that ends in a decision, give ranges instead of points, and write down what 'good enough' means before anyone writes code."
+date: 2026-10-13
+published: true
+category: "Engineering Leadership"
+tags: ["Engineering Leadership", "Estimation", "AI Projects", "Client Communication", "Scoping"]
+author: "Osvaldo Restrepo"
+tldr: "Non-technical clients ask two questions about AI work: how long, and how much. Answering with a single number is how most AI projects start lying to their sponsors. I learned this the hard way building voice agents for small businesses at Shining Image, and I apply the same discipline to platform work now. The method has four parts. Split every project into the deterministic part, which you can estimate like normal software, and the uncertain part, which depends on how well a model handles real data. Sell a short, time-boxed discovery spike on the uncertain part that ends in an explicit go, narrow, or stop decision. Give ranges, and name what moves them. And before building anything, write down what 'good enough' means as concrete examples the client agrees to. The goal is not a perfect estimate. It is an estimate nobody is surprised by."
+faqs:
+  - question: "Won't a client be put off by ranges instead of a fixed number?"
+    answer: "Some will, at first. But in my experience, a non-technical client is far more upset by a confident number that turns out wrong than by an honest range that turns out right. The trick is to make the range explainable: say which part of the work is predictable, which part is not, and what you will learn in the first couple of weeks that narrows it. A range with a plan to shrink it reads as competence, not hedging."
+  - question: "What should a discovery spike actually produce?"
+    answer: "A decision, not a demo. The spike runs the riskiest assumption against the client's real data, measures it against the 'good enough' definition you wrote together, and ends with a short memo that recommends one of three things: go ahead as scoped, narrow the scope to the part that works, or stop. Stopping after a cheap spike is a success, because it saved the client the cost of the full project."
+  - question: "How do you define 'good enough' with someone who does not know what an eval is?"
+    answer: "You do not call it an eval. You sit with them and collect real examples — calls, emails, documents — and ask, for each one, what a good result looks like and what would be unacceptable. Then you agree on how many out of a sample need to be right, and which mistakes are never allowed. That list is the acceptance criteria. It is an eval set in disguise, and it becomes the single most useful artifact in the project."
+relatedPosts: ["why-ai-pilots-stall", "eval-set-is-the-spec", "building-for-small-business"]
+---
+
+Years ago at Shining Image, the owner of a small service business asked me a question I have heard in a hundred variations since: "Can you make the phone answer itself when we're busy? How long would that take?"
+
+I said three weeks.
+
+I was not lying. I had a mental picture of the work: a Twilio number, speech-to-text, a model to understand the caller, a connection to the calendar, text-to-speech back. I had built most of those pieces before. Three weeks felt generous.
+
+The phone integration was done in about a week. The calendar connection took a few days. And then I spent a long, humbling stretch discovering that real callers do not talk like my test scripts. They mumble addresses. They call from a truck with the window down. They ask three questions in one breath and then change their mind about the second. Getting the agent to handle *those* calls well enough to trust it with a real customer took far longer than the three weeks I had promised for the whole thing.
+
+The owner was gracious about it. But I remember the phone call where I had to explain the delay, and I remember that I could not explain *why* in a way that made sense to someone who does not build software. To him, the phone either answered or it did not. It answered in week one. What was I still doing?
+
+That call taught me more about scoping AI work than anything I have read since. Here is the method I use now — for small businesses, and for platform work at TheGreyMatter.ai, where the stakeholders are different but the question is exactly the same.
+
+## The Question Behind "How Long Will It Take?"
+
+When a non-technical client asks how long something will take, they are rarely asking for a number. They are asking three things at once:
+
+- Can I plan around this?
+- Will I be surprised?
+- Is this person going to tell me the truth when things change?
+
+A single confident number answers the first question and quietly fails the other two. With traditional software, you can usually get away with it, because the uncertainty is mostly in effort, and effort can be pushed through. With AI work, a large part of the uncertainty is in *whether the thing works at all on this client's data*, and no amount of effort guarantees the answer is yes.
+
+That is the root of almost every stalled AI project I have seen, and it is why I wrote about [why AI pilots stall](/blog/why-ai-pilots-stall). Most of them were not killed by bad engineering. They were killed by an estimate that pretended the uncertain part was certain.
+
+## 1. Split the Work Into Two Piles
+
+The first thing I do with any AI project is split it, on paper, into two piles.
+
+```
+                   ┌─────────────────────────────────────┐
+                   │          THE WHOLE PROJECT          │
+                   └──────────────────┬──────────────────┘
+                                      │
+              ┌───────────────────────┴───────────────────────┐
+              ▼                                               ▼
+   DETERMINISTIC PILE                              UNCERTAIN PILE
+   (estimate like normal software)                 (estimate as experiments)
+
+   - phone number + call routing                   - does the model understand
+   - calendar / CRM integration                      real callers well enough?
+   - auth, data storage, logging                   - can it extract the right
+   - admin screen for the owner                      fields from messy input?
+   - fallback: take a message                      - how often does it need a
+   - notifications, billing                          human, and is that OK?
+
+   known unknowns, effort-shaped                   unknown unknowns, data-shaped
+```
+
+The deterministic pile is regular software. Integrations, screens, storage, auth, notifications. I have built enough of these to estimate them the normal way, with the normal padding, and I am usually close.
+
+The uncertain pile is everything whose success depends on how a model behaves on real-world inputs. Understanding speech. Extracting fields from documents nobody standardized. Classifying requests that do not fit neatly into categories. These are not engineering tasks in the usual sense. They are experiments, and experiments do not have due dates. They have budgets.
+
+Showing a client this split is, by itself, half the conversation. Non-technical people understand it immediately once it is drawn out. "This side is like building a website. This side is like training a new employee — we won't know how good they are until we see them work." That framing has never failed me.
+
+<Callout type="tip" title="Most of the project is not AI">
+In nearly every AI project I have scoped, the deterministic pile is bigger than the uncertain one. That is good news: it means most of the work can be estimated with confidence. Say so. Clients relax when they learn that the scary unknown part is a slice, not the whole pie.
+</Callout>
+
+A useful side effect: the split often reveals that part of the uncertain pile does not need a model at all. A request that sounded like "AI understands the customer" turns out to be "a dropdown and two rules." Moving work from the uncertain pile to the deterministic pile is the cheapest risk reduction there is.
+
+## 2. Sell a Discovery Spike That Ends in a Decision
+
+For the uncertain pile, I do not give an estimate up front. I sell a spike.
+
+A discovery spike is short and time-boxed — usually a week or two, depending on the project. It has exactly one job: run the riskiest assumption against the client's *real* data and come back with a decision. Not a demo. A decision.
+
+The decision has three possible outcomes, and I tell the client all three before we start:
+
+```
+                      DISCOVERY SPIKE
+                 (fixed time, fixed price)
+                            │
+          run riskiest assumption on real data
+          measure against agreed "good enough"
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+         GO              NARROW              STOP
+   works well enough   works for a subset   doesn't work well
+   → full estimate     → smaller scope,     enough yet
+     with confidence     re-estimate        → you saved the cost
+                                              of the full build
+```
+
+The "stop" option matters more than it looks. When a client knows from day one that stopping is a legitimate, even successful outcome, the spike becomes an honest investigation instead of a sales pitch I am under pressure to make work. And when a spike does say stop, the client has spent a small, known amount to avoid a large, unknown one. Several of the most grateful clients I have had were ones where the spike said "not yet."
+
+"Narrow" is the most common outcome, and the most valuable. The voice agent that cannot handle every call might handle appointment scheduling extremely well and struggle with complicated quotes. So the scope becomes: the agent books appointments, and everything else becomes a well-written message for the owner. That is a real product, shipped sooner, that does one thing reliably.
+
+<Callout type="info" title="A spike produces a memo, not a prototype">
+The deliverable of a discovery spike is a one-page memo: what we tested, on what data, against which definition of good enough, what we found, and which of go, narrow, or stop I recommend. Prototypes are seductive and get mistaken for nearly-done products. A memo gets read as what it is — evidence for a decision.
+</Callout>
+
+## 3. Give Ranges, and Name What Moves Them
+
+After the spike, I can estimate the whole project. I still give a range, not a point.
+
+The difference is that now the range is explainable. I can say: "The integrations, screens, and fallback flows are about this much work, and I am confident in that part. The model work is a range because it depends on how many edge cases show up once real customers use it. Here is what would push us toward the low end, and here is what would push us toward the high end."
+
+```
+bad:     "It'll take six weeks."
+
+better:  "Four to seven weeks.
+          - The integration and admin work is about three weeks; I'm
+            confident in that.
+          - The agent tuning is one to four weeks. It lands at the low
+            end if your calls look like the ones we tested in the spike.
+            It lands at the high end if we discover call types we haven't
+            seen, like Spanish-language callers or multi-property quotes.
+          - I'll tell you at the end of week two which end we're heading
+            toward."
+```
+
+The last line is the important one. A range is not a way to avoid commitment. It is a commitment to *narrow* the range on a schedule. Clients do not mind uncertainty nearly as much as they mind not knowing when it will end.
+
+I also keep the illustrative numbers here deliberately round. In practice, the exact numbers depend entirely on the project. The structure is what transfers: the confident part, the uncertain part, what moves it, and when you will know more.
+
+## 4. Write Down What "Good Enough" Means
+
+This is the step that would have saved my three-week promise, and it is the one I now refuse to skip.
+
+Before any real building starts — ideally during the spike — I sit down with the client and define, in writing, what "good enough" means. Not in metrics they do not care about. In examples they recognize.
+
+For the voice agent, that conversation looks like this. We pull twenty or thirty real calls, or realistic recreations of them. For each one, we write down what a good outcome is, and what would be unacceptable. Then we agree on a bar.
+
+```yaml
+# Acceptance criteria — after-hours call agent (illustrative)
+good_enough:
+  scheduling_calls:
+    sample: "the 30 calls we collected together"
+    target: "books the correct service and time on most of them"
+    acceptable_miss: "takes a clear message instead of booking"
+    never_allowed:
+      - "books the wrong address"
+      - "confirms a time the calendar shows as taken"
+      - "quotes a price"
+  everything_else:
+    behavior: "politely takes a message with name, number, reason"
+    never_allowed:
+      - "pretends to be a human when asked directly"
+  review:
+    who: "owner listens to a sample of calls weekly for the first month"
+```
+
+Two things about this document matter. First, the `never_allowed` lists. Clients are usually much clearer about what must never happen than about what success looks like, and those lines become hard guardrails in the system. Second, it is written in the client's language — addresses, prices, appointments — not mine.
+
+This is an eval set in disguise. I wrote a whole post arguing that [the eval set is the spec](/blog/eval-set-is-the-spec), and scoping is where that idea pays off first. The examples we collected are what the spike measures against, what the range depends on, and what we test every release against afterward. Without them, "done" is a feeling. With them, "done" is a conversation you can actually finish.
+
+<Callout type="warning" title="Without a written bar, the bar moves">
+If "good enough" is not written down before building, it will be defined after — by the one bad call the client happens to hear. AI systems always have some failures. Agreeing in advance which ones are acceptable and which are never allowed is what keeps a project from dying on a single anecdote.
+</Callout>
+
+## The Same Method, at Platform Scale
+
+I assumed these lessons were about small businesses. They are not.
+
+At TheGreyMatter.ai, I work on the platform behind a family of vertical AI apps, and the people asking "how long?" are product leads and executives rather than shop owners. They are sharper about software in general, but they are exactly as exposed to the same trap: a confident estimate on work whose success depends on how a model behaves on documents and data nobody has looked at closely yet.
+
+The method transfers almost unchanged. The deterministic pile at platform scale is shared services: auth, file handling, notifications, connectors, RBAC, audit logging. Those I estimate with confidence, because they are well-understood engineering. The uncertain pile is things like how well an agent extracts structure from a new kind of document, or how reliably an analysis holds up across different companies' data. Those get spikes, ranges, and a written bar, just like the voice agent did.
+
+The vocabulary changes. The memo gets a more formal template. But the shape — two piles, a spike with a decision, a range with a narrowing date, and good-enough written down — is the same one I learned on that phone call years ago.
+
+## A One-Page Scope I Actually Send
+
+When I put it all together, the document a non-technical client receives fits on one page:
+
+```
+PROJECT: after-hours call handling
+
+1. WHAT WE'RE BUILDING
+   One paragraph, in your words, not mine.
+
+2. THE PREDICTABLE PART            estimate: confident range
+   Integrations, admin screen, message fallback, notifications.
+
+3. THE UNCERTAIN PART              estimate: after discovery spike
+   How well the agent handles your real calls.
+
+4. DISCOVERY SPIKE                 fixed time, fixed price
+   Test on your real calls. Ends with: go / narrow / stop.
+
+5. WHAT "GOOD ENOUGH" MEANS
+   The examples we agreed on. What must never happen.
+
+6. WHEN YOU'LL KNOW MORE
+   Dates when the range gets narrower, and who tells you.
+```
+
+Section six is the one clients mention most when we talk later. It is not technical at all. It is a promise about communication.
+
+## The Throughline
+
+If I compress all of this into one sentence: **separate what you know from what you are guessing, and charge for finding out before you charge for building.**
+
+Non-technical clients are not asking for certainty. They know software runs late. What they are asking for is not to be surprised, and to be told the truth on a schedule. Two piles, a spike that ends in a decision, a range that narrows, and a written definition of good enough are just the tools I use to keep that promise.
+
+I still think about that three-week estimate. The phone did answer in week one. Everything after that was the part I had not known how to explain. Now I explain it first.
+
+---
+
+*If you are scoping an AI project for a client, a boss, or a board who just wants to know how long and how much, and you want help splitting the predictable from the uncertain, [reach out](/contact). An honest estimate is the cheapest feature any AI project will ever ship.*

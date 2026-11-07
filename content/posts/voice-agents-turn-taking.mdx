@@ -1,0 +1,228 @@
+---
+title: "The Hard Part of Voice Agents Isn't the LLM. It's Turn-Taking."
+description: "Building voice agents for small businesses at Shining Image taught me that the language model is the easy part. The hard part is the half-second rules of human conversation: knowing when the caller has finished talking, letting them interrupt, filling silence without lying, and fitting STT, LLM, and TTS into a latency budget a human will tolerate. Endpointing, barge-in, filler acknowledgments, and what to do with people who talk over the bot."
+date: 2026-07-07
+published: true
+category: "AI Engineering"
+tags: ["Voice Agents", "Twilio", "Latency", "Conversational AI", "Shining Image"]
+author: "Osvaldo Restrepo"
+tldr: "When I started building voice agents at Shining Image, I assumed the work would be in the prompt and the knowledge base. It was not. The model's answers were good from the first week. What made calls feel broken was turn-taking: the bot interrupting callers mid-thought, leaving dead air after a simple 'yes,' talking straight through someone trying to correct it, and reacting to a TV in the background. The fixes were mostly not about the LLM: adaptive endpointing that waits longer after open questions than yes/no questions, a strict latency budget across Twilio, Whisper, GPT-4, and ElevenLabs with streaming at every stage, short pre-rendered acknowledgments to cover unavoidable gaps, real barge-in that stops audio and truncates the bot's memory to what the caller actually heard, and a graceful fallback for callers who keep talking over it. A voice agent is judged on its manners before its intelligence."
+faqs:
+  - question: "What is endpointing in a voice agent?"
+    answer: "Endpointing is the decision that the caller has finished their turn and the agent should respond. The naive version waits for a fixed period of silence. That fails both ways: too short and the bot interrupts people who pause to think, too long and every exchange has awkward dead air. Better endpointing adapts the silence threshold to the context, such as waiting less after a yes/no question and more after an open question, and checks whether the partial utterance sounds complete, so 'my number is five five five' does not count as finished just because the caller paused."
+  - question: "How do you handle a caller interrupting the voice agent (barge-in)?"
+    answer: "Detect sustained caller speech while the agent is talking, stop the agent's audio immediately, and clear any audio already buffered on the phone side. Then, critically, truncate the agent's own message in the conversation history to what was actually played before the interruption. Otherwise the model believes the caller heard things they never heard. It also helps to ignore short backchannels like 'uh-huh' or 'okay' so the agent does not stop every time someone politely signals they are listening."
+  - question: "What latency is acceptable for a phone voice agent?"
+    answer: "Human conversation runs on very short gaps between turns, so anything that stretches past roughly a second starts to feel like the line went dead. You rarely hit that with a sequential STT, LLM, and TTS pipeline, so the practical answer is to stream every stage, start speaking the first sentence before the full answer exists, and cover unavoidable gaps, like a database lookup, with a short honest acknowledgment. The number that matters is time until the caller hears something meaningful, not total processing time."
+relatedPosts: ["shipping-ai-to-non-technical-users", "streaming-llm-responses-guide", "building-for-small-business"]
+---
+
+The first real test call I made to our voice agent went like this. The agent greeted me, asked how it could help, and I said, "Hi, yeah, I need to move my appointment to, um..."
+
+And the agent jumped in. "I'd be happy to help you reschedule! What day works for you?"
+
+I had not finished. I was in the middle of thinking. I said "Thursday" over the top of its question, and it kept talking for another two seconds, then paused, then answered a question I had not quite asked, in a slightly confused way. The whole exchange took maybe fifteen seconds and felt like a phone call with someone who was not listening.
+
+Here is the embarrassing part: the model's answers were fine. If you read the transcript afterward, every individual response was reasonable. The prompt was good. The retrieval over the business's FAQ was good. The scheduling tool worked. And the call was still terrible, because the thing that was broken was not intelligence. It was manners.
+
+That was the beginning of a long education in turn-taking, which turned out to be the actual hard problem in voice agents.
+
+## The LLM Was the Easy Part
+
+At Shining Image, the voice agents handled calls for small businesses: scheduling, lead capture, answering common questions, and falling back to taking a message when something was out of scope. The stack was Twilio for telephony, Whisper for speech-to-text, GPT-4 for the conversation, ElevenLabs for the voice, and RAG over each business's own information.
+
+I went in expecting to spend most of my time on prompts and retrieval. I spent most of it on half-second decisions that humans make without thinking:
+
+- Has this person finished talking, or are they just pausing?
+- How long can I be silent before they think the line dropped?
+- They started talking while I was talking. Do I stop?
+- Was that "uh-huh" an interruption or a polite signal they are listening?
+- Is that voice the caller, or a television in the background?
+
+None of those are language-model questions. All of them decide whether the call feels human-grade or robotic. I have written about why [latency is a UX feature for non-technical users](/blog/shipping-ai-to-non-technical-users); on the phone, that idea gets taken to its extreme, because the caller has no screen, no spinner, nothing but timing and tone.
+
+<Callout type="info" title="Callers judge manners before intelligence">
+A caller forgives a voice agent that does not know the answer and says so politely. They do not forgive one that interrupts them, leaves dead air, or talks over their correction. Turn-taking failures feel like rudeness, and rudeness ends calls faster than wrong answers.
+</Callout>
+
+## 1. Endpointing: Deciding When They're Done
+
+Endpointing is the decision that the caller's turn is over and it is the agent's turn to speak. It sounds trivial. It is the single biggest lever on how a call feels.
+
+The naive version is a fixed silence threshold: if the caller is quiet for some fixed amount of time, they are done. Pick it short and the bot interrupts people who pause to think, which is what happened to me on that first call. Pick it long and every exchange has an awkward gap after the caller finishes, which callers read as the bot being slow or broken.
+
+There is no single right number, because humans do not pause uniformly. Someone answering "is Tuesday okay?" says "yes" and stops. Someone answering "what can I help you with?" pauses mid-sentence to remember the name of the thing they want. Someone reading out a phone number pauses between groups of digits.
+
+So the endpointing got context-aware. The threshold depends on what the agent just asked, and on whether the partial transcript looks complete:
+
+```typescript
+type ExpectedAnswer = "yes_no" | "short_value" | "open_ended" | "digits";
+
+// Illustrative values; we tuned these per deployment by listening to real calls.
+const BASE_SILENCE_MS: Record<ExpectedAnswer, number> = {
+  yes_no: 450,
+  short_value: 700,
+  open_ended: 1000,
+  digits: 1200,
+};
+
+function shouldEndTurn(opts: {
+  expected: ExpectedAnswer;
+  silenceMs: number;
+  partialText: string;
+}): boolean {
+  const { expected, silenceMs, partialText } = opts;
+  let threshold = BASE_SILENCE_MS[expected];
+
+  // Trailing fillers and connectors mean they are still thinking.
+  if (/\b(um+|uh+|and|so|but|to|the|my)\s*$/i.test(partialText.trim())) {
+    threshold += 600;
+  }
+
+  // Phone numbers and dates: wait until it looks complete.
+  if (expected === "digits" && countDigits(partialText) < 10) {
+    threshold += 800;
+  }
+
+  return silenceMs >= threshold;
+}
+```
+
+The first rule, extending the wait when someone trails off on "um" or "to" or "my," fixed my original test call by itself. "I need to move my appointment to, um..." is not a finished sentence, and any human listener knows it.
+
+One practical detail made this harder than it looks: the way we used Whisper, transcription ran on chunks of audio rather than as a continuous stream. That meant endpointing was not just a conversational decision, it was also the trigger for when transcription work started. End the turn too early and you transcribe half a sentence. End it too late and every millisecond of waiting lands directly on the caller.
+
+<Callout type="tip" title="Tune endpointing by listening, not by reading">
+Transcripts hide turn-taking problems completely. The text of a bad call and a good call can be identical. The only way I found to tune endpointing was to listen to recorded test calls with the timing intact, and mark every moment where the bot cut someone off or left them hanging.
+</Callout>
+
+## 2. The Latency Budget
+
+Once the agent knows it is its turn, the clock is running. Human conversation runs on very short gaps between turns. Past about a second of silence, callers start saying "hello?", which is itself a new utterance that collides with whatever the bot was about to say. Dead air does not just feel slow. It actively causes turn-taking bugs.
+
+The problem is that a voice agent is a relay race, and every leg costs time. Here is the shape of the budget I worked with. The numbers are illustrative, to show proportions rather than benchmark anything:
+
+```
+caller stops talking
+        │
+        ▼
+┌──────────────────┬─────────────────────────────────────────┬──────────────┐
+│ stage            │ what happens                            │ budget (ms)  │
+├──────────────────┼─────────────────────────────────────────┼──────────────┤
+│ endpointing      │ silence detected, turn declared over    │   ~450-1000  │
+│ STT (Whisper)    │ final audio chunk to text               │   ~200-400   │
+│ LLM (GPT-4)      │ time to first useful sentence (stream)  │   ~400-800   │
+│ TTS (ElevenLabs) │ first audio bytes for that sentence     │   ~200-400   │
+│ Twilio playback  │ audio back over the media stream        │   ~100-200   │
+├──────────────────┴─────────────────────────────────────────┼──────────────┤
+│ caller hears the first word                                │  1.3s - 2.8s │
+└────────────────────────────────────────────────────────────┴──────────────┘
+
+if a tool call is needed (calendar, booking):   + 300 - 1500 ms
+```
+
+Add it up sequentially and you are well past the point where callers get nervous, before you have even touched a calendar. So the whole architecture bends around one metric: **time until the caller hears something meaningful.** Not total processing time. Time to first sound.
+
+What moved that number:
+
+- **Stream everything.** The LLM streams tokens; as soon as the first complete sentence exists, it goes to TTS. TTS streams audio; as soon as the first bytes exist, they go to Twilio. The caller hears sentence one while sentence two is still being generated. I wrote about the mechanics of this in [streaming LLM responses](/blog/streaming-llm-responses-guide); on the phone, it stops being an optimization and becomes a requirement.
+- **Make the first sentence short.** The prompt explicitly asks for a brief opening clause before details. "Sure, Thursday works." first, then the specifics. A short first sentence reaches TTS faster.
+- **Keep the context lean.** Every token of retrieved FAQ content the model has to read is latency. Retrieval returns a few tight passages, not everything that might be relevant.
+- **Warm the connections.** Opening fresh connections to the STT, LLM, and TTS providers in the middle of a call is a tax you pay on every turn. Keep them open for the call's lifetime.
+
+## 3. Filler Acknowledgments: Covering the Gap Honestly
+
+Some gaps cannot be streamed away. If the caller asks "do you have anything Thursday afternoon?", the agent has to actually check the calendar, and that tool call has its own latency that the LLM cannot start talking through until it knows the answer.
+
+That is where filler acknowledgments come in. The moment the agent decides to call a tool, it plays a short acknowledgment: "Let me check that for you." "One moment, looking at Thursday." Humans do exactly this, and callers accept it instantly.
+
+Two details mattered more than I expected.
+
+First, these phrases are **pre-rendered audio**, not generated on the fly. A handful of acknowledgments, generated once in the business's agent voice, cached, and played with essentially no delay. If you have to wait for TTS to produce "one moment," you have defeated the purpose.
+
+Second, the fillers have to be **honest and sparse**. An agent that says "great question!" before every answer sounds like a call-center parody within three turns. And an acknowledgment that promises something the agent will not do, like "let me get someone for you" when it is actually going to take a message, is a small lie that costs trust the moment the caller notices. The rule I settled on: use a filler only when real work is happening, rotate between a few variants, and make sure the words describe what is actually going on.
+
+```
+caller:  "Do you have anything Thursday afternoon?"
+         │
+         ├─▶ [~0 ms]   play cached: "Let me check Thursday for you."
+         │
+         ├─▶ [parallel] tool call: calendar.availability(thursday, pm)
+         │
+         └─▶ [result]  stream: "I have 2:30 or 4:00. Which is better?"
+```
+
+<Callout type="warning" title="Fillers are a loan, not a gift">
+Every acknowledgment buys you a little patience, and you have to pay it back with an actual answer soon. A filler followed by another filler followed by a long silence is worse than no filler at all, because now the caller knows something is wrong and you told them it was fine.
+</Callout>
+
+## 4. Barge-In: Letting Them Interrupt
+
+People interrupt. They interrupt to correct the bot ("no, the other location"), to skip ahead ("yes, yes, I know, just book it"), or because the bot is saying something long and they already got the point. A voice agent that cannot be interrupted feels like a recorded message that has learned to talk back.
+
+Barge-in has three parts, and most first implementations only do the first one.
+
+**Detect it.** While the agent is speaking, keep listening. If the caller produces sustained speech, not a cough, not a one-syllable "mm-hm", treat it as an interruption.
+
+**Stop immediately.** Stop generating TTS, and clear any audio already buffered on the phone side. With Twilio's bidirectional media streams, that means sending a clear message for the stream so the queued audio does not keep playing for another second after you have decided to stop.
+
+**Fix the memory.** This is the one that took me longest to understand. When the bot gets interrupted halfway through a sentence, the conversation history still contains the full message the LLM generated. The model now believes the caller heard all of it. They did not. So the next response builds on information the caller never received.
+
+```typescript
+function onBargeIn(call: CallState) {
+  // 1. Stop speaking now.
+  call.tts.cancel();
+  call.twilio.send({ event: "clear", streamSid: call.streamSid });
+
+  // 2. Rewrite history to what the caller actually heard.
+  const last = call.history.at(-1);
+  if (last?.role === "assistant") {
+    const heard = call.playback.textPlayedSoFar(); // tracked per audio chunk
+    last.content = heard.length > 0
+      ? `${heard} [interrupted by caller]`
+      : "[interrupted before speaking]";
+  }
+
+  // 3. Go back to listening, with a short endpoint for the correction.
+  call.turn = "caller";
+  call.expected = "short_value";
+}
+```
+
+The `textPlayedSoFar` part requires tracking which text each chunk of audio corresponds to, which is fiddly. It is also what makes the agent respond to "no, the other location" correctly instead of continuing with the plan it had already half-announced.
+
+And there is a balance. Callers make little listening sounds all the time: "uh-huh," "okay," "right." If every one of those triggers a barge-in, the agent stops mid-sentence constantly and sounds nervous. So barge-in needs a minimum duration and a small list of backchannel words that do not count as interruptions on their own.
+
+## 5. People Who Talk Over the Bot
+
+Some calls are just hard. Speakerphone in a car. A TV in the background. Someone who talks continuously and fast. Someone who starts answering before the question is finished, every time. And the sneaky one: the agent's own voice echoing back through the caller's speakerphone and getting picked up as caller speech, so the agent interrupts itself.
+
+You cannot fix all of these with clever detection. What you can do is notice when turn-taking is going badly and change strategy, the same way a polite human would on a bad line:
+
+- **Track collisions.** Count overlaps and repeated barge-ins within a call. A couple is normal. A pattern means the call is in trouble.
+- **Shorten the turns.** When collisions pile up, the agent switches to very short sentences and one question at a time. Less audio means fewer chances to collide.
+- **Ask closed questions.** "Is that Thursday at 2:30? Yes or no?" is much more robust on a noisy line than an open question.
+- **Read it back.** Before committing anything, confirm it explicitly. If the line is noisy, the read-back catches the mishearing before it becomes a wrong booking.
+- **Fall back gracefully.** If it is still not working, offer the exit: take a message, or have someone from the business call back. Not as a failure, but as the polite thing to do.
+
+That last one connects to something I learned building for small businesses in general: the owner cares far more about not losing the customer than about the bot completing every call on its own. A clean "I'm having trouble hearing you clearly, can I take your number and have the team call you back?" keeps the lead. A bot that stubbornly keeps trying loses it.
+
+<Callout type="tip" title="Notice the call going badly, then change your manners">
+Humans adapt how they talk when a line is bad: shorter sentences, yes/no questions, read-backs, and eventually "let me call you back." Your voice agent should do the same, triggered by measurable signals like repeated overlaps, rather than pushing through the same script at the same pace.
+</Callout>
+
+## What I'd Tell Myself on Day One
+
+If I could go back to that first awkward test call, I would tell myself to spend the first week on timing, not prompts. Record calls with real timing. Listen to them, not just read them. Mark every interruption and every silence. Most of the improvement in how the agents felt came from that list, not from a better model.
+
+And I would tell myself that turn-taking is not a polish item for the end of the project. It is the product. A voice agent with a brilliant model and bad turn-taking is a bad phone call. A voice agent with a decent model and good turn-taking is a pleasant one, and pleasant is what keeps a caller on the line long enough for the intelligence to matter.
+
+## The Throughline
+
+If I had to compress all of it into one sentence: **on the phone, timing is the interface, and a voice agent is judged on its manners before its intelligence.**
+
+Know when they are done. Answer before the silence gets awkward. Fill gaps honestly and sparingly. Stop the moment they interrupt, and remember only what they actually heard. And when the line is bad, slow down and offer a way out. The model was never the hard part. Listening was.
+
+---
+
+*If you are building a voice agent and the transcripts look great but the calls feel wrong, [reach out](/contact). It is almost always turn-taking, and it is much easier to hear than to read.*

@@ -1,0 +1,230 @@
+---
+title: "El SDK Es la API Real: Lecciones de Construir un Cliente de Autenticación para Más de 17 Apps"
+description: "Los desarrolladores no experimentan tus endpoints. Experimentan tu SDK. Lo que aprendí construyendo el SDK cliente en TypeScript para un servicio compartido de autenticación OAuth y JWKS consumido por más de diecisiete apps: un refresco de tokens que no puede provocar estampidas, un caché de JWKS que sobrevive a la rotación de llaves, errores tipados, valores por defecto seguros, deprecaciones como funcionalidad, y por qué un paquete bien diseñado le gana a diecisiete equipos cuidadosos."
+date: 2026-07-21
+published: true
+category: "Ingeniería Backend"
+tags: ["Ingeniería Backend", "Diseño de SDKs", "Autenticación", "OAuth", "TypeScript"]
+author: "Osvaldo Restrepo"
+translationOf: "sdk-is-the-real-api"
+tldr: "Cuando un servicio compartido tiene muchos consumidores, los endpoints son un detalle de implementación; el SDK cliente es la interfaz con la que la gente realmente vive. En TheGreyMatter.ai, la plataforma GreyMatter 3.0 corre un servicio compartido de autenticación OAuth SSO y JWKS detrás de más de diecisiete apps verticales de IA, y el SDK en TypeScript que lo envuelve resultó importar más que el servicio mismo. Antes de él, cada app reimplementaba el refresco de tokens, el caché de llaves y la verificación de claims de forma ligeramente distinta, lo que equivale a diecisiete oportunidades de escribir el mismo bug de diecisiete maneras. El SDK centraliza las partes difíciles: refresco de tokens single-flight, caché de JWKS con re-descarga consciente de la rotación, un conjunto cerrado de errores tipados, valores por defecto seguros sin configuración, y deprecaciones que avisan temprano y fuerte. Un buen SDK no solo ahorra código. Elimina categorías enteras de bugs de cada app que lo usa."
+faqs:
+  - question: "¿Por qué construir un SDK en vez de simplemente documentar bien los endpoints de OAuth y JWKS?"
+    answer: "Porque la buena documentación describe el comportamiento correcto, y un SDK lo hace cumplir. Las carreras en el refresco de tokens, la rotación de llaves, el desfase de reloj y la verificación de audiencia son cosas que un desarrollador cuidadoso puede hacer bien a partir de la documentación, pero entre muchos equipos y muchas apps, alguien hará cada una ligeramente mal. Un SDK pone el comportamiento correcto en un solo lugar, lo prueba una vez, y hace que el camino seguro sea el camino por defecto para cada consumidor."
+  - question: "¿Qué no debería ir dentro de un SDK de autenticación?"
+    answer: "La lógica de autorización de cada aplicación. El SDK debe verificar la identidad y exponer los claims de forma confiable, pero decidir qué puede hacer un usuario en una app específica — qué deals, qué empresas, qué registros — le pertenece a esa app. Meter permisos de negocio en un SDK compartido acopla cada app a las reglas de todas las demás y convierte una pequeña librería de seguridad en un cuello de botella de releases."
+  - question: "¿Cómo deprecas algo en un SDK del que dependen muchas apps?"
+    answer: "Trátalo como una funcionalidad con un cronograma. Márcalo como deprecado en los tipos para que los editores lo muestren, registra una advertencia estructurada una vez por proceso en tiempo de ejecución, mantén funcionando el camino viejo durante una ventana anunciada, da una migración de una línea en la advertencia misma, y rastrea qué apps todavía lo llaman. La eliminación ocurre solo cuando el uso llega a cero o cuando cada dueño restante tiene una fecha. Las eliminaciones sorpresa son lo que hace que los equipos fijen versiones viejas para siempre."
+relatedPosts: ["authentication-patterns-modern-apps", "api-design-lessons-learned", "one-database-per-app-federation"]
+---
+
+Unas semanas después de empezar a trabajar en la columna vertebral de la plataforma GreyMatter 3.0, hice algo que le recomiendo a cualquiera que herede un servicio compartido: leí a cada consumidor.
+
+No el servicio. El servicio estaba bien. Los flujos de OAuth eran estándar, el endpoint de JWKS servía las llaves correctas, los tokens estaban firmados correctamente. Leí cómo las apps lo *usaban*. Y ahí es donde encontré lo interesante.
+
+Una app descargaba las llaves de firma en cada request. Otra las cacheaba en memoria para siempre, lo cual funciona de maravilla justo hasta el día en que las llaves rotan. Una app refrescaba los tokens de acceso desde tres lugares distintos de su frontend, y con el timing adecuado, los tres se disparaban a la vez. Una verificaba la audiencia del token. Otra la verificaba si un flag de configuración estaba activado. Otra no sabía para qué servía el claim de audiencia.
+
+Ninguno de estos equipos era descuidado. Cada uno había leído la documentación. La documentación era precisa. El problema era más simple y más humillante que eso: **con más de diecisiete apps consumiendo un solo servicio de autenticación, había diecisiete oportunidades de escribir el mismo bug sutil de diecisiete maneras ligeramente distintas.**
+
+Ahí fue cuando dejé de pensar en los endpoints del servicio de autenticación como su API. La API real era el código que los desarrolladores realmente llamaban. En ese momento, ese código eran diecisiete integraciones hechas a mano. Necesitaba ser un solo SDK.
+
+## 1. Los Desarrolladores Experimentan el SDK, No el Endpoint
+
+Suena obvio una vez que lo dices, pero cambia dónde inviertes tu esfuerzo de diseño.
+
+Un desarrollador construyendo una nueva app vertical no piensa "ahora voy a realizar un intercambio de código de autorización contra el endpoint de tokens y validar el JWT resultante contra el set de llaves." Piensa "necesito que el usuario haya iniciado sesión" y "necesito saber de quién es este request." Lo que sea que escriba para que esas dos cosas sucedan *es* tu interfaz. Si eso es un `fetch` crudo contra un endpoint, entonces cada sutileza de OAuth se vuelve su problema. Si es una función bien diseñada, las sutilezas se vuelven tuyas, que es donde pertenecen.
+
+```
+sin SDK                                 con SDK
+───────                                 ───────
+app → arma el request de token          app → auth.getAccessToken()
+    → maneja el timing del refresco         app → auth.verify(req)
+    → descarga + cachea JWKS
+    → elige llave por kid               (refresco, JWKS, claims, desfase,
+    → verifica la firma                  errores: manejados una vez,
+    → revisa iss, aud, exp, nbf          probados una vez, arreglados una vez)
+    → maneja el desfase de reloj
+    → mapea 12 modos de falla
+  × 17 apps, 17 interpretaciones
+```
+
+El servicio sigue importando. Sus endpoints todavía necesitan ser limpios, versionados y documentados, y sigo creyendo todo lo que escribí en [lecciones de diseño de APIs](/es/blog/api-design-lessons-learned). Pero para un servicio compartido con muchos consumidores internos, el SDK es la capa que decide si el servicio se usa correctamente.
+
+## 2. El Refresco de Tokens Es Trabajo del SDK, y No Debe Provocar Estampidas
+
+El bug más común que encontré fue la carrera en el refresco.
+
+Un token de acceso expira. Tres partes de una app de React — un cargador de datos, un polling en segundo plano, un click del usuario — lo notan aproximadamente en el mismo momento. Cada una llama a refrescar. Dependiendo de cómo se maneje el refresh token, obtienes desde requests desperdiciados hasta un refresco invalidando el resultado de otro, lo que se manifiesta como un usuario al que se le cierra la sesión aleatoriamente en el peor momento posible. Estos bugs son miserables de reproducir, porque dependen del timing.
+
+El arreglo es aburrido y pertenece exactamente a un lugar: un refresco single-flight. Todos los que necesiten un token mientras hay un refresco en progreso esperan la misma promesa.
+
+```ts
+export class TokenManager {
+  private current: TokenSet | null = null;
+  private inflight: Promise<TokenSet> | null = null;
+
+  constructor(
+    private readonly refreshFn: (refreshToken: string) => Promise<TokenSet>,
+    private readonly skewSeconds = 60,
+  ) {}
+
+  async getAccessToken(): Promise<string> {
+    if (this.current && !this.expiresSoon(this.current)) {
+      return this.current.accessToken;
+    }
+    return (await this.refreshOnce()).accessToken;
+  }
+
+  private refreshOnce(): Promise<TokenSet> {
+    if (!this.inflight) {
+      if (!this.current?.refreshToken) {
+        return Promise.reject(new AuthError("session_expired"));
+      }
+      this.inflight = this.refreshFn(this.current.refreshToken)
+        .then((next) => (this.current = next))
+        .finally(() => (this.inflight = null));
+    }
+    return this.inflight;
+  }
+
+  private expiresSoon(t: TokenSet): boolean {
+    return t.expiresAt - this.skewSeconds * 1000 <= Date.now();
+  }
+}
+```
+
+Dos detalles ahí fueron, cada uno, un bug real en algún lugar antes de que existiera el SDK. El refresco ocurre un poco *antes* de la expiración, no después, para que un request no salga del cliente con un token que muere en vuelo. Y la promesa en vuelo se limpia en `finally`, para que un refresco fallido no envenene todas las llamadas futuras.
+
+Son unas treinta líneas de código. También son exactamente el tipo de treinta líneas que cada equipo escribe de forma ligeramente distinta cuando se le deja solo.
+
+<Callout type="tip" title="Los bugs de concurrencia pertenecen a las librerías">
+Si una implementación correcta requiere razonar sobre timing, no debería vivir en el código de la aplicación. Los desarrolladores de aplicaciones están pensando en su funcionalidad. Pon la lógica sensible a carreras en un solo lugar compartido, pruébala con concurrencia deliberada, y deja que cada app herede el arreglo.
+</Callout>
+
+## 3. El Caché de JWKS Tiene Dos Modos de Falla, y Necesitas Evitar Ambos
+
+Del lado de la verificación, los errores clásicos vienen en pareja.
+
+**Descarga cada vez**, y habrás convertido tu servicio de autenticación en una dependencia de cada request en cada app, con la latencia y disponibilidad que eso implica. **Cachea para siempre**, y la primera rotación de llaves rompe silenciosamente la verificación en todos lados hasta que alguien reinicie un proceso.
+
+El SDK hace lo que una implementación cuidadosa debería: cachear el set de llaves con un tiempo de vida razonable, y cuando llega un token firmado con un ID de llave que el caché no conoce, tratarlo como señal de que pudo haber ocurrido una rotación y volver a descargar — pero como máximo una vez dentro de una ventana de enfriamiento, para que una avalancha de tokens basura no se convierta en una avalancha de requests contra el endpoint de llaves.
+
+```
+llega un token con kid = "k7"
+          │
+          ▼
+   ¿kid en caché? ── sí ──▶ verificar con la llave cacheada
+          │
+          no
+          ▼
+   ¿se re-descargó en la última ventana de enfriamiento?
+          │                     │
+          no                    sí
+          ▼                     ▼
+   re-descargar JWKS       rechazar: unknown_key
+   (single-flight)         (no martillar el endpoint)
+          │
+   ¿kid presente ahora? ── sí ──▶ verificar
+          │
+          no ──▶ rechazar: unknown_key
+```
+
+Para la criptografía en sí, el SDK se apoya en una librería JOSE bien establecida en vez de en algo escrito a mano. Esa es una regla que defendería en cualquier code review: el SDK es dueño de la *política* — caché, ventanas de enfriamiento, qué claims son obligatorios, qué desfase es aceptable — y delega la *matemática* a código que miles de otros proyectos ya probaron en batalla. Hablo más sobre la forma general de la autenticación basada en tokens en [patrones de autenticación para apps modernas](/es/blog/authentication-patterns-modern-apps).
+
+## 4. Los Errores Son Parte de la Interfaz
+
+Antes del SDK, las fallas de autenticación aparecían en las apps como lo que sea que el código subyacente lanzara. Un error de red. Un "token inválido" genérico. Un 401 con un cuerpo que nadie parseaba. Cada app escribía entonces sus propias conjeturas para "¿debería cerrarle la sesión al usuario, reintentar o mostrar un error?"
+
+El SDK expone un conjunto cerrado de códigos de error, y cada falla se mapea a exactamente uno de ellos:
+
+```ts
+export type AuthErrorCode =
+  | "session_expired"     // refresh token ya no es válido: enviar a login
+  | "token_invalid"       // problema de firma o formato: rechazar request
+  | "token_expired"       // token de acceso pasado de exp más allá del desfase permitido
+  | "audience_mismatch"   // el token fue emitido para otra app
+  | "unknown_key"         // kid no encontrado ni después de re-descargar
+  | "provider_unavailable"; // servicio de auth inalcanzable: reintentable
+
+export class AuthError extends Error {
+  constructor(
+    public readonly code: AuthErrorCode,
+    public readonly retryable = code === "provider_unavailable",
+  ) {
+    super(code);
+    this.name = "AuthError";
+  }
+}
+```
+
+El valor no está en la clase. Está en la unión *cerrada*. Un desarrollador manejando errores de autenticación puede hacer un switch sobre seis casos, TypeScript le avisa si se le olvidó uno, y la distinción que más importa en la práctica — "el usuario necesita iniciar sesión de nuevo" versus "algo está temporalmente mal, intenta de nuevo" — es explícita en vez de inferida a partir de un código de estado.
+
+Esa distinción por sí sola eliminó toda una familia de bugs donde un breve hipo de red en el servicio de autenticación le cerraba la sesión a los usuarios de una app, o, peor, donde una sesión genuinamente expirada se reintentaba en un bucle.
+
+<Callout type="info" title="Tu tipo de error es documentación que compila">
+Una unión de errores exhaustiva y tipada le dice a los desarrolladores cada forma en que una operación puede fallar, y el compilador los obliga a manejarla. Los strings de error libres no les dicen nada hasta que producción lo hace. Para una librería compartida, la superficie de errores merece tanta atención de diseño como el camino feliz.
+</Callout>
+
+## 5. Los Valores por Defecto Deben Ser Seguros Sin Configuración
+
+La opción más peligrosa en cualquier librería de seguridad es la que está apagada por defecto.
+
+Encontré una verificación de audiencia que solo corría si un flag de configuración estaba activado. Por supuesto, algunas apps nunca lo activaron. Nadie estaba siendo imprudente; copiaron un ejemplo que funcionaba y que era anterior al flag. El comportamiento seguro existía. Simplemente no era el valor por defecto.
+
+El SDK invierte esa postura. La verificación requiere un emisor y una audiencia esperados al momento de construirse, y se niega a construirse sin ellos. La tolerancia al desfase de reloj tiene un valor por defecto pequeño y sensato. Los algoritmos están restringidos a los que la plataforma realmente usa. Cualquier cosa que afloje la seguridad es posible, pero tiene que escribirse explícitamente en código, donde un revisor la verá.
+
+```
+inseguro por defecto                 seguro por defecto
+────────────────────                 ──────────────────
+verify(token)                        createVerifier({ issuer, audience })
+  aud revisado si config.checkAud      aud siempre revisado
+  cualquier alg que diga el header     lista permitida de alg fija
+  desfase: lo que haga el código       desfase: default pequeño, override explícito
+  ¿olvidaste la opción? "funciona"     ¿olvidaste la opción? no compila
+```
+
+Esa última línea es la que más me importa. La mejor mala configuración es la que no se puede expresar. Opciones obligatorias en el tipo del constructor significan que un desarrollador no puede, por accidente, enviar a producción un verificador que se salte la verificación de audiencia. El sistema de tipos hace la revisión de seguridad antes de que un humano tenga que hacerla.
+
+## 6. Las Deprecaciones Son una Funcionalidad, No una Ocurrencia Tardía
+
+Un SDK con muchos consumidores vive mucho tiempo, y va a necesitar cambiar. Cómo cambia decide si los equipos siguen actualizando o fijan una versión vieja y nunca miran atrás.
+
+Trato cada deprecación como un proyecto pequeño con un cronograma:
+
+```
+1. marcarlo en los tipos         → los editores lo tachan de inmediato
+2. avisar una vez por proceso    → log estructurado, incluye el arreglo en una línea
+3. mantener el camino viejo      → durante una ventana anunciada, no "por ahora"
+4. medir quién todavía lo llama  → por app, a partir de esas advertencias
+5. eliminar solo en cero         → o cuando cada dueño restante tenga una fecha
+```
+
+El texto de la advertencia importa. "Este método está deprecado" es inútil. "`getUser()` está deprecado; usa `verify(req).claims` en su lugar, eliminación planeada para la próxima versión mayor" es una migración que toma treinta segundos. La meta es que actualizar se sienta como aceptar una sugerencia, no como ser castigado.
+
+Las eliminaciones sorpresa son las que crean la dispersión de versiones. Una vez que una app se ha quemado con un cambio incompatible, sus dueños fijan la versión y dejan de leer las notas de release. Entre muchas apps, así es como terminas con cinco generaciones de código de autenticación corriendo en producción a la vez, lo que derrota todo el propósito de tener un solo SDK.
+
+<Callout type="warning" title="Un SDK compartido solo es compartido si la gente lo actualiza">
+El valor de seguridad de una librería central de autenticación depende de que los arreglos lleguen a cada consumidor. Si tu camino de actualización es doloroso, los equipos fijarán versiones viejas y tu única fuente de verdad se volverá muchas, en silencio. Haz que actualizar sea aburrido, haz que las deprecaciones sean ruidosas y lentas, y rastrea la adopción como una métrica de producto.
+</Callout>
+
+## 7. Sabe Qué Se Queda Fuera del SDK
+
+La última lección es sobre contención.
+
+Una vez que un SDK está en cada app, es tentador meterle todo lo compartido. Helpers de permisos. Lógica de roles específica de una app. Una función de conveniencia que revisa si un usuario puede ver un deal en particular. Cada una de esas solicitudes suena razonable de forma aislada.
+
+Seguí diciendo que no a la mayoría. La regla de federación de la plataforma es que cada app es dueña de sus datos y comparte a través de APIs, un patrón sobre el que escribí en [una base de datos por app](/es/blog/one-database-per-app-federation). La autorización — qué deals, qué empresas, qué registros puede tocar un usuario — le pertenece a cada app, porque cada app es dueña de los datos que protege. El trabajo del SDK de autenticación es más estrecho y más importante: decirle a la app, de forma confiable, *quién* es esta persona y qué afirmó el proveedor de identidad sobre ella. Lo que esa persona tiene permitido hacer es decisión de la app.
+
+Mantener esa línea limpia mantiene al SDK pequeño, lo que lo mantiene auditable, lo que lo mantiene confiable. Una librería de seguridad que crece hasta volverse una librería de lógica de negocio se convierte en un cuello de botella de releases para cada equipo y en una pesadilla de revisión para quien sea su dueño.
+
+## El Hilo
+
+Si comprimo todo esto en una oración: **para un servicio compartido, el SDK es la API, y su trabajo es hacer que el camino correcto sea el único fácil.**
+
+Los endpoints definen lo que es posible. El SDK define lo que realmente pasa en producción, en cada app y cada equipo, en el día más ocupado y en la peor red. Refresco single-flight, caché de llaves consciente de la rotación, un conjunto cerrado de errores, valores por defecto seguros, deprecaciones lentas y ruidosas, y una línea firme alrededor de lo que no pertenece — nada de eso es glamoroso. Todo eso es la diferencia entre una implementación de autenticación y diecisiete.
+
+El mejor cumplido que ese SDK recibió jamás fue el silencio. Los bugs de autenticación dejaron de aparecer app tras app, no porque cada equipo se volviera más cuidadoso, sino porque ya no había ningún lugar donde esos bugs pudieran vivir.
+
+---
+
+*Si manejas un servicio compartido con muchos consumidores internos y estás decidiendo si un SDK vale la inversión, [contáctame](/contact). Con gusto comparo notas sobre qué meterle, qué dejar fuera, y cómo lograr que cada equipo realmente actualice.*

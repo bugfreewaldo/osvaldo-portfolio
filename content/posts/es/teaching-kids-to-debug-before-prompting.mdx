@@ -1,0 +1,227 @@
+---
+title: "Lee el Error Primero: Enseñar a los Niños a Depurar Antes de Preguntarle a la IA"
+description: "En Waldo's Code Lab, el nuevo reflejo es pegar cada error rojo directo en un chat de IA antes de leer una sola palabra. Así que empecé a enseñar el paso que viene antes del prompt: leer el error en voz alta, predecir qué va a hacer el código, explicárselo a un patito de hule, y solo entonces preguntar. Los ejercicios pequeños que uso, y por qué depurar es la única habilidad que la IA no va a hacer por ellos."
+date: 2026-08-18
+published: true
+category: "Educación"
+tags: ["Educación", "Depuración", "Niños", "IA", "Waldo's Code Lab"]
+author: "Osvaldo Restrepo"
+translationOf: "teaching-kids-to-debug-before-prompting"
+tldr: "Los niños en Waldo's Code Lab ahora buscan la IA en el instante en que ven un error, usualmente antes de leerlo. La solución no es prohibir la IA; es enseñar los pasos que vienen antes del prompt. Lee el error en voz alta y encuentra el número de línea. Adivina qué va a hacer el código antes de correrlo, y escribe tu predicción. Explícale el código línea por línea a un patito de hule. Solo entonces pregúntale a la IA, y cuando lo hagas, dile qué esperabas, qué pasó y qué ya intentaste. Uso ejercicios pequeños, rotos a propósito, para construir el hábito. Depurar es la habilidad que la IA no reemplaza, porque es la habilidad que necesitas para saber si la IA tenía razón."
+faqs:
+  - question: "¿No es más rápido dejar que los niños peguen el error en un chatbot de IA?"
+    answer: "Más rápido para ese error, más lento para todo lo que viene después. La mayoría de los errores de principiante dicen exactamente qué está mal y en qué línea, y un niño que aprende a leerlos arregla los próximos cincuenta en segundos sin ayuda. Un niño que siempre pega nunca construye esa habilidad, y además no tiene forma de juzgar si el arreglo de la IA es correcto o solo diferente. El minuto que pasa leyendo es una inversión que se paga de inmediato."
+  - question: "¿Qué es 'adivina y luego corre' y por qué funciona?"
+    answer: "Antes de correr cualquier código, el estudiante escribe lo que cree que va a imprimir o hacer. Luego lo corre y compara. Cuando la predicción es correcta, su modelo mental se confirma. Cuando está mal, la brecha entre la predicción y la realidad es exactamente donde está el aprendizaje. Convierte cada ejecución en un pequeño experimento y hace visibles las sorpresas en vez de algo que se pega y desaparece."
+  - question: "¿Cuándo se debería permitir a los niños pedirle ayuda a la IA con un bug?"
+    answer: "Después de que puedan responder tres preguntas: qué esperaba que pasara, qué pasó realmente, y qué ya intenté. Una vez que pueden decir eso en voz alta, pueden preguntar, y las preguntas se convierten en el prompt. Eso hace que la respuesta de la IA sea mucho mejor, y significa que el niño puede saber si la respuesta realmente explica la brecha que encontró."
+relatedPosts: ["teaching-kids-code-ai-age", "reading-code-you-wont-write", "vibe-coding-ai-assisted-development"]
+---
+
+Una niña de unos once años en Waldo's Code Lab estaba construyendo un pequeño juego de preguntas en Python. Lo corrió. La pantalla se llenó de rojo. Y antes de que yo pudiera siquiera acercarme, sus manos ya se estaban moviendo: seleccionar todo, copiar, cambiar de pestaña, pegar en el chat de IA, enter.
+
+Le pedí que se detuviera y volviera. "¿Qué dice el error?"
+
+Me miró como si le hubiera pedido leer los términos y condiciones. "No sé. Por eso estoy preguntando."
+
+"Léeme la última línea. En voz alta."
+
+"NameError. Name... 'scroe' is not defined." Pausa. "Ah. Escribí score mal."
+
+Diez segundos. No necesitaba la IA. No me necesitaba a mí. Necesitaba leer lo que ya estaba en su pantalla, diciéndole exactamente qué estaba mal y en qué línea. El mensaje de error era la respuesta. Solo tenía un reflejo que se lo saltaba.
+
+Hace un tiempo escribí sobre [enseñar a los niños a programar cuando la IA escribe el código](/es/blog/teaching-kids-code-ai-age), y en ese artículo dije que depurar es el evento principal en mi clase, no el castigo. Esta es la continuación, porque el último año cambió lo que eso significa en la práctica. El problema ya no es que los niños se atasquen con los errores. Es que los niños nunca miran los errores.
+
+## El Nuevo Reflejo
+
+Cuando empecé a enseñar, un error rojo producía una de dos reacciones: frustración, o una mano levantada. Ambas estaban bien. Ambas llevaban a una conversación en la que el niño eventualmente leía el error.
+
+Ahora hay una tercera reacción, y es la más común: pegar. El error se volvió algo que le entregas a una máquina, no algo que lees. Y entiendo por qué. La IA usualmente lo arregla. El juego corre. Todos contentos.
+
+Excepto que la niña no aprendió nada sobre por qué se rompió, y la próxima vez que se rompa de una forma un poco distinta, pega otra vez. En un trimestre, construye un juego de preguntas que funciona y cero habilidad de depuración. Peor, no tiene forma de saber cuándo el arreglo de la IA está mal, y los arreglos de IA a nivel principiante están mal más seguido de lo que los niños creen. A veces la IA "arregla" el error reescribiendo medio programa, y ahora tiene código que no escribió y no puede explicar, lo que rompe mi única regla del artículo anterior.
+
+Así que dejé de pelear contra la IA y empecé a enseñar los pasos que vienen *antes* de ella.
+
+```
+REFLEJO VIEJO                      LO QUE ENSEÑO AHORA
+─────────────                      ───────────────────
+correr                             correr
+  │                                  │
+  ▼                                  ▼
+texto rojo                         texto rojo
+  │                                  │
+  ▼                                  ▼
+pegar en la IA                     1. lee la última línea en voz alta
+  │                                2. encuentra el número de línea, mírala
+  ▼                                3. adivina la causa, cambia una cosa
+¿corre? (?)                        4. ¿sigues atascado? explícaselo al patito
+                                   5. ¿sigues atascado? pregúntale a la IA —
+                                      con lo que esperabas, lo que pasó
+                                      y lo que intentaste
+```
+
+Los pasos uno a cuatro son gratis. Toman un par de minutos. Y en mi experiencia resuelven la mayoría de los bugs de principiante antes de que la IA siquiera participe.
+
+## Paso 1: Lee el Error Como una Oración
+
+Lo primero que enseño es que un mensaje de error no es ruido. Es una oración escrita por la computadora, en un dialecto extraño, diciéndote qué salió mal. Y como cualquier oración, tiene partes.
+
+Dibujo esto en la pizarra casi cada semana:
+
+```
+Traceback (most recent call last):
+  File "quiz.py", line 14, in <module>       ◄── DÓNDE: el archivo y la línea
+    print("Your score is " + scroe)          ◄── QUÉ LÍNEA: el código real
+                             ^^^^^
+NameError: name 'scroe' is not defined       ◄── QUÉ TIPO + POR QUÉ
+└───┬───┘  └──────────────┬─────────────┘
+  tipo             el mensaje, en palabras
+```
+
+Luego la regla: **empieza por abajo.** Los principiantes leen desde arriba, llegan a "Traceback (most recent call last)," deciden que es un galimatías y se rinden. La parte útil casi siempre es la última línea. Lee el tipo. Lee el mensaje. Luego sube una línea para ver de qué línea de tu código está hablando.
+
+Les hago leerlo en voz alta. Suena tonto, y es lo más efectivo que hago. Leyendo en silencio, los niños hojean. Leyendo en voz alta, realmente procesan las palabras, y como la mitad de las veces el arreglo sale de su propia boca a mitad de la oración, como pasó con "scroe."
+
+También tengo una pequeña hoja de ayuda en la pared con los cinco errores que más encuentran y lo que cada uno usualmente significa en lenguaje de niños:
+
+```
+NameError        "No conozco ese nombre."   → error de tipeo, o lo usaste antes de crearlo
+SyntaxError      "Ni siquiera puedo leer."  → falta dos puntos, paréntesis o comillas
+IndentationError "Tus espacios están mal."  → alinea el código dentro de if/for/def
+TypeError        "Esto no se mezcla."       → p. ej. sumar un número a un texto
+IndexError       "Ahí no hay nada."         → pediste el elemento 5 de una lista de 3
+```
+
+En unas semanas, los niños dejan de necesitar la hoja. Han leído suficientes errores para reconocerlos. Ese reconocimiento es una habilidad, y solo crece si de verdad miran.
+
+## Paso 2: Adivina, Luego Corre
+
+El segundo hábito es del que estoy más orgulloso, porque funciona con bugs que no producen ningún error — el programa corre, pero hace lo incorrecto.
+
+Antes de correr cualquier código, escribes lo que crees que va a hacer. En papel, en un cuaderno o en un comentario. Luego lo corres y comparas.
+
+Este es uno de los ejercicios que uso. Lo reparto con la instrucción: "No lo corras todavía. Escribe exactamente lo que imprime."
+
+```python
+fruits = ["mango", "papaya", "banana"]
+
+for i in range(1, len(fruits)):
+    print(i, fruits[i])
+```
+
+La mayoría de los niños escribe:
+
+```
+1 mango
+2 papaya
+3 banana
+```
+
+Luego lo corren, e imprime:
+
+```
+1 papaya
+2 banana
+```
+
+Y el salón se pone ruidoso. "¿Dónde quedó el mango?" Ahora *quieren* saber. La brecha entre su predicción y la realidad es exactamente la lección — las listas empiezan en cero, `range` se detiene antes del final — y la encontraron ellos mismos, con interés en la respuesta, en vez de que se la dijeran.
+
+Compara eso con el camino de la IA. Un niño que quería "1 mango, 2 papaya, 3 banana," obtuvo la salida equivocada y pegó el código en un chat recibiría una versión corregida. Funcionaría. Y el niño habría aprendido que la IA arregla listas, no cómo funcionan las listas.
+
+<Callout type="tip" title="La predicción es el punto, no la nota">
+Nunca califico si la predicción fue correcta. Una predicción equivocada vale más que una correcta, porque muestra exactamente dónde el modelo mental del niño y la computadora real no están de acuerdo. Celebra las sorpresas. Un niño que nunca se sorprende o es muy bueno, o no está adivinando de verdad.
+</Callout>
+
+Con el tiempo, "adivina, luego corre" se vuelve automático. Los niños empiezan a murmurar predicciones antes de presionar el botón de correr. Ese murmullo es un modelo mental funcional de la computadora, y es lo que les permite leer código generado por IA después y decir "espera, eso no va a hacer lo que pedí." Escribí sobre la versión adulta de esa habilidad en [leer código que no vas a escribir](/es/blog/reading-code-you-wont-write). Empieza aquí, con el mango.
+
+## Paso 3: Explícaselo al Patito
+
+Hay un pequeño patito de hule amarillo en la mesa del Code Lab. Se ha vuelto una especie de celebridad.
+
+Depurar con el patito de hule es un viejo truco de programadores: cuando estás atascado, explicas tu código, línea por línea, en voz alta, a un patito de hule. El patito no dice nada. No lo necesita. En algún punto de la explicación dices una oración como "y luego esto le suma uno al puntaje cada vez... espera, está dentro del bucle equivocado," y encontraste el bug.
+
+A los niños les parece chistosísimo al principio y luego, en silencio, empiezan a hacerlo. La regla es que tienes que explicar lo que cada línea *hace*, no lo que *querías* que hiciera. Esa distinción es todo el truco. Los bugs viven en la brecha entre la intención y la instrucción, y decir la instrucción en voz alta hace que la brecha se escuche.
+
+Este es un clásico que uso para practicar con el patito:
+
+```python
+age = input("How old are you? ")
+
+if age > 12:
+    print("You can join the advanced group!")
+```
+
+Falla con un `TypeError`. Un niño explicándoselo al patito dice: "Primero pregunto cuántos años tiene, y lo guardo en age. Luego si age es mayor que doce..." y un niño más grande en la mesa usualmente interrumpe: "Pero `input` te da texto, no un número." El patito se lleva el crédito.
+
+¿Por qué no dejar que la IA sea el patito? Porque la IA responde. Ese es todo su trabajo, y es un trabajo maravilloso, pero se lleva el momento en que el niño dice la solución por sí mismo. El patito es valioso precisamente porque es inútil. Obliga al niño a terminar el pensamiento.
+
+## Paso 4: Ejercicios Pequeños, Rotos a Propósito
+
+Los hábitos de arriba solo se quedan con práctica, y la práctica necesita material. Así que cada pocas semanas hacemos lo que los niños llaman "el día del código roto." Reparto programas cortos, de cinco a quince líneas, cada uno con exactamente un bug. Saben que hay un bug. No saben dónde.
+
+Algunos a los que vuelvo seguido:
+
+```python
+# 1. El promedio que siempre está mal
+scores = [8, 9, 10]
+total = 0
+for s in scores:
+    total = s            # debería ser total = total + s
+print(total / len(scores))
+
+# 2. El juego que nunca termina
+lives = 3
+while lives > 0:
+    print("You lost a life!")
+                         # falta: lives = lives - 1
+
+# 3. El saludo que no saluda a nadie
+def greet(name):
+    message = "Hello, " + name
+                         # falta: return message
+print(greet("Waldo"))    # imprime None
+```
+
+Los comentarios del bug están en mi hoja de respuestas, no en la hoja que reparto, obviamente. Cada uno está elegido porque no falla con un mensaje útil. El número uno imprime un número equivocado. El número dos corre para siempre. El número tres imprime `None`. Estos son los bugs que pegar un error no puede arreglar, porque no hay error que pegar. Tienes que adivinar, correr, comparar y pensar.
+
+Las reglas del día del código roto son simples: nada de IA durante los primeros diez minutos. Lee, adivina, patito. Después de diez minutos, puedes preguntarle a la IA, pero solo siguiendo el paso 5.
+
+<Callout type="info" title="Elige bugs sin mensaje de error">
+Los bugs de práctica más útiles son los silenciosos: salida equivocada, bucles infinitos, funciones que no devuelven nada. No se pueden resolver pegando un traceback, así que obligan a usar los hábitos que realmente se transfieren — predecir, rastrear y explicar. Los errores que truenan enseñan a los niños a leer errores. Los bugs silenciosos les enseñan a pensar.
+</Callout>
+
+## Paso 5: Luego Pregunta — Pero Pregunta Como Quien Depura
+
+No estoy en contra de la IA en mi salón. Lo dije en el artículo anterior y lo digo con más convicción ahora: estas herramientas son un tutor extraordinario, especialmente para niños que no tienen un ingeniero en casa. El objetivo no es que los niños dejen de preguntar. Es que pregunten bien.
+
+Así que antes de que alguien le pregunte a la IA sobre un bug, tiene que poder responder tres preguntas en voz alta:
+
+```
+1. ¿Qué ESPERABA que pasara?
+2. ¿Qué pasó REALMENTE?              (el error exacto, o la salida equivocada exacta)
+3. ¿Qué YA INTENTÉ?
+```
+
+Esas tres respuestas se convierten en el prompt. Y la diferencia en lo que regresa es dramática. "Arregla esto" más un muro de código recibe un programa reescrito. "Esperaba que imprimiera el promedio, 9, pero imprime 3.33. Revisé la división y se ve bien. Creo que el problema está en el bucle" recibe una explicación que apunta a la línea con `total = s`, muchas veces con una pregunta de vuelta. El niño está depurando *con* la IA en vez de entregarle el bug *a* ella.
+
+Y esta es la parte que más importa: como la niña formó una expectativa, puede verificar la respuesta de la IA contra ella. Si el arreglo de la IA hace que el programa imprima 9, bien. Si la IA sugiere con confianza algo que todavía imprime 3.33, lo sabe de inmediato. No solo está recibiendo una respuesta. La está evaluando.
+
+## Por Qué Esta Es la Habilidad que la IA No Reemplaza
+
+A veces los padres me cuestionan. Si la IA puede arreglar el bug, ¿por qué mi hijo necesita hacerlo?
+
+Mi respuesta es que depurar no se trata realmente de arreglar bugs. Se trata de notar cuando la realidad no coincide con lo que esperabas, y luego averiguar por qué. Esa habilidad no pierde valor cuando la IA escribe el código. Gana *más* valor, porque ahora alguien tiene que notar cuando el código de la IA no coincide con lo que se pidió, y ese alguien es el humano.
+
+En todo lo demás de la programación, la IA puede ayudar cada vez más: sintaxis, código repetitivo, buscar cosas, incluso escribir funciones completas. Pero la IA no puede saber lo que querías decir. Solo tú sabes qué esperabas. Depurar es la práctica de sostener tu expectativa frente a lo que la computadora realmente hizo y negarte a seguir hasta que coincidan. Un niño con ese hábito puede usar cualquier herramienta de forma segura. Un niño sin él está confiando en una caja.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **el mensaje de error es la primera respuesta, tu predicción es la segunda, y la IA es la tercera — en ese orden.**
+
+La niña del juego de preguntas, por cierto, tiene un hábito nuevo. Cuando su programa se pone rojo, se echa hacia atrás, lee la última línea en voz alta con una voz un poco teatral, y usualmente se queja y lo arregla. El mes pasado la vi atascarse con uno de verdad, un bug silencioso en su lógica de puntaje. Adivinó, corrió, se lo explicó al patito, y luego le preguntó a la IA, empezando con "esperaba que el puntaje subiera de uno en uno pero sube de dos en dos." Encontró la línea que contaba doble al primer intento. Ella leyó la explicación, asintió y dijo: "Sí, eso pensé."
+
+Esa última oración es todo el objetivo. No que nunca necesite ayuda. Que cuando la ayuda llegue, ya esté lo suficientemente cerca para reconocerla.
+
+---
+
+*Si enseñas a niños o principiantes a programar y estás lidiando con cómo encaja la IA en el salón, [contáctame](/contact). Siempre estoy feliz de intercambiar ejercicios rotos, y el patito está abierto a colaboraciones.*

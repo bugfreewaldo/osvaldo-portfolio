@@ -1,0 +1,258 @@
+---
+title: "Cifrado de Sobre para Documentos que una IA Tiene que Leer"
+description: "Cada documento en el servicio central de archivos de GreyMatter está cifrado con cifrado de sobre AES-256-GCM — llaves de datos por archivo envueltas por llaves de Key Vault. Y aun así, los pipelines de IA tienen que leer esos documentos para hacer su trabajo. Así es como decido dónde se permite que exista texto plano, por cuánto tiempo, qué puede registrar la llamada al LLM, cómo funciona la rotación sin re-cifrar el mundo, y por qué descifro en el borde del paso de extracción y en ningún otro lugar."
+date: 2026-06-02
+published: true
+category: "Seguridad"
+tags: ["Seguridad", "Cifrado", "Azure Key Vault", "Pipelines de IA", "GreyMatter"]
+author: "Osvaldo Restrepo"
+translationOf: "envelope-encryption-documents-ai-reads"
+tldr: "Cifrar documentos en reposo es la parte fácil. La parte difícil empieza cuando un pipeline de IA necesita leerlos, porque cada paso que toca texto plano se vuelve parte de tu superficie de ataque. En el servicio central de archivos de GreyMatter, cada archivo recibe su propia llave de datos AES-256-GCM, y esa llave de datos está envuelta por una llave guardada en Azure Key Vault. La regla alrededor de la que construyo es simple: el texto plano existe solo dentro del paso de extracción, solo en memoria, solo mientras corre el paso. Los logs llevan identificadores y hashes, nunca contenido. La rotación re-envuelve llaves de datos en vez de re-cifrar archivos. Y la llamada al LLM se trata como un lugar donde los datos salen de tu control, así que recibe el mínimo texto que necesita y nada se registra por defecto. El cifrado no es una propiedad del almacenamiento. Es una propiedad de todo el pipeline."
+faqs:
+  - question: "¿Por qué usar cifrado de sobre en vez de cifrar los archivos con una sola llave maestra?"
+    answer: "Porque una sola llave maestra hace que cada operación sea cara y cada error sea catastrófico. Con cifrado de sobre, cada archivo tiene su propia llave de datos, así que una llave de datos filtrada expone un archivo, no todo el almacén. La llave maestra nunca sale de Key Vault, lo que significa que nunca la tienes en la memoria de la aplicación. Y la rotación se vuelve barata: re-envuelves las pequeñas llaves de datos bajo una nueva versión de la llave maestra en vez de re-cifrar cada documento."
+  - question: "Si la IA tiene que leer el texto plano de todas formas, ¿no es el cifrado en reposo puro teatro?"
+    answer: "Solo si el texto plano se escapa del paso que lo necesita. El cifrado en reposo te protege de la capa de almacenamiento: un contenedor mal configurado, un respaldo robado, un permiso demasiado amplio. La disciplina del pipeline te protege de todo lo demás. El punto es hacer que el texto plano exista en exactamente un lugar bien entendido por poco tiempo, en vez de en blob storage, colas, cachés, logs y trazas del LLM al mismo tiempo."
+  - question: "¿Qué debería poder registrar una llamada a un LLM cuando procesa documentos sensibles?"
+    answer: "Por defecto: identificadores, tamaños, tiempos, conteos de tokens, versión del modelo y hashes de la entrada y la salida. No el texto del prompt ni el texto de la respuesta. Si necesitas contenido para depurar, hazlo una captura explícita, limitada en el tiempo, con control de acceso y con su propio rastro de auditoría, no un nivel de log por defecto que alguien olvidó bajar."
+relatedPosts: ["event-driven-data-pipelines", "data-retention-for-ai-features", "observability-llm-production"]
+---
+
+El momento del que sale este post no fue dramático. Nadie sufrió una brecha. Estaba leyendo un flujo de logs en el portal de Azure mientras perseguía un trabajo de extracción lento, desplazándome por líneas de telemetría perfectamente normales, y entonces lo vi: los primeros cientos de caracteres de un documento, ahí mismo en una traza, en inglés claro.
+
+Era una línea de depuración que yo mismo había agregado, semanas antes, para verificar que la extracción de texto estaba produciendo algo sensato. "Solo por ahora." Había sobrevivido tres despliegues.
+
+El archivo del que venía estaba cifrado en reposo con AES-256-GCM. Llave de datos por archivo, envuelta por una llave en Azure Key Vault, todo el montaje respetable. Y nada de eso importaba, porque había construido una bóveda muy segura y luego había dejado una fotocopia del contenido en la recepción.
+
+Ese es el problema real con los documentos que una IA tiene que leer. El cifrado en reposo es la parte fácil. La parte difícil es todo lo que pasa después de descifrar.
+
+## El Montaje: Cifrado de Sobre en el Servicio de Archivos
+
+En TheGreyMatter.ai, la plataforma GreyMatter 3.0 está detrás de más de diecisiete apps verticales de IA — DueDiligence9, Contracts9, Forecast9, Board9 y el resto. Ninguna guarda archivos por su cuenta. Todas pasan por un servicio central de archivos, y ese servicio cifra cada documento con cifrado de sobre.
+
+Si no conoces el patrón, son dos capas de llaves:
+
+```
+   ┌──────────────────────────────┐
+   │   Azure Key Vault            │
+   │   llave de cifrado de llaves │   nunca sale de la bóveda
+   │   (KEK)                      │
+   └──────────────┬───────────────┘
+                  │ envolver / desenvolver
+                  ▼
+   ┌──────────────────────────────┐
+   │   llave de cifrado de datos  │   una por archivo, aleatoria,
+   │   (DEK) guardada ENVUELTA,   │   256 bits
+   │   junto a la metadata        │
+   └──────────────┬───────────────┘
+                  │ AES-256-GCM
+                  ▼
+   ┌──────────────────────────────┐
+   │   texto cifrado + IV + tag   │   lo que vive en blob storage
+   └──────────────────────────────┘
+```
+
+Cada archivo recibe una llave de datos aleatoria y nueva. Esa llave cifra el archivo localmente con AES-256-GCM, lo que te da confidencialidad e integridad en una sola pasada — si alguien cambia un bit del texto cifrado, el descifrado falla en vez de devolver basura. Luego la llave de datos misma se envía a Key Vault para ser envuelta por la llave de cifrado de llaves, y solo se guarda la versión envuelta.
+
+La llave maestra nunca entra en la memoria de la aplicación. Una llave de datos filtrada expone un archivo. Un contenedor de blobs filtrado expone un montón de texto cifrado y un montón de llaves envueltas que son inútiles sin acceso a Key Vault.
+
+Aquí está el núcleo en TypeScript con el crypto nativo de Node y el SDK de llaves de Key Vault:
+
+```typescript
+import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
+import { CryptographyClient } from "@azure/keyvault-keys";
+
+type EncryptedFile = {
+  ciphertext: Buffer;
+  iv: Buffer;          // 12 bytes, único por cifrado
+  authTag: Buffer;     // 16 bytes, tag de integridad de GCM
+  wrappedKey: Buffer;  // la DEK, envuelta por Key Vault
+  kekId: string;       // qué versión de la KEK la envolvió
+  aad: string;         // contexto atado, ej. tenant + id de archivo
+};
+
+export async function encryptFile(
+  plaintext: Buffer,
+  kek: CryptographyClient,
+  aad: string
+): Promise<EncryptedFile> {
+  const dek = randomBytes(32);
+  const iv = randomBytes(12);
+
+  const cipher = createCipheriv("aes-256-gcm", dek, iv);
+  cipher.setAAD(Buffer.from(aad, "utf8"));
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  const wrapped = await kek.wrapKey("RSA-OAEP-256", dek);
+  dek.fill(0); // mejor esfuerzo: no dejar la llave cruda por ahí
+
+  return {
+    ciphertext,
+    iv,
+    authTag,
+    wrappedKey: Buffer.from(wrapped.result),
+    kekId: wrapped.keyID ?? "",
+    aad,
+  };
+}
+
+export async function decryptFile(
+  file: EncryptedFile,
+  kek: CryptographyClient
+): Promise<Buffer> {
+  const unwrapped = await kek.unwrapKey("RSA-OAEP-256", file.wrappedKey);
+  const dek = Buffer.from(unwrapped.result);
+
+  try {
+    const decipher = createDecipheriv("aes-256-gcm", dek, file.iv);
+    decipher.setAAD(Buffer.from(file.aad, "utf8"));
+    decipher.setAuthTag(file.authTag);
+    return Buffer.concat([decipher.update(file.ciphertext), decipher.final()]);
+  } finally {
+    dek.fill(0);
+  }
+}
+```
+
+Dos detalles ahí importan más de lo que parece.
+
+Los **datos autenticados adicionales** (AAD) atan el texto cifrado a su contexto — tenant e identificador de archivo. Si alguien copia un blob cifrado del registro de un tenant al de otro, el descifrado falla, porque el AAD ya no coincide. Cuesta una línea y cierra toda una categoría de bugs de "confused deputy".
+
+El **`kekId`** registra qué versión de la llave maestra envolvió esta llave de datos. Eso es lo que hace barata la rotación, a la que voy a llegar.
+
+<Callout type="info" title="Los nonces de GCM no son opcionales">
+AES-GCM solo es seguro si nunca reutilizas un IV con la misma llave. Con una llave de datos aleatoria y nueva por archivo, ese riesgo casi desaparece — pero si alguna vez re-cifras un archivo con su llave de datos existente, genera un IV nuevo. Reutilizar uno no es una debilidad pequeña. Rompe tanto la confidencialidad como la integridad.
+</Callout>
+
+Hasta aquí, esto es de libro de texto. Ahora aparece la IA.
+
+## El Problema: El Pipeline Necesita Texto Plano
+
+El flujo de ingesta en GreyMatter es dirigido por eventos: se sube un archivo, un paso de extracción saca texto y estructura de él, un paso de análisis de IA corre Claude sobre el contenido extraído, y sale una notificación cuando los resultados están listos. Cuatro etapas, débilmente acopladas por eventos, cada una una Azure Function.
+
+Cada una de esas etapas es un lugar donde el texto plano *podría* existir. Y el texto plano tiene una forma de esparcirse. Se copia en un mensaje de cola porque era conveniente. Se cachea en un archivo temporal porque la librería de PDF quería una ruta. Se registra en un log porque alguien estaba depurando. Termina en una traza del LLM porque la herramienta de observabilidad captura los prompts por defecto.
+
+Cada una de esas copias está sin cifrar, y ninguna está protegida por el sobre en el que trabajaste tanto.
+
+Así que la pregunta que me importa no es "¿está cifrado el archivo?" Es: **¿dónde se permite que exista el texto plano, y por cuánto tiempo?**
+
+## Regla 1: Descifra en el Borde del Paso de Extracción
+
+Mi respuesta es que el texto plano puede existir en exactamente un lugar: dentro del paso de extracción, en memoria, durante la duración de ese paso. Todo lo que está antes y después mueve identificadores, no contenido.
+
+```
+   ANTES (conveniente)                 DESPUÉS (descifrar en el borde)
+
+   subida ──▶ msg de cola contiene     subida ──▶ msg de cola contiene
+              texto descifrado                    fileId + tenantId
+                │                                   │
+                ▼                                   ▼
+   extraer ──▶ escribe texto en         extraer ──▶ descifra en memoria
+              archivo temporal +                   extrae texto
+              otra cola                            cifra el resultado
+                │                                  limpia buffers
+                ▼                                   │
+   analizar ──▶ lee texto de la cola                ▼
+              registra el prompt       analizar ──▶ trae + descifra
+              "para depurar"                        texto extraído,
+                │                                   llama al modelo,
+                ▼                                   cifra la salida
+   notificar ──▶ incluye un fragmento               │
+              en el correo                          ▼
+                                       notificar ──▶ "tu análisis está
+                                                    listo" + un link
+```
+
+El evento que viaja entre etapas lleva un identificador de archivo, un identificador de tenant y una versión. Nunca contenido. Si una cola es inspeccionada, reproducida o mandada a dead-letter, no hay nada sensible en ella.
+
+La salida del paso de extracción — el texto extraído, los campos estructurados — es en sí misma sensible, así que vuelve a pasar por el servicio de archivos y recibe su propio sobre. El paso de análisis la descifra, llama al modelo y cifra el resultado. Cada etapa abre el sobre, hace un trabajo, y lo vuelve a sellar.
+
+¿Es esto más lento que pasar texto por colas? Un poco. Un desenvolvimiento extra en Key Vault por etapa, y puedes cachear llaves de datos desenvueltas en memoria por una ventana corta si importa. En la práctica, la llamada al modelo empequeñece todo eso. Cambiaría esos milisegundos por un pipeline donde una cola de dead-letter es aburrida cada una de las veces.
+
+<Callout type="tip" title="Mueve identificadores, no contenido">
+La prueba más simple para un pipeline de documentos: abre cualquier cola, cualquier almacén de dead-letter, cualquier log de eventos. Si puedes leer una oración del documento de un cliente, el texto plano escapó de su paso. Los eventos deberían ser punteros. El contenido se queda detrás del sobre hasta que la única función que lo necesita lo abre.
+</Callout>
+
+## Regla 2: La Llamada al LLM Es Donde los Datos Salen de Tu Control
+
+El paso de análisis es el incómodo, porque hace la única cosa con la que el cifrado de sobre no puede ayudar: envía texto plano a un modelo.
+
+Trato la llamada al modelo como un punto de salida, de la misma forma que trataría enviar un correo o llamar a una API de terceros. Ese encuadre cambia algunas decisiones.
+
+**Envía el mínimo texto.** El paso de análisis no recibe el documento completo por defecto. Recibe las secciones que la tarea necesita. Una revisión de contrato no necesita la página de firmas. Un análisis financiero no necesita datos de contacto personales. Menos texto en el prompt es menos texto en cualquier lugar río abajo del prompt. (También es más barato, sobre lo que escribí en [las ventanas de contexto son un presupuesto](/es/blog/context-windows-are-a-budget).)
+
+**Redacta lo que el modelo no necesita.** El cifrado de PII a nivel de campo ya existe en la plataforma para datos estructurados a través de Key Vault. Para texto libre, el paso de extracción puede cambiar identificadores obvios por marcadores antes de que el paso de análisis los vea, y mapearlos de vuelta en el resultado si hace falta.
+
+**Conoce los términos de retención del proveedor.** Lo que el proveedor de la API hace con tus prompts es una pregunta de contrato, no de ingeniería, pero ingeniería tiene que saber la respuesta. Decide qué puedes enviar en primer lugar.
+
+## Regla 3: Los Logs Llevan Formas, No Contenido
+
+La línea de depuración de mi apertura era un problema de logging disfrazado de conveniencia de depuración. Así que el paso de análisis tiene un contrato de logging estricto:
+
+```typescript
+type LlmCallLog = {
+  tenantId: string;
+  fileId: string;
+  step: "extraction" | "analysis";
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  latencyMs: number;
+  inputSha256: string;   // permite probar qué se envió, sin guardarlo
+  outputSha256: string;
+  outcome: "ok" | "refused" | "error";
+};
+```
+
+Sin texto del prompt. Sin texto de la respuesta. Sin "los primeros 200 caracteres para contexto." Los hashes me permiten responder "¿se procesó esta entrada exacta?" y "¿cambió la salida entre corridas?" sin guardar el contenido. Los conteos de tokens y la latencia me dan todo lo que necesito para trabajo de costo y rendimiento, que es sobre lo que escribí en [observabilidad para LLMs en producción](/es/blog/observability-llm-production).
+
+Cuando de verdad necesito contenido para depurar una mala extracción, eso es una captura explícita: limitada a un archivo, con tiempo de expiración, escrita a una ubicación cifrada, con una entrada de auditoría que dice quién la activó y por qué. No es un nivel de log. Los niveles de log se quedan encendidos. Las capturas expiran.
+
+<Callout type="warning" title="Tu herramienta de observabilidad es un almacén de datos">
+Muchas herramientas de trazado de LLMs capturan prompts y respuestas completas por defecto, porque eso es lo que las hace útiles para depurar. Eso también las convierte en una segunda copia de cada documento sensible que procesas, usualmente con controles de acceso más débiles que tu almacén de archivos. Revisa los valores por defecto antes de conectar una, no después.
+</Callout>
+
+## Regla 4: La Rotación Re-Envuelve Llaves, No Archivos
+
+La rotación de llaves es donde el cifrado de sobre se paga solo.
+
+Cuando la llave de cifrado de llaves rota en Key Vault, nada de los archivos cifrados cambia. El texto cifrado sigue siendo el texto cifrado. Solo las llaves de datos envueltas están atadas a la versión vieja de la llave. Así que la rotación es un trabajo en segundo plano que recorre la metadata de los archivos, desenvuelve cada llave de datos con la versión vieja y la envuelve de nuevo con la nueva:
+
+```
+   para cada archivo donde kekId != versionKekActual:
+       dek       = desenvolver(archivo.wrappedKey, archivo.kekId)
+       envuelta  = envolver(dek, versionKekActual)
+       actualizar metadata: wrappedKey = envuelta, kekId = versionKekActual
+       limpiar dek
+```
+
+Re-envolver una llave de 32 bytes es rápido. Re-cifrar una biblioteca grande de documentos sería un proyecto. Y como cada registro guarda su `kekId`, el trabajo se puede reanudar y es seguro correrlo junto al tráfico en vivo: las versiones viejas siguen habilitadas para desenvolver hasta que el trabajo confirma que nada las referencia, y solo entonces se deshabilitan.
+
+Rotar las llaves de datos mismas — re-cifrar de verdad un archivo — es una operación separada y más rara. La reservo para cuando la llave de un archivo específico pudo haber sido expuesta, no como rutina.
+
+## Regla 5: El Texto Plano Tiene un Tiempo de Vida, y Deberías Saberlo
+
+La última regla es sobre el tiempo, y es la que más veo que se salta.
+
+Cada pedazo de texto plano en el pipeline debería tener un tiempo de vida máximo conocido. Para el paso de extracción, eso es "la duración de la invocación de la función." Los buffers se limpian en bloques `finally`. Nada se escribe en el directorio temporal local si la librería puede trabajar desde memoria; si no puede, el archivo temporal se borra en el mismo `finally`, y el almacenamiento de la función no se comparte entre tenants.
+
+Soy honesto conmigo mismo en que esto es mejor esfuerzo. JavaScript no te da control real sobre la memoria, y el recolector de basura va a guardar copias de strings por el tiempo que quiera. Limpiar un buffer es higiene, no una garantía. La garantía real viene de la arquitectura: el texto plano solo entra a un proceso de vida corta, nunca a un almacén durable. Si el proceso muere, el texto plano muere con él.
+
+Eso también se conecta con los datos derivados. El texto extraído y el análisis de IA son documentos nuevos con sus propios tiempos de vida, y necesitan una política de retención igual que la subida original. Ese es un tema completo por sí solo, al que vuelvo en [retención de datos para funciones de IA](/es/blog/data-retention-for-ai-features).
+
+## Lo que Hice Mal Primero
+
+Ya que prometí franqueza: mi primera versión de este pipeline pasaba texto extraído por la cola. Era más rápido de construir, los payloads eran pequeños, y funcionaba bien en pruebas. Solo lo reconstruí después de sentarme y listar cada lugar donde el contenido de un solo documento podía terminar. La lista tenía nueve entradas. Solo una estaba cifrada.
+
+Ese ejercicio — listar cada lugar donde puede existir texto plano — es lo más útil de este post. Toma una hora, y la primera vez que lo haces el resultado probablemente te va a avergonzar un poco. El mío lo hizo.
+
+## El Hilo
+
+Si tuviera que comprimirlo en una oración: **el cifrado no es una propiedad de tu almacenamiento, es una propiedad de todo tu pipeline, y el pipeline está tan cifrado como su atajo más conveniente.**
+
+El cifrado de sobre te da una gran base: llaves por archivo, una llave maestra que nunca sale de la bóveda, rotación barata, verificaciones de integridad gratis. Pero un pipeline de IA que lee documentos va a seguir intentando esparcir texto plano por todos lados, a través de colas, archivos temporales, logs, trazas y prompts. El trabajo es decidir, a propósito, el único lugar donde vive el texto plano, cuánto tiempo vive ahí, y qué se permite que salga. Luego sostienes esa línea cada vez que alguien, incluyéndote a ti, quiere agregar una línea de depuración "solo por ahora."
+
+---
+
+*Si estás construyendo pipelines de IA sobre documentos sensibles y quieres un segundo par de ojos sobre a dónde va realmente tu texto plano, [contáctame](/contact). El ejercicio de inventario de texto plano es mucho más divertido con alguien más en la sala.*

@@ -1,0 +1,200 @@
+---
+title: "Spanish-First AI Products: Notes From Building in Panama"
+description: "Most models are English-native, and most AI products treat Spanish as a translation layer. Building from Panama taught me otherwise: regional variation is real, tú versus usted is a product decision, users code-switch mid-sentence, Spanish costs more tokens, voice recognition stumbles on accents, and evals written in English will happily certify a Spanish product that feels wrong to every native speaker."
+date: 2026-09-01
+published: true
+category: "AI Product"
+tags: ["AI Product", "Spanish", "Localization", "Voice Agents", "Evals"]
+author: "Osvaldo Restrepo"
+tldr: "Spanish is not one language setting. A product that serves Panama, Mexico, and Spain is serving three audiences with different words, different levels of formality, and different things that sound rude. Most models are English-native and will default to a neutral, slightly foreign Spanish unless you are explicit about region and register. Users here code-switch between Spanish and English mid-sentence, and the product should follow them instead of correcting them. Spanish also tends to cost more tokens than English for the same content, which matters at volume. Voice adds another layer: speech recognition that handles a textbook accent can stumble on a Caribbean one. The fix is not a better translation step. It is treating Spanish as a first-class product: native prompts and examples, an explicit locale profile, and an eval set written and graded in Spanish by people who speak it."
+faqs:
+  - question: "Should system prompts be written in Spanish or in English with an instruction to answer in Spanish?"
+    answer: "Instructions can often stay in English without much loss, because models follow English instructions very reliably. What must be native Spanish are the examples, the tone references, and anything the model is likely to copy. If your few-shot examples are translated, the output will read translated. The honest answer is to test both versions against a Spanish eval set and let the results decide for your task."
+  - question: "Is neutral Spanish good enough for a Latin American product?"
+    answer: "Neutral Spanish is a reasonable default for written content, and it is much better than accidentally sounding like Spain to a Mexican user. But neutral is a floor, not a goal. For anything conversational, especially voice, users notice when the product does not sound like it is from anywhere. Pick a default region and register explicitly, make it configurable, and make sure the model never uses words that are offensive in one of your markets."
+  - question: "How do you evaluate an AI product in Spanish if most of the team does not speak it?"
+    answer: "You cannot fully, and that is the point. Automated checks can catch the language of the response, register consistency, and banned regional terms. But someone who speaks the language natively, ideally from the target region, has to write and grade a meaningful slice of the eval set. An English-speaking team grading Spanish output mostly measures whether it looks like Spanish, not whether it sounds right."
+relatedPosts: ["ai-engineering-panama", "shipping-ai-to-non-technical-users", "voice-agents-turn-taking"]
+---
+
+The first Spanish voice prototype I built at Shining Image was technically perfect. It understood the question, found the open slot, confirmed the address, and booked the appointment. A Spanish-speaking caller in Texas tested it for us, and when she hung up she laughed and said, "It sounds like a dubbed movie."
+
+She was right. The agent spoke a careful, neutral, slightly formal Spanish, the kind you hear in a documentary narrated for an entire continent at once. It used *usted* with a tone that felt more like a bank than a local cleaning business. It said things in a way nobody she knew would say them. Nothing it said was wrong. All of it was a little bit foreign.
+
+I have lived with that comment for years now, building from Panama City. Most of the AI products I see treat Spanish as a setting: build in English, add a translation step, ship to "LATAM." That works about as well as you would expect. These are the notes I wish I had before that first prototype.
+
+## 1. The Model Is a Native English Speaker Who Learned Spanish Very Well
+
+Start with the honest framing. Most frontier models are trained on far more English than Spanish. They are very good at Spanish, genuinely, but English is their home. That shows up in small ways:
+
+- Sentence structures that are grammatical but shaped like English.
+- Literal calques: *"aplicar para un trabajo"* instead of *"solicitar un empleo,"* *"hace sentido"* instead of *"tiene sentido."*
+- A default toward a placeless, slightly formal register when nothing tells it otherwise.
+- Less depth on regional vocabulary, especially for smaller countries like Panama.
+
+None of this is a dealbreaker. It just means the model will not make Spanish product decisions for you. If you do not specify, it picks a default, and its default is "Spanish as written by someone careful who is not from here."
+
+<Callout type="info" title="Default Spanish is nobody's Spanish">
+When you do not tell a model which Spanish you want, it gives you the safest average. That average is fine for a help article. In a conversation, it reads as distant, and in a voice call it sounds like a dubbed movie. Decide on a region and register on purpose.
+</Callout>
+
+## 2. Region Is a Product Decision, Not a Translation Detail
+
+Spanish across Panama, Mexico, and Spain shares a grammar and diverges in a hundred small, important ways. A few that bite AI products:
+
+```
+concept         Panama           Mexico           Spain
+─────────────   ──────────────   ──────────────   ──────────────
+"you all"       ustedes          ustedes          vosotros
+"car"           carro            carro / coche    coche
+"computer"      computadora      computadora      ordenador
+"cool / great"  chévere          padre / chido    guay / genial
+"to park"       parquear         estacionar       aparcar
+```
+
+Some of these are just flavor. Some are not. There are everyday Spanish words that are perfectly innocent in one country and vulgar in another. A model that defaults to Spain's casual vocabulary will occasionally say something that makes a Mexican user wince, and it will have no idea it did.
+
+So the locale is not a string like `es`. It is a profile:
+
+```typescript
+type SpanishLocaleProfile = {
+  region: "PA" | "MX" | "CO" | "ES" | "neutral-latam";
+  register: "tu" | "usted";
+  pluralYou: "ustedes" | "vosotros";
+  preferredTerms: Record<string, string>;   // "computer" -> "computadora"
+  bannedTerms: string[];                     // words to never use in this market
+  allowEnglishLoanwords: boolean;            // "el meeting", "el link"
+};
+
+const panamaConsumer: SpanishLocaleProfile = {
+  region: "PA",
+  register: "tu",
+  pluralYou: "ustedes",
+  preferredTerms: { computer: "computadora", car: "carro" },
+  bannedTerms: [],
+  allowEnglishLoanwords: true,
+};
+```
+
+That profile goes into the system prompt as explicit instructions, and it also feeds the automated checks in the eval. If the product serves multiple markets, the profile is selected per tenant or per user, not hardcoded once.
+
+## 3. Tú vs. Usted Is a Tone Decision, and It Has to Be Consistent
+
+In English, "you" is "you." In Spanish, choosing *tú* or *usted* says something about the relationship before the sentence even gets going. *Usted* can mean respect, distance, or formality. *Tú* can mean warmth, closeness, or, to some users, a lack of respect.
+
+There is no universal right answer. A consumer finance app for young professionals in Panama probably wants *tú*. A product used by older business owners, or anything clinical, probably wants *usted*, at least at first. Some products mirror the user: if they write in *tú*, the product follows.
+
+What is never acceptable is mixing them. Models drift. A response that starts with *usted* and ends with *"¿quieres que te ayude con algo más?"* reads as sloppy at best and confused at worst. I check this explicitly:
+
+```python
+import re
+
+TU_MARKERS = [r"\bquieres\b", r"\bpuedes\b", r"\btienes\b", r"\bte\b", r"\btu\b"]
+USTED_MARKERS = [r"\bdesea\b", r"\bpuede usted\b", r"\btiene usted\b", r"\ble\b", r"\bsu\b"]
+
+def register_consistency(text: str, expected: str) -> bool:
+    """Rough heuristic: flag responses that use markers of the other register."""
+    lowered = text.lower()
+    other = USTED_MARKERS if expected == "tu" else TU_MARKERS
+    hits = sum(1 for pattern in other if re.search(pattern, lowered))
+    return hits == 0
+```
+
+It is a crude heuristic, and it misfires (*le* and *su* show up in plenty of *tú* sentences talking about a third person). So it flags cases for human review rather than failing them automatically. Even crude, it catches the drift that nobody notices in a demo and everyone notices in week two.
+
+## 4. Users Code-Switch, and the Product Should Follow
+
+In Panama, a lot of people move between Spanish and English inside the same sentence. *"Mándame el link del meeting antes del lunch."* That is not an error. It is how people talk, especially in business, tech, and anywhere close to the Canal and the banking sector.
+
+The bad pattern is a product that "corrects" the user, answering in rigid Spanish with every loanword replaced by a dictionary equivalent, or worse, switching fully into English because it saw three English words. Both feel like the product is not listening.
+
+My rule is simple: respond in the user's dominant language, keep the loanwords they used, and do not introduce new ones they did not. If someone writes mostly in Spanish with "meeting" and "link," the answer is in Spanish and says "meeting" and "link." If they switch fully to English mid-conversation, follow them.
+
+<Callout type="tip" title="Mirror, do not correct">
+Code-switching is a signal about who your user is, not a mistake to fix. Answer in their dominant language, reuse their loanwords, and never "translate" a user's own words back at them. Nobody likes being corrected by software.
+</Callout>
+
+## 5. Spanish Costs More Tokens
+
+This one is quiet and shows up on the invoice. Tokenizers are generally tuned for English, and Spanish text usually needs noticeably more tokens than English text carrying the same meaning. Longer words, more inflection, accents, and less common subword patterns all add up.
+
+For a single request, nobody cares. At volume, it matters in three places:
+
+```
+where the Spanish token tax shows up
+─────────────────────────────────────────────────────────────
+cost        same feature, same traffic, higher bill per request
+context     long Spanish documents fill the window sooner
+latency     more output tokens means a longer wait to finish
+```
+
+I treat context as a budget for exactly this reason, and I have written about that in [context windows are a budget](/blog/context-windows-are-a-budget). When you size a feature, estimate it on Spanish samples, not on the English prototype. Your margins were calculated on the wrong language otherwise.
+
+## 6. Voice Makes Everything Harder
+
+Text is forgiving. Voice is not.
+
+Speech-to-text models have come a long way, and Whisper handled Spanish far better than what we had before. But "Spanish" in a speech dataset tends to lean toward certain accents, and Caribbean Spanish, including a lot of Panamanian speech, does things that trip recognizers up: dropped or aspirated final *s*, clipped endings, fast speech, and English words dropped into the middle of sentences.
+
+In the Shining Image voice agents, the failures I saw were not dramatic. They were small and expensive: a street name misheard, a number swallowed, a "sí" that sounded like a hesitation. Each one turned a confident booking into a wrong booking. The fixes were mostly product fixes:
+
+- **Read back anything that commits.** Addresses, dates, phone numbers. Always confirm out loud before acting. I wrote more about this kind of pacing in [voice agents and turn-taking](/blog/voice-agents-turn-taking).
+- **Prefer structured answers to open ones** for critical fields. "¿Es el martes o el miércoles?" beats "¿Qué día le conviene?"
+- **Test with real accents.** Recordings from people who actually sound like your callers, not a polished studio sample.
+- **Make the human fallback easy and early.** A caller who is repeating themselves for the third time should hear an offer to leave a message, not a fourth attempt.
+
+<Callout type="warning" title="Your STT eval needs your callers' accents">
+A speech recognizer that tests well on clear, standard Spanish can still struggle with the specific way your users talk. If your voice eval does not include recordings that sound like your actual callers, with their speed, their accents, and their background noise, you are evaluating the wrong product.
+</Callout>
+
+## 7. Translated Prompts vs. Native Prompts
+
+The most common shortcut I see: write the prompt in English, test it in English, then translate it to Spanish (often with the model itself) and ship. The output is usually grammatical and almost always slightly off.
+
+What I do now is split the prompt into two layers:
+
+```
+layer                     language        why
+──────────────────────    ─────────────   ─────────────────────────────────
+instructions / rules      English is ok   models follow English instructions
+                                          very reliably
+locale profile            explicit        region, register, terms, loanwords
+few-shot examples         native Spanish  the model copies examples; translated
+                                          examples produce translated output
+tone references           native Spanish  written by a native speaker from the
+                                          target region
+```
+
+The examples are the part that matters most. A model imitates its examples much more closely than it follows abstract style instructions. If the examples were written by a Panamanian, the output starts to sound like it is from somewhere. If they were run through a translator, the output sounds like it was too.
+
+This is not a universal rule, and I hold it loosely. For some tasks, a fully Spanish prompt does better. That is why the decision comes from the eval, not from my preference.
+
+## 8. The Eval Has to Be in Spanish Too
+
+Everything above collapses if the eval set is in English.
+
+I have seen it more than once: a team builds a Spanish product, writes the evaluation cases in English because that is what the team speaks, translates the inputs, and grades the outputs with an English-language rubric. The scores look great. Native speakers who use the product think it sounds robotic. Both things are true, because the eval is measuring whether the output is correct, not whether it sounds right.
+
+A Spanish eval set needs:
+
+- **Inputs written by native speakers,** including slang, typos, missing accents, and code-switching. Real users do not type *"¿Podría usted indicarme...?"* They type *"cuanto cuesta el servicio"* with no accents and no question marks.
+- **Automated checks** for response language, register consistency, banned regional terms, and preferred vocabulary from the locale profile.
+- **Human grading** by someone from the target region on a meaningful slice, focused on "would a person from here say this?"
+
+That last one cannot be skipped. I have argued that [the eval set is the spec](/blog/eval-set-is-the-spec). If the spec is written in English, the product will be English in disguise.
+
+<Callout type="danger" title="An English rubric will certify a foreign-sounding product">
+If the people writing and grading your eval do not speak the target language natively, your scores measure grammar and correctness, not naturalness. That is exactly the gap users feel first. Pay for native graders. It is cheaper than the churn.
+</Callout>
+
+## The Throughline
+
+If I had to compress all of this into one sentence: **Spanish is not a translation of your product, it is a version of your product, and it needs its own decisions.**
+
+Which region. Which register. Which words never to say. How to follow users who switch languages. What the token tax does to your margins. How the recognizer handles the way people here actually speak. And an eval written and graded by people who would notice the difference.
+
+The caller who said our agent sounded like a dubbed movie was giving me the best possible feedback. The product worked. It just did not belong to anyone. Spanish-first means building something that sounds like it belongs to the people using it.
+
+---
+
+*If you are building an AI product for Spanish-speaking users and want a second pair of ears on how it sounds, [reach out](/contact). I am happy to talk regions, register, and evals, in whichever language you prefer.*

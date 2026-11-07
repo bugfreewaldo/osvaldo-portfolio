@@ -1,0 +1,235 @@
+---
+title: "RBAC en Dos Niveles: Deal, Empresa y el Modelo que Nunca Debe Asomarse"
+description: "Cómo pienso el control de acceso basado en roles en una plataforma de IA multi-tenant donde los permisos viven tanto a nivel de empresa como a nivel de deal. Roles que se componen en vez de apilarse, verificaciones de permisos que aplican a lo que la IA recupera (no solo a lo que el usuario hace click), artefactos derivados que heredan el acceso de sus fuentes, y una entrada de auditoría en cada mutación. Con un authorize() en TypeScript que realmente se puede leer."
+date: 2026-09-29
+published: true
+category: "Ingeniería Backend"
+tags: ["Ingeniería Backend", "RBAC", "Autorización", "Multi-Tenancy", "Seguridad de IA"]
+author: "Osvaldo Restrepo"
+translationOf: "rbac-at-two-levels"
+tldr: "En una plataforma de IA multi-tenant, el control de acceso tiene dos trabajos que la mayoría de los diseños de RBAC solo hacen a medias. El primero es el conocido: decidir qué puede ver y cambiar un usuario. El segundo es nuevo: asegurar que la IA, actuando en nombre de ese usuario, nunca pueda ver más que él. En TheGreyMatter.ai, los permisos viven en dos niveles — empresa y deal — y se componen por intersección: tu rol en la empresa dice qué tipo de acciones puedes tomar, tu membresía en el deal dice dónde. La recuperación para el modelo se filtra con la misma función authorize() que la UI, en el momento de la consulta, nunca después. Los resúmenes, embeddings y otros artefactos derivados heredan el acceso de sus fuentes. Y cada mutación, la haga una persona o un agente, escribe una entrada de auditoría que nombra a ambos. La regla debajo de todo: el modelo es un invitado dentro de los permisos del usuario, nunca un superusuario."
+faqs:
+  - question: "¿Por qué no usar solo roles a nivel de empresa para todo?"
+    answer: "Porque en el trabajo orientado a deals, el límite más sensible usualmente está dentro de una empresa, no entre empresas. Dos colegas de la misma firma pueden tener derechos muy distintos sobre un deal específico, un data room específico o un paquete de directorio específico. Los roles a nivel de empresa por sí solos te obligan a sobre-compartir dentro de la firma o a crear una explosión combinatoria de roles. Un segundo nivel, acotado al deal, mantiene la lista de roles corta y los límites precisos."
+  - question: "¿Cómo te aseguras de que un modelo de IA nunca vea un documento que el usuario no puede ver?"
+    answer: "Aplica a la recuperación la misma verificación de autorización que aplicas a la UI, y aplícala dentro de la consulta, no después. El recuperador solo debería poder devolver documentos que el usuario que pregunta tiene permitido leer, para que el filtro se aplique antes de que algo llegue al prompt. Los artefactos derivados como resúmenes y embeddings deben cargar el alcance de acceso de los documentos de los que vinieron. Y el modelo debería llamar herramientas con la identidad del usuario, no con una cuenta de servicio con acceso amplio."
+  - question: "¿No es demasiado caro registrar cada mutación?"
+    answer: "Es mucho más barato que la alternativa, que es no poder responder '¿quién cambió esto y por qué?' durante un incidente, una auditoría o una disputa con un cliente. Las entradas de auditoría son pequeñas, de solo agregar, y se escriben en la misma transacción o flujo de eventos que el cambio. El costo real es disciplina: hacer que la escritura de auditoría sea parte del camino de la mutación para que no se pueda saltar, en vez de una línea de log que alguien se acuerda de agregar."
+relatedPosts: ["multi-tenant-saas-architecture", "authentication-patterns-modern-apps", "mcp-servers-that-dont-leak"]
+---
+
+El reporte de bug que cambió cómo pienso la autorización fue amable, corto y ligeramente aterrador. Durante pruebas internas, un usuario le pidió al asistente "un resumen de todo lo que sabemos sobre las finanzas de esta empresa." La respuesta fue buena. Demasiado buena. Incluía un detalle de un documento adjunto a otro deal — un deal del que ese tester no era miembro.
+
+Nadie había hecho click en nada que no debiera. La UI había hecho su trabajo perfectamente. Cada pantalla verificaba permisos. Cada link de descarga estaba acotado. Pero el paso de recuperación que alimentaba al modelo estaba haciendo una pregunta ligeramente distinta: "¿qué documentos son sobre esta empresa?" en vez de "¿qué documentos sobre esta empresa tiene permitido leer *este usuario*?" Una cláusula faltante en una consulta, y el modelo había pasado directo a través de un muro que la UI respetaba.
+
+Nunca salió de un ambiente de pruebas, y el arreglo fue pequeño. La lección no. En una plataforma de IA, el control de acceso tiene dos audiencias: la persona, y el modelo actuando por la persona. Si solo diseñas para la primera, la segunda te va a encontrar los huecos.
+
+## 1. Dos Niveles, Porque el Límite Sensible Está Dentro de la Empresa
+
+La mayoría del SaaS multi-tenant empieza con un nivel de control de acceso: el tenant. Perteneces a una empresa, la empresa tiene datos, tu rol dentro de la empresa decide qué puedes hacer. Cubrí lo básico de ese modelo en [arquitectura SaaS multi-tenant](/es/blog/multi-tenant-saas-architecture), y funciona bien para muchos productos.
+
+Se rompe en el trabajo orientado a deals. La plataforma detrás de apps como DueDiligence9, Contracts9 y Board9 maneja material donde el límite más importante no es entre empresas. Es *dentro* de una. Dos personas de la misma firma pueden tener derechos completamente distintos sobre un deal específico: una está en el equipo, la otra no. Una puede subir al data room, la otra solo puede leer el resumen. Una puede ver un paquete de directorio, la otra no debería saber que existe.
+
+Puedes intentar modelar eso solo con roles a nivel de empresa. Terminas con nombres de roles como "analyst-deal-a-read-only" y una lista de roles que crece con cada deal nuevo. He visto esa lista. No es un modelo de seguridad. Es una hoja de cálculo en la que nadie confía.
+
+Así que los permisos viven en dos niveles:
+
+```
+  NIVEL EMPRESA  (quién eres en la organización)
+  ┌──────────────────────────────────────────────────┐
+  │  owner · admin · member · viewer                 │
+  │  responde: ¿qué TIPOS de acciones puedes tomar?  │
+  └──────────────────────────────────────────────────┘
+                        ∩   (intersección)
+  NIVEL DEAL  (qué eres en este deal específico)
+  ┌──────────────────────────────────────────────────┐
+  │  lead · contributor · reviewer · (no miembro)    │
+  │  responde: ¿DÓNDE puedes tomarlas?               │
+  └──────────────────────────────────────────────────┘
+                        =
+  PERMISO EFECTIVO para (usuario, deal, acción)
+```
+
+El rol de empresa es un techo de capacidad. El rol de deal es una concesión de lugar. Necesitas ambos.
+
+## 2. Los Roles Se Componen por Intersección, No Apilándose
+
+La pregunta que todo diseño de dos niveles tiene que responder es: cuando los niveles no están de acuerdo, ¿quién gana?
+
+He visto sistemas que responden eso con unión — tus derechos son todo lo que te da tu rol de empresa más todo lo que te da tu rol de deal. Así terminas con un admin de empresa que puede leer en silencio el data room de cada deal, incluyendo los que están bajo un acuerdo estricto de necesidad de saber. La unión es conveniente. También es cómo una sola cuenta con demasiados privilegios se vuelve un punto único de catástrofe.
+
+Mi regla es intersección, con una lista corta de excepciones deliberadas:
+
+- **El acceso a contenido requiere ambos niveles.** Para leer los documentos de un deal, necesitas un rol de empresa que permita leer *y* membresía en el deal. Ser admin de la empresa no te convierte, por sí solo, en lector de cada deal.
+- **Las acciones administrativas son de nivel empresa.** Gestionar usuarios, facturación e integraciones es sobre la organización, no sobre un deal en particular, así que esas acciones verifican solo el rol de empresa.
+- **La denegación explícita gana.** Si alguien está excluido de un deal — un conflicto de interés, un muro que tiene que sostenerse — esa exclusión le gana a cualquier otra concesión. Ningún rol, en ningún nivel, la anula.
+- **No hay herencia implícita hacia abajo para el contenido.** Los admins pueden *gestionar* la membresía de un deal, incluso agregarse a sí mismos, pero esa acción es una mutación explícita y auditada. No pueden leer en silencio.
+
+Esa última es la que genera más resistencia. "Nuestros admins deberían poder ver todo." Quizás. Pero "puede darse acceso a sí mismo, de forma visible, con una entrada de log" y "puede ver todo sin que nadie lo sepa" son propiedades muy distintas, y solo la primera sobrevive una revisión de seguridad seria de un cliente.
+
+<Callout type="warning" title="La unión es cómo nacen los superusuarios">
+Cuando dos niveles de permisos se combinan por unión, el rol con más privilegios en cualquiera de los niveles se vuelve en silencio el rol efectivo en todas partes. Combina por intersección, haz explícitas las excepciones, y deja que las denegaciones explícitas ganen. Tu futura revisión de incidentes será mucho más corta.
+</Callout>
+
+## 3. Una Función authorize(), Llamada en Todas Partes
+
+Lo más valioso que hice por la autorización fue volverla aburrida: una función, un lugar, llamada por cada camino que toca datos. La UI la llama. La API la llama. El recuperador que alimenta al modelo la llama. Los jobs en segundo plano la llaman con la identidad del usuario por el que están actuando.
+
+Esta es una versión simplificada:
+
+```typescript
+type CompanyRole = "owner" | "admin" | "member" | "viewer";
+type DealRole = "lead" | "contributor" | "reviewer";
+
+type Action =
+  | "deal:read" | "deal:comment" | "deal:upload" | "deal:edit"
+  | "deal:manage-members" | "company:manage-users" | "company:billing";
+
+interface Principal {
+  userId: string;
+  companyId: string;
+  companyRole: CompanyRole;
+  dealRoles: Record<string, DealRole>;   // dealId -> rol
+  deniedDeals: Set<string>;              // exclusiones explícitas
+  actingAgent?: string;                  // se llena cuando un agente actúa en nombre del usuario
+}
+
+const COMPANY_CAN: Record<CompanyRole, Action[]> = {
+  owner:  ["deal:read", "deal:comment", "deal:upload", "deal:edit",
+           "deal:manage-members", "company:manage-users", "company:billing"],
+  admin:  ["deal:read", "deal:comment", "deal:upload", "deal:edit",
+           "deal:manage-members", "company:manage-users"],
+  member: ["deal:read", "deal:comment", "deal:upload", "deal:edit"],
+  viewer: ["deal:read", "deal:comment"],
+};
+
+const DEAL_CAN: Record<DealRole, Action[]> = {
+  lead:        ["deal:read", "deal:comment", "deal:upload", "deal:edit", "deal:manage-members"],
+  contributor: ["deal:read", "deal:comment", "deal:upload"],
+  reviewer:    ["deal:read", "deal:comment"],
+};
+
+export function authorize(
+  p: Principal,
+  action: Action,
+  resource: { companyId: string; dealId?: string },
+): { allowed: boolean; reason: string } {
+  // primero el límite del tenant: nunca cruzar empresas
+  if (resource.companyId !== p.companyId) return { allowed: false, reason: "cross-tenant" };
+
+  // las acciones de empresa verifican solo el rol de empresa
+  if (action.startsWith("company:")) {
+    const ok = COMPANY_CAN[p.companyRole].includes(action);
+    return { allowed: ok, reason: ok ? "company-role" : "company-role-missing" };
+  }
+
+  const dealId = resource.dealId;
+  if (!dealId) return { allowed: false, reason: "deal-required" };
+
+  // la denegación explícita le gana a todo
+  if (p.deniedDeals.has(dealId)) return { allowed: false, reason: "explicit-deny" };
+
+  // los admins pueden gestionar membresía sin ser miembros (auditado aparte)
+  if (action === "deal:manage-members" && COMPANY_CAN[p.companyRole].includes(action)) {
+    return { allowed: true, reason: "company-admin-manage" };
+  }
+
+  // las acciones de contenido necesitan AMBOS niveles: intersección
+  const dealRole = p.dealRoles[dealId];
+  if (!dealRole) return { allowed: false, reason: "not-a-member" };
+
+  const ok = COMPANY_CAN[p.companyRole].includes(action) && DEAL_CAN[dealRole].includes(action);
+  return { allowed: ok, reason: ok ? "company-and-deal" : "insufficient-role" };
+}
+```
+
+Algunas decisiones ahí son deliberadas. Devuelve una razón, no solo un booleano, porque "denegado" sin razón es imposible de depurar e inútil en una auditoría. La verificación del tenant va primero y es incondicional. Y el agente no tiene un rol propio en absoluto. Cuando un agente actúa, actúa como un principal que es el usuario, con `actingAgent` lleno para el registro. Hereda los permisos del usuario exactamente, nunca más.
+
+Ese diseño significa que la lógica de autorización se puede probar de forma aislada, lo cual importa mucho. Nuestro harness de Playwright y Vitest tiene una tabla de principals, acciones y resultados esperados, y cada release la corre. Los bugs de autorización son del tipo que quieres atrapar en una tabla, no en un reporte de bug.
+
+## 4. El Modelo Nunca Debe Ver lo que el Usuario No Puede
+
+De vuelta al bug del inicio. La UI estaba correcta. El recuperador no, porque filtraba *después* de buscar en vez de buscar *dentro* de lo que el usuario podía leer.
+
+Hay dos formas de filtrar la recuperación, y solo una es segura:
+
+```
+  INSEGURO: buscar en todo, filtrar resultados después
+    consulta ──▶ índice (todos los docs) ──▶ top-k ──▶ filtrar por permiso ──▶ prompt
+    problemas: fugas vía ranking, resultados vacíos parecen "no hay datos",
+               y una llamada de filtro olvidada lo expone todo
+
+  SEGURO: restringir el espacio de búsqueda antes del ranking
+    consulta + principal ──▶ alcance permitido ──▶ índice (solo docs permitidos) ──▶ prompt
+    el recuperador es físicamente incapaz de devolver un doc prohibido
+```
+
+En la práctica eso significa que cada documento y cada chunk carga su alcance de acceso como metadata — empresa, deal y cualquier restricción más estrecha — y el recuperador construye su filtro a partir de las mismas reglas que usa `authorize()` antes de rankear cualquier cosa.
+
+```typescript
+async function retrieveForUser(p: Principal, query: string, companyId: string) {
+  // deals que este principal puede leer, calculados con el mismo authorize() que la UI
+  const readableDeals = Object.keys(p.dealRoles).filter(
+    (dealId) => authorize(p, "deal:read", { companyId, dealId }).allowed,
+  );
+
+  if (readableDeals.length === 0) return [];
+
+  return searchIndex(query, {
+    filter: { companyId, dealId: { in: readableDeals } },  // aplicado ANTES del ranking
+    topK: 8,
+  });
+}
+```
+
+El mismo principio aplica a las herramientas. Cuando el modelo llama una herramienta — traer un documento, listar los archivos de un deal, buscar contratos — la herramienta recibe el principal del usuario y llama `authorize()` ella misma. El modelo nunca sostiene una credencial de servicio que pueda ver más que la persona que está escribiendo. Profundicé en esto para MCP específicamente en [servidores MCP que no filtran](/es/blog/mcp-servers-that-dont-leak): el servidor aplica, el modelo solicita.
+
+<Callout type="danger" title="Filtra dentro de la consulta, nunca después">
+Post-filtrar los resultados de recuperación es una fuga esperando una línea de código olvidada. Si el recuperador puede devolver un documento que el usuario no puede leer, eventualmente lo hará, y el modelo lo resumirá de forma hermosa. Restringe el espacio de búsqueda con los permisos del usuario antes del ranking, para que un documento prohibido no esté simplemente oculto sino inalcanzable.
+</Callout>
+
+## 5. Los Artefactos Derivados Heredan el Acceso de Sus Fuentes
+
+Esta es la parte fácil de pasar por alto. En una plataforma de IA, los documentos no son lo único que guarda información. Los resúmenes también. Los campos extraídos también. Los embeddings también. Las respuestas en caché también. Cada uno de esos es un artefacto derivado, y cada uno puede filtrar su fuente.
+
+Nuestro pipeline de ingesta corre carga, luego extracción, luego análisis de IA, luego notificaciones. Cada etapa produce algo nuevo. La regla es simple y estricta: **el alcance de acceso de un artefacto derivado es la intersección de los alcances de sus fuentes.** Un resumen construido a partir del data room de un deal lo pueden leer exactamente las personas que pueden leer ese data room. Un resumen que combina documentos de dos deals lo pueden leer solo las personas que pueden leer ambos. Un embedding carga el alcance del chunk del que vino.
+
+El caché merece su propia advertencia. Una respuesta del modelo en caché indexada solo por el texto de la pregunta es una fuga entre usuarios con excelente latencia. Las llaves del caché tienen que incluir el alcance de permisos que produjo la respuesta, o el caché tiene que vivir por usuario. Esa la aprendí en una revisión de diseño, por suerte, no en producción.
+
+## 6. Una Entrada de Auditoría en Cada Mutación, Nombrando a Ambos Actores
+
+Cada mutación en la plataforma escribe una entrada de auditoría. No las mutaciones "importantes." Todas: cargas, ediciones, cambios de rol, cambios de membresía, borrados, configuraciones. La escritura de auditoría es parte del camino de la mutación, así que no la puede saltar un handler que se olvidó de registrar.
+
+```typescript
+interface AuditEntry {
+  at: string;                    // timestamp ISO
+  companyId: string;
+  dealId?: string;
+  actorUserId: string;           // el humano cuyos permisos se usaron
+  actingAgent?: string;          // se llena cuando un agente realizó la acción
+  action: Action | string;
+  resource: { type: string; id: string };
+  decision: { allowed: boolean; reason: string };   // directo de authorize()
+  changes?: { field: string; before?: unknown; after?: unknown }[];  // campos PII enmascarados
+}
+```
+
+Dos campos importan más. `actingAgent` significa que cuando un agente hace algo en nombre de un usuario — archiva un documento, actualiza un campo, redacta un cambio — el registro muestra tanto al humano cuya autoridad se usó como al agente que actuó. "¿Quién hizo esto?" tiene una respuesta honesta incluso cuando la respuesta es "lo hizo el asistente, en nombre de María." Y `decision.reason` viene directo de `authorize()`, así que el log explica no solo qué pasó sino por qué se permitió.
+
+Los campos que ciframos a nivel de campo por ser PII también se enmascaran en el rastro de auditoría. Un log de auditoría que copia valores sensibles en texto plano es solo otro lugar para filtrarlos.
+
+<Callout type="tip" title="Registra la razón, no solo el resultado">
+Una entrada de auditoría que dice "permitido" es media respuesta. Una entrada que dice "permitido: company-and-deal" o "denegado: explicit-deny" te deja reconstruir la decisión meses después sin tener que volver a derivarla. Devuelve razones desde tu función de autorización y persístelas.
+</Callout>
+
+## El Hilo
+
+Si tuviera que comprimir todo este post en una oración: **el modelo es un invitado dentro de los permisos del usuario, nunca un superusuario.**
+
+Dos niveles de roles te dejan dibujar los límites donde realmente están — dentro de la empresa, alrededor del deal. Componerlos por intersección evita que los privilegios se acumulen en silencio. Un solo `authorize()` llamado por la UI, la API, las herramientas y el recuperador significa que hay un solo lugar donde hacerlo bien. Que los artefactos derivados hereden el acceso de sus fuentes cierra los huecos que la IA crea. Y una entrada de auditoría en cada mutación, nombrando tanto a la persona como al agente, significa que siempre puedes responder la pregunta que más importa cuando algo sale mal: ¿quién hizo esto, y por qué se le permitió?
+
+La UI en ese bug del inicio era perfecta. No importó. En una plataforma de IA, la pantalla ya no es la única puerta.
+
+---
+
+*Si estás diseñando la autorización para una plataforma donde la IA lee en nombre de tus usuarios, y quieres un segundo par de ojos sobre dónde el modelo podría pasar a través de un muro, [contáctame](/contact). Estos huecos son mucho más baratos de encontrar en una revisión de diseño que en un reporte de bug.*

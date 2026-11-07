@@ -1,0 +1,199 @@
+---
+title: "Los Benchmarks Mienten con Cortesía: Cómo Elijo un Modelo de Verdad"
+description: "Los leaderboards públicos no están equivocados. Simplemente miden la carga de trabajo de otra persona. Cómo elijo un modelo para una función real: un eval pequeño y específico a la tarea, construido con tráfico de producción sanitizado, calidad, latencia, costo y modos de falla medidos juntos, una nueva corrida con cada lanzamiento de modelo, y una sana desconfianza de mis propias corazonadas."
+date: 2026-08-25
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "Evals", "Selección de Modelos", "LLMs", "Costos"]
+author: "Osvaldo Restrepo"
+translationOf: "benchmarks-lie-politely"
+tldr: "Los benchmarks públicos son honestos sobre lo que miden. El problema es que lo que miden no es tu carga de trabajo. Un leaderboard te dice cómo le va a un modelo con las preguntas de otra persona, calificadas a la manera de otra persona, sin ninguna opinión sobre tu presupuesto de latencia, tu costo por solicitud, o las formas específicas en que tus usuarios rompen las cosas. Yo elijo modelos con un eval pequeño y específico a la tarea, construido con tráfico real y sanitizado, usualmente unos cuantos cientos de casos. Califico calidad, latencia, costo y modos de falla en la misma corrida, porque un modelo que gana en uno y pierde feo en otro no es un ganador. Vuelvo a correr todo con cada lanzamiento de modelo, porque el ranking cambia más seguido de lo que cualquiera admite. Y trato mi propia impresión de 'este se siente más inteligente' como una hipótesis a probar, no como un resultado."
+faqs:
+  - question: "¿Los benchmarks públicos son inútiles para elegir un modelo?"
+    answer: "No. Son un buen primer filtro. Si un modelo está muy atrás en un benchmark público amplio, probablemente no te va a sorprender en tu carga de trabajo. Pero una vez que estás eligiendo entre un puñado de candidatos fuertes, las diferencias en los leaderboards públicos son más pequeñas que las diferencias que tu propia tarea va a revelar. Usa los benchmarks para armar la lista corta, y tu propio eval para elegir de ella."
+  - question: "¿Qué tan grande tiene que ser un eval específico a la tarea?"
+    answer: "Más pequeño de lo que la gente piensa para empezar. Unos cuantos cientos de casos bien elegidos, sacados de tráfico real, con una porción deliberada de entradas difíciles y raras, van a separar a los candidatos en la mayoría de las tareas de producto. El punto es cubrir tu distribución real de entradas y tus modos de falla, no la grandeza estadística. Lo haces crecer cada vez que producción te sorprende."
+  - question: "¿Por qué medir latencia y costo en la misma corrida que la calidad?"
+    answer: "Porque compiten entre sí y tú solo tomas una decisión. Un modelo que es un poco mejor en calidad pero notablemente más lento en la cola y varias veces más caro por solicitud puede ser la elección equivocada para una función de cara al usuario y la correcta para un job nocturno por lotes. Medirlos por separado te invita a optimizar uno y olvidarte de los otros hasta que llega la factura o los tickets de soporte."
+relatedPosts: ["eval-set-is-the-spec", "llm-evaluation-pipelines", "pricing-ai-features-usage-costs"]
+---
+
+Hace unos meses salió un modelo nuevo, y en unas seis horas mis feeds estaban llenos de gráficas. Iba adelante en este leaderboard, empatado en aquel, con un salto claro en una suite de razonamiento que yo conocía y dos que no. Alguien a quien respeto publicó "esto lo cambia todo para los agentes." Lo leí todo con mi café y sentí la comezón de siempre: cambiar el default, enviarlo, subirme a la ola.
+
+Así que hice lo que siempre hago en su lugar. Lo apunté al eval set de una de nuestras funciones de análisis de documentos, el que está construido con cargas reales, limpiado de cualquier cosa identificable, y esperé unos cuarenta minutos.
+
+Estuvo bien. Genuinamente bien. Un poco mejor en un par de categorías de extracción, un poco peor en una que nos importa mucho, notablemente más lento en la cola, y más caro por documento. Para esa función, no era la mejora. Para una herramienta interna distinta resultó ser exactamente la mejora. Ninguno de esos dos hechos estaba en ninguna gráfica.
+
+Ese es todo el post, en realidad. Los benchmarks no mienten en el sentido de ser falsos. Mienten con cortesía: responden una pregunta que no hiciste, con mucha precisión, y te dejan asumir que era la tuya.
+
+## Lo que un Leaderboard Mide de Verdad
+
+Un benchmark público es un conjunto fijo de preguntas de otra persona, calificadas a la manera de otra persona, corridas bajo la configuración de otra persona. Eso no es una crítica. Eso es lo que lo hace un benchmark. Tiene que ser fijo y general para ser comparable entre modelos.
+
+Pero vuelve a leer esa oración pensando en tu producto:
+
+```
+benchmark público                 tu función
+─────────────────────────────     ─────────────────────────────
+preguntas de otra persona         las entradas reales de tus usuarios
+rúbrica genérica                  lo que "correcto" significa para ti
+sin presupuesto de latencia       un usuario está mirando un spinner
+sin techo de costo                pagas por solicitud, para siempre
+promedia todo                     un mal modo de falla te puede matar
+fijo al publicarse                tu tráfico se desvía cada mes
+```
+
+Cada fila de la derecha es algo que un leaderboard no puede saber. Y cada fila de la derecha es algo que va a decidir si tu función sobrevive el contacto con los usuarios.
+
+Hay un segundo problema, más silencioso. Los benchmarks populares se vuelven objetivos. Una vez que un número es lo que todos citan en un post de lanzamiento, hay presión, a veces deliberada y a veces solo gravitacional, para que los modelos se vuelvan buenos en ese número. No estoy acusando a nadie de nada. Estoy diciendo que un benchmark para el que todos optimizan gradualmente mide qué tan bien optimizas para el benchmark.
+
+<Callout type="info" title="Usa los benchmarks para la lista corta, no para la decisión">
+Los benchmarks públicos amplios son un buen filtro grueso. Si un modelo está muy atrás, probablemente no te va a sorprender en tu tarea. Pero entre los tres o cuatro candidatos fuertes que realmente estás considerando, las brechas del leaderboard suelen ser más pequeñas que las brechas que tu propia carga de trabajo va a exponer. El leaderboard te lleva a la lista corta. Tu eval elige de ella.
+</Callout>
+
+## Regla 1: Construye un Eval Pequeño con Tráfico Real
+
+El eval que importa es el que está hecho de tus entradas. No las entradas que imaginas que los usuarios van a mandar. Las que realmente mandaron.
+
+Para nuestro trabajo de plataforma en TheGreyMatter.ai, eso significa sacar una muestra de solicitudes reales de una función, pasarlas por sanitización para que nada identificable sobreviva, y luego etiquetar cómo se ve una buena respuesta. Para los agentes de voz que construí en Shining Image, significaba transcripciones de llamadas reales: gente preguntando por el horario mientras manejaba, gente dando su dirección con un perro ladrando, gente que quería un humano desde la primera palabra.
+
+Unos cuantos cientos de casos es un comienzo perfectamente bueno. Apunto a una mezcla como esta:
+
+```
+composición del eval set (ilustrativa)
+─────────────────────────────────────
+~60%  tráfico representativo       el medio aburrido; la mayoría de tu volumen
+~25%  casos difíciles conocidos    docs largos, escaneos sucios, pedidos ambiguos
+~10%  fallas pasadas en producción cada reporte de bug se vuelve un caso
+ ~5%  adversarial / fuera de scope cosas que debería rechazar o escalar
+```
+
+Las proporciones no son sagradas. Lo que importa es que el medio aburrido esté ahí (porque ahí vive tu costo) y que cada falla pasada esté ahí (porque ahí vive tu reputación).
+
+He escrito antes que [el eval set es la especificación](/es/blog/eval-set-is-the-spec): si no puedes escribir casos que definan "correcto," todavía no tienes una función, tienes un demo. La selección de modelo es simplemente el primer lugar donde esa idea paga la renta.
+
+<Callout type="warning" title="Sanitiza antes de muestrear, no después">
+El tráfico real es el mejor material para evals que vas a conseguir jamás, y también el más riesgoso. Quita nombres, identificadores, números de cuenta, y cualquier cosa clínica o financiera antes de que aterrice en un archivo que alguien puede abrir en una laptop. Un eval set es un dataset. Merece el mismo cuidado que los datos de producción de donde salió.
+</Callout>
+
+## Regla 2: Mide Calidad, Latencia, Costo y Modos de Falla Juntos
+
+Esta es la regla que más veo que se salta. Los equipos corren una comparación de calidad, eligen al ganador, y luego descubren la latencia en staging y el costo en la factura.
+
+Quiero los cuatro números de la misma corrida, en los mismos casos, en una sola tabla. Algo así:
+
+```typescript
+type CaseResult = {
+  caseId: string;
+  model: string;
+  score: number;            // 0..1 del calificador para esta tarea
+  latencyMs: number;        // tiempo real, incluyendo reintentos
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;          // calculado con los precios actuales
+  failure?: "schema_invalid" | "refused_wrongly" | "hallucinated_field"
+          | "timeout" | "over_refusal" | "wrong_language";
+};
+
+function summarize(results: CaseResult[]) {
+  const byModel = groupBy(results, (r) => r.model);
+  return Object.entries(byModel).map(([model, rs]) => ({
+    model,
+    meanScore: mean(rs.map((r) => r.score)),
+    p50Latency: percentile(rs.map((r) => r.latencyMs), 50),
+    p95Latency: percentile(rs.map((r) => r.latencyMs), 95),
+    costPer1k: (sum(rs.map((r) => r.costUsd)) / rs.length) * 1000,
+    failures: countBy(rs.filter((r) => r.failure), (r) => r.failure!),
+  }));
+}
+```
+
+Nada ingenioso. El punto es que el resumen te obliga a mirar los cuatro a la vez. Un modelo que es un poco mejor en el puntaje promedio pero tiene una cola p95 larga y cuesta varias veces más por cada mil solicitudes puede ser la elección correcta para un job nocturno por lotes y una elección terrible para algo que un usuario está esperando.
+
+Y la columna de fallas importa más que el promedio. Dos modelos con el mismo puntaje promedio pueden fallar de maneras completamente distintas:
+
+```
+modelo A                               modelo B
+──────────────────────────────────     ──────────────────────────────────
+puntaje promedio: similar              puntaje promedio: similar
+falla así: rechaza docs ambiguos       falla así: inventa el valor de un campo
+el usuario ve: "revisa este"           el usuario ve: un número equivocado y seguro
+costo de la falla: unos minutos        costo de la falla: una mala decisión
+```
+
+Mismo promedio. Productos muy distintos. Me quedo con el modelo A casi siempre, por las mismas razones sobre las que escribí en [dos tonos de error](/es/blog/two-tones-of-wrong-clinical-ai): una respuesta con reservas se revisa, un error confiado se ejecuta.
+
+<Callout type="tip" title="Nombra tus modos de falla antes de comparar">
+Antes de correr una comparación, escribe las cuatro o cinco formas específicas en que esta función puede fallar feo. Etiqueta cada caso fallido con una de ellas. Luego compara modelos por la distribución de fallas, no solo por la tasa de aciertos. La pregunta nunca es solo "qué tan seguido se equivoca," es "cómo se ve equivocarse aquí."
+</Callout>
+
+## Regla 3: Vuelve a Correrlo con Cada Lanzamiento
+
+El ranking de modelos para tu tarea no es un hecho que aprendes una vez. Es el clima.
+
+Los proveedores lanzan versiones nuevas. Actualizan versiones existentes. Los precios cambian. Tus propios prompts cambian. Tu tráfico se desvía a medida que los usuarios descubren cosas nuevas que preguntar. Cualquiera de esas puede voltear cuál modelo es el mejor para una función dada, y ninguna te va a mandar un correo diciendo "tu ranking cambió."
+
+Así que el eval no es una competencia de una sola vez. Es un job. Cuando aparece un modelo nuevo que me importa, el eval corre contra él, y el resultado aterriza al lado del titular en la misma tabla. Cuando cambio un prompt, el eval corre. Cuando el tráfico de una función ha cambiado lo suficiente como para refrescar la muestra, el eval corre sobre la muestra nueva contra todos los candidatos actuales.
+
+El pipeline en sí es la parte aburrida, y he escrito sobre la plomería en [pipelines de evaluación de LLMs](/es/blog/llm-evaluation-pipelines). El hábito es la parte que importa: nadie cambia el modelo por defecto de una función por un post de lanzamiento. Lo cambian porque el eval lo dice, con las cuatro columnas a la vista.
+
+```
+se anuncia un modelo nuevo
+        │
+        ▼
+agregar a candidatos ──▶ correr evals de la tarea ──▶ comparar vs. titular
+                                                         │
+                    ┌────────────────────────────────────┼─────────────────────┐
+                    ▼                                    ▼                     ▼
+             claramente mejor en               mixto: mejor aquí,      peor o igual
+             calidad, ok en costo              peor allá               a mayor costo
+             y latencia                              │                     │
+                    │                                ▼                     ▼
+                    ▼                       quizás dividir por función  quedarse con el
+             cambiar detrás de un flag,     (lotes vs. interactivo)     titular, anotar
+             vigilar producción                                         el resultado
+```
+
+Esa rama del medio es más común de lo que la gente espera. "Mejor" muy seguido es "mejor para algunas de tus funciones." Enrutar distintas funciones a distintos modelos no es indecisión. Es simplemente tomarse el eval en serio.
+
+## Regla 4: Desconfía de Tus Propias Corazonadas
+
+Esta es la incómoda, porque soy tan culpable como cualquiera.
+
+Cuando pruebo un modelo nuevo a mano, le hago un puñado de preguntas que a mí me parecen interesantes. Esas preguntas no son las preguntas de mis usuarios. Son, casi por definición, las preguntas que le parecen interesantes a una persona que escribe sobre IA. Si el modelo las responde con un poco más de estilo, una estructura más limpia, un tono seguro, me quedo pensando que es más inteligente.
+
+Esa impresión es un dato real sobre una cosa: cómo maneja el modelo los diez prompts que se me ocurrió teclear un martes. No es un dato sobre los cientos de casos que representan lo que mandan mis usuarios. Especialmente no es un dato sobre tono versus exactitud, porque una respuesta fluida y segura se lee como "inteligente" para un humano cansado incluso cuando está silenciosamente equivocada.
+
+Sigo jugando con modelos nuevos. Es la parte divertida y sí me dice algo sobre el estilo. Pero ahora escribo la impresión como una hipótesis ("este parece mejor con documentos largos") y luego voy a revisar si el eval está de acuerdo. A veces lo está. Con bastante frecuencia el eval dice "igual, pero más lento," y he aprendido a creerle al eval.
+
+<Callout type="danger" title="Fluidez no es exactitud">
+La mejora de modelo más peligrosa es la que escribe con más seguridad sin ser más correcta. Va a ganar cada comparación informal lado a lado y te va a hacer perder confianza en producción. Si tu comparación no tiene etiquetas de verdad, mayormente estás midiendo qué tan persuasivo suena cada modelo.
+</Callout>
+
+## Cómo Se Ve Esto en la Práctica
+
+Para hacerlo concreto, así es más o menos como va hoy una decisión de modelo para una función:
+
+1. **Lista corta** de dos a cuatro candidatos a partir de benchmarks públicos, documentación de los proveedores, y lo que es realista en precio.
+2. **Sacar** una muestra fresca de tráfico sanitizado para esa función, más cada falla pasada registrada.
+3. **Correr** todos los candidatos en los mismos casos con el mismo prompt, la misma configuración, el mismo calificador.
+4. **Leer** la tabla de cuatro columnas: calidad, percentiles de latencia, costo por mil, distribución de fallas.
+5. **Leer** unos veinte casos fallidos de cada modelo a mano. Los números esconden formas; los ejemplos las muestran.
+6. **Decidir** por función, no por empresa. Escribir el porqué en una nota corta al lado del resultado.
+7. **Enviar** detrás de un flag, vigilar las métricas de producción, y mantener el eval en el pipeline de releases.
+
+El paso cinco es el que la gente se salta porque es lento. También es donde más aprendo. La tabla me dice que el modelo B tiene más fallas de "campo alucinado." Leer los casos me dice que todas pasan en documentos escaneados con tablas rotadas, lo cual me dice si el arreglo es un modelo distinto o un mejor paso de preprocesamiento. A veces la respuesta correcta a "¿cuál modelo?" resulta ser "ninguno, arregla la entrada."
+
+El costo merece su propia oración. Una diferencia por solicitud que se ve trivial en una comparación se vuelve una partida del presupuesto a volumen, que es por lo que lo pienso de la forma que describí en [ponerle precio a funciones de IA](/es/blog/pricing-ai-features-usage-costs). El modelo más barato que es suficientemente bueno para el medio aburrido muchas veces libera presupuesto para el modelo caro en la cola difícil.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **un benchmark te dice cómo le va a un modelo en el trabajo de otra persona, y tu eval es lo único que sabe cuál es tu trabajo.**
+
+El leaderboard es una respuesta cortés y honesta a una pregunta general. Tus usuarios no están haciendo una pregunta general. Están subiendo un escaneo torcido a las 6 p.m., o llamando mientras manejan, o pidiendo justo lo único que tu función nunca debió hacer. Construye un eval pequeño con exactamente eso, mide las cuatro cosas que importan en un solo lugar, vuelve a correrlo cada vez que el terreno se mueve, y trata tu propia emoción por un modelo nuevo como el inicio de un experimento, no el final.
+
+Las gráficas van a seguir llegando cada día de lanzamiento. Deja que armen tu lista corta. Deja que tu propio tráfico tome la decisión.
+
+---
+
+*Si estás tratando de elegir entre modelos para una función real y los leaderboards no te están ayudando, [contáctame](/contact). Siempre me da gusto conversar sobre cómo convertir tu propio tráfico en un eval que de verdad responda la pregunta.*

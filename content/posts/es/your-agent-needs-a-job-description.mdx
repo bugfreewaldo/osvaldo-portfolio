@@ -1,0 +1,235 @@
+---
+title: "Tu Agente Necesita una Descripción de Puesto, No una Personalidad"
+description: "Los agentes fallan cuando su alcance es 'sé útil'. Lo que cambió para mí fue escribir una descripción de puesto literal para cada agente en TheGreyMatter.ai: The Fixer, Vector_10 y TheHacker. Responsabilidades, herramientas, lo que nunca debe hacer, a quién escala y cómo se evalúa su desempeño. Este es el formato de carta que uso, y por qué termina en código, no solo en el prompt."
+date: 2026-06-23
+published: true
+category: "Ingeniería de IA"
+tags: ["Agentes de IA", "Diseño de Agentes", "Guardrails", "Evals", "TheGreyMatter"]
+author: "Osvaldo Restrepo"
+translationOf: "your-agent-needs-a-job-description"
+tldr: "La mayoría de las fallas de agentes que he depurado no fueron fallas del modelo. Fueron fallas de alcance: un agente al que le dices 'sé útil' eventualmente será útil en una dirección que nadie pidió. El arreglo que me funcionó fue aburrido y anticuado: escribirle a cada agente una descripción de puesto real. Para cada agente de la plataforma GreyMatter, incluyendo The Fixer (remediación de auditorías de cumplimiento), Vector_10 (razonamiento sobre la ontología de 9 vectores) y TheHacker (escaneo de nuestros propios sistemas), ahora escribo una carta que nombra su única responsabilidad, las herramientas exactas que tiene, lo que nunca debe hacer, a quién escala y cómo se revisa su trabajo. Esa carta luego se compila en tres cosas: el system prompt, la lista de herramientas permitidas aplicada en código, y la suite de evals. Una personalidad es algo que describes. Un puesto es algo que puedes auditar."
+faqs:
+  - question: "¿Un system prompt detallado no es lo mismo que una carta de agente?"
+    answer: "No. El system prompt es una de las salidas de la carta, y la más débil, porque al modelo se le puede convencer de salirse de él. La carta también produce una lista de herramientas permitidas aplicada en código, un conjunto de reglas 'nunca' verificadas fuera del modelo, una ruta de escalación conectada al runtime, y una suite de evals que revisa el desempeño del agente. Si el único lugar donde viven los límites de tu agente es el prompt, escribiste una sugerencia, no una descripción de puesto."
+  - question: "¿Qué tan estrecha debe ser la responsabilidad de un agente?"
+    answer: "Lo suficientemente estrecha para que puedas escribirla en una oración sin que la palabra 'y' cargue con todo el peso, y lo suficientemente estrecha para que un revisor pueda decir si una ejecución dada estuvo dentro del alcance o no. Si dos personas de tu equipo no se pondrían de acuerdo sobre si una acción era parte del trabajo del agente, el alcance es demasiado vago. Cuando un agente necesita una segunda responsabilidad, usualmente eso es un segundo agente con su propia carta, no un prompt más largo."
+  - question: "¿Cómo revisas el desempeño de un agente a lo largo del tiempo?"
+    answer: "De la misma forma en que revisarías a una nueva contratación en período de prueba: contra las responsabilidades de la carta, con ejemplos reales. Cada carta nombra un set de evals construido con casos reales, una muestra de ejecuciones en producción que un humano lee en cada ciclo de revisión, y las señales que disparan una revisión anticipada, como una tasa de escalación que de repente cae a cero o una llamada a herramienta bloqueada por la lista permitida. Los resultados de la revisión alimentan de vuelta a la carta misma."
+relatedPosts: ["building-ai-agents-production", "eval-set-is-the-spec", "security-agent-scanning-your-own-code"]
+---
+
+La primera versión de The Fixer tenía un system prompt que empezaba con "Eres un asistente de cumplimiento útil." Yo escribí esa oración. Estaba orgulloso de lo limpia que se veía.
+
+El trabajo real de The Fixer, el que yo tenía en la cabeza, era estrecho: tomar un hallazgo de una auditoría de cumplimiento y proponer la remediación. Una revisión de accesos faltante, una política de retención sin documentar, un control sin evidencia. Leer el hallazgo, proponer el arreglo, entregárselo a un humano.
+
+En una de las primeras pruebas, le di un hallazgo sobre un control con evidencia incompleta. Sí propuso una remediación. También reescribió la severidad del hallazgo de "alta" a "media" porque, en sus palabras, la brecha "parecía estar parcialmente mitigada." Redactó una nota para el dueño del control. Y sugirió una edición a un documento de política que no tenía nada que ver con el hallazgo, porque había notado una redacción inconsistente en el camino.
+
+Cada una de esas acciones era, en cierto sentido, útil. Ninguna era su trabajo. Y el cambio de severidad era el tipo de cosa que, si se hubiera colado sin revisión, habría hecho que una auditoría se viera mejor de lo que realmente era, sin que nadie lo notara.
+
+El modelo no estaba roto. Mi alcance sí. "Sé útil" no es un alcance. Es una personalidad. Y un agente con personalidad y sin descripción de puesto eventualmente será útil en una dirección que nunca autorizaste.
+
+## Las Personalidades No Tienen Límites
+
+Este es el patrón que sigo viendo, en mi propio trabajo y en los sistemas de agentes que otras personas me muestran. El system prompt describe *quién es el agente*: útil, minucioso, cuidadoso, experto. Rara vez describe *para qué es el agente*, para qué no es, y qué pasa cuando llega al borde.
+
+Eso funciona bien en una ventana de chat, donde un humano lee cada turno y el costo de un desvío son unos segundos perdidos. Se cae a pedazos en el momento en que el agente tiene herramientas, corre en un bucle y actúa sobre datos que importan. He escrito sobre la mecánica de esos bucles en [construyendo agentes de IA para producción](/es/blog/building-ai-agents-production); este post es sobre lo que está por encima del bucle y decide qué se le permite querer al bucle.
+
+Un buen empleado no tiene alcance ilimitado solo porque es inteligente y motivado. De hecho, mientras más inteligente y motivado sea, más importa una descripción de puesto clara, porque va a encontrar trabajo que hacer. Los agentes son iguales. Un modelo capaz con un mandato vago no es un modelo seguro. Es un modelo enérgico.
+
+<Callout type="warning" title="La capacidad empeora el alcance vago, no lo mejora">
+Un modelo débil con un alcance vago falla ruidosamente y lo notas. Un modelo fuerte con un alcance vago tiene éxito en cosas que no pediste, en silencio, y lo notas después. Mientras mejor se vuelve el modelo, más importa la descripción de puesto.
+</Callout>
+
+## Así que Empecé a Escribir Descripciones de Puesto de Verdad
+
+Después de la entusiasta primera semana de The Fixer, dejé de escribir system prompts primero. Ahora cada agente en la plataforma GreyMatter recibe una carta antes de recibir un prompt. El formato está robado, sin vergüenza, de cómo un gerente de contratación decente escribe un rol:
+
+1. **Responsabilidad.** Una oración. Para qué es este agente.
+2. **Herramientas.** Las capacidades exactas que tiene. No categorías. Nombres.
+3. **Nunca.** Las acciones que no debe tomar, aunque ayudarían.
+4. **Escalación.** A quién reporta, y bajo qué condiciones se detiene y entrega.
+5. **Evaluación de desempeño.** Cómo decidimos si está haciendo bien el trabajo.
+
+Esta es una versión recortada de la carta de The Fixer, más o menos como vive en el repo:
+
+```yaml
+agent: the-fixer
+version: 3
+
+responsibility: >
+  Dado un hallazgo de auditoría de cumplimiento, proponer un plan
+  de remediación con la evidencia requerida para cerrarlo. Solo propuestas.
+
+inputs:
+  - un hallazgo de auditoría (id, control, severidad, brechas de evidencia)
+  - la documentación actual del control (solo lectura)
+
+tools:
+  - findings.read          # leer solo el hallazgo asignado
+  - controls.read          # leer docs del control e índice de evidencia
+  - evidence.search        # buscar evidencia existente para el control
+  - remediation.propose    # escribir un plan BORRADOR, status = pending_review
+
+never:
+  - cambiar la severidad, el estado o el dueño de un hallazgo
+  - editar documentos de política o de control directamente
+  - contactar personas (sin email, sin mensajes, sin tickets asignados a humanos)
+  - actuar sobre cualquier hallazgo que no sea el asignado
+  - marcar cualquier cosa como resuelta
+
+escalate_to: compliance-reviewer (humano)
+escalate_when:
+  - el hallazgo parece mal clasificado (reportarlo, no arreglarlo)
+  - la remediación requiere un cambio de política
+  - la evidencia es contradictoria o falta por completo
+  - la confianza en el plan es baja
+
+performance_review:
+  eval_set: evals/the-fixer/        # hallazgos reales, planes revisados
+  human_sample: lectura semanal de una muestra de propuestas en producción
+  watch:
+    - tasa de escalación (cero es una alerta, no un logro)
+    - llamadas a herramientas bloqueadas (cualquiera es una alerta)
+    - distancia de edición del revisor en propuestas aceptadas
+```
+
+Fíjate lo que esa carta le hace a la falla original. El cambio de severidad: explícitamente prohibido, y además imposible, porque no existe ninguna herramienta que escriba severidad. La nota al dueño del control: prohibida, y no existe herramienta de mensajería. La edición de política no relacionada: fuera de alcance por partida doble. La observación de que el hallazgo podría estar mal clasificado, que en realidad era un instinto útil, ahora tiene un hogar: se convierte en una escalación, no en una acción.
+
+Esa última parte importa. La carta no vuelve al agente más tonto. Le dice al agente dónde poner las cosas que nota y que no son su trabajo.
+
+## Los Tres Agentes, Tres Puestos
+
+El formato de carta realmente se probó cuando tuve más de un agente, porque los bugs más difíciles en sistemas multi-agente son los traslapes de alcance. Dos agentes que creen que algo es su trabajo es peor que un agente que cree que nada lo es.
+
+Así es como los tres agentes principales de la plataforma se dividen el mundo, en una línea cada uno:
+
+```
+┌──────────────┬──────────────────────────────────┬──────────────────────────────┐
+│ agente       │ responsabilidad (una oración)    │ nunca debe                   │
+├──────────────┼──────────────────────────────────┼──────────────────────────────┤
+│ The Fixer    │ proponer remediación para un     │ cambiar hallazgos, editar    │
+│              │ hallazgo de auditoría            │ docs, contactar, resolver    │
+├──────────────┼──────────────────────────────────┼──────────────────────────────┤
+│ Vector_10    │ razonar sobre los datos de una   │ inventar puntajes, escribir  │
+│              │ empresa con la ontología de 9    │ en la ontología, responder   │
+│              │ vectores                         │ fuera de ella                │
+├──────────────┼──────────────────────────────────┼──────────────────────────────┤
+│ TheHacker    │ escanear NUESTROS sistemas en    │ salir de su lista de         │
+│              │ busca de debilidades y reportar  │ objetivos, explotar, parchar │
+└──────────────┴──────────────────────────────────┴──────────────────────────────┘
+```
+
+**Vector_10** es el que la gente más quiere expandir. Razona sobre los datos de una empresa a través de la ontología de 9 vectores, lo que lo hace sentir como un asesor de estrategia general, y cada demo termina con alguien preguntando "¿y no puede también decirnos qué hacer?" Su carta dice que no, explícitamente. Explica dónde se ubica una empresa en la ontología y por qué, citando los datos que usó. No produce puntajes que los datos subyacentes no respaldan, no escribe de vuelta en la ontología, y cuando una pregunta cae fuera de los vectores, lo dice en vez de improvisar una respuesta que suene ontológica. Ese rechazo está en la carta como una responsabilidad, no como una limitación.
+
+**TheHacker** es aquel donde la lista de "nunca" es todo el punto. Un agente cuyo trabajo es encontrar vulnerabilidades es, por construcción, un agente que sabe cómo buscar formas de entrar. Su carta es la más estrecha de las tres: una lista fija de objetivos, todos nuestros. Escanear, verificar que el hallazgo es real, reportar con pasos de reproducción, detenerse. No explota más allá de lo necesario para confirmar un hallazgo, no parcha, y no decide que un sistema vecino "parece relacionado" y se va para allá. Escribiré más sobre los detalles en un post sobre [correr un agente de seguridad contra tu propio código](/es/blog/security-agent-scanning-your-own-code), pero la carta es lo que me hizo sentir cómodo encendiéndolo en primer lugar.
+
+<Callout type="tip" title="El traslape de alcance es el bug multi-agente">
+Cuando tienes varios agentes, escribe sus responsabilidades lado a lado y busca traslapes y huecos. Cada traslape es una futura discusión entre dos agentes. Cada hueco es un lugar donde la solicitud de un usuario caerá en el agente más ansioso, que nunca es el que tú elegirías.
+</Callout>
+
+## La Carta No Es el Prompt
+
+Esta es la parte que más me tomó aprender, y es la que subrayaría si solo pudiera quedarme con un párrafo.
+
+Si la carta solo se convierte en un system prompt, escribiste una sugerencia muy bien organizada. Los modelos siguen instrucciones bien, pero "bien" no es "siempre," y un input suficientemente raro, un resultado de herramienta confuso, o una inyección de prompt enterrada en un documento pueden convencer a un agente de salirse de casi cualquier cosa que solo le *pediste*.
+
+Así que la carta se compila en tres artefactos, y solo uno de ellos es el prompt:
+
+```
+                    ┌─────────────────────┐
+                    │   carta del agente  │
+                    │   (yaml, en repo)   │
+                    └──────────┬──────────┘
+          ┌────────────────────┼────────────────────┐
+          ▼                    ▼                    ▼
+ ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+ │ system prompt   │  │ política runtime│  │ suite de evals  │
+ │                 │  │                 │  │                 │
+ │ le explica el   │  │ herramientas    │  │ casos reales por│
+ │ puesto al       │  │ permitidas +    │  │ responsabilidad │
+ │ modelo          │  │ reglas "nunca"  │  │ + escalaciones  │
+ │                 │  │ en código +     │  │ + casos "nunca" │
+ │                 │  │ escalación      │  │                 │
+ │ (persuasión)    │  │ (aplicación)    │  │ (revisión)      │
+ └─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+La política de runtime es la que realmente sostiene la línea. Esta es la forma del chequeo que se sienta entre el modelo y cada llamada a herramienta, simplificada:
+
+```typescript
+type Charter = {
+  agent: string;
+  tools: string[];
+  scope: { resourceIds: string[] };
+};
+
+type ToolCall = { name: string; args: Record<string, unknown> };
+
+export function authorizeToolCall(charter: Charter, call: ToolCall) {
+  // 1. La herramienta debe estar nombrada en la carta. Sin categorías, sin comodines.
+  if (!charter.tools.includes(call.name)) {
+    return deny("tool_not_in_charter", call);
+  }
+
+  // 2. El objetivo debe estar dentro del alcance asignado al agente.
+  const target = String(call.args.resourceId ?? "");
+  if (target && !charter.scope.resourceIds.includes(target)) {
+    return deny("resource_out_of_scope", call);
+  }
+
+  return { allowed: true as const };
+}
+
+function deny(reason: string, call: ToolCall) {
+  // Las llamadas bloqueadas nunca son silenciosas. Se registran y
+  // aparecen en la evaluación de desempeño del agente.
+  auditLog.write({ event: "agent_tool_denied", reason, tool: call.name });
+  return { allowed: false as const, reason };
+}
+```
+
+Nada ingenioso. La decisión de diseño importante es que el modelo nunca ve herramientas fuera de su carta en primer lugar, y si de alguna forma intenta llamar una de todos modos, el intento se registra como un evento que alguien va a leer. Una llamada bloqueada no es un error para reintentar. Es un punto en la evaluación de desempeño.
+
+La lista de "nunca" recibe el mismo tratamiento donde se puede. The Fixer no puede cambiar la severidad porque ninguna herramienta que tiene puede escribir severidad. TheHacker no puede salirse de su lista de objetivos porque la lista de objetivos es el chequeo de alcance. Donde un "nunca" no se puede aplicar estructuralmente, se convierte en un caso de eval, para al menos saber si se está violando. Si una regla vive solo en el prompt, la trato como no probada.
+
+## La Escalación Es una Responsabilidad, No una Falla
+
+Cada carta tiene una sección de escalación, y nombra a una persona o un rol, no "el usuario." Este fue un cambio real en cómo pensaba sobre los agentes.
+
+Al principio, medía a los agentes por qué tan seguido completaban la tarea sin ayuda. Eso suena correcto y está silenciosamente mal, por la misma razón que está mal para un empleado nuevo. La nueva contratación que nunca hace una pregunta no es la mejor. Es la que te debería preocupar.
+
+Así que la escalación está escrita en la carta como parte del trabajo. The Fixer *debe* entregar un hallazgo que cree mal clasificado. Vector_10 *debe* decir "esto está fuera de la ontología" en vez de improvisar. TheHacker *debe* detenerse y reportar cuando encuentra algo que no está seguro de cómo confirmar de forma segura. Esas entregas son casos de éxito en la suite de evals, no fallas.
+
+Y como escribí sobre el rechazo en IA clínica, la tasa importa en ambas direcciones. Si la tasa de escalación de un agente de repente cae a cero, no es señal de que se volvió más inteligente. Usualmente es señal de que empezó a hacer con confianza cosas que antes entregaba correctamente.
+
+## Evaluaciones de Desempeño, Literalmente
+
+La última sección de la carta es la que la mayoría de los equipos se salta, y es la que mantiene honestas a las otras cuatro.
+
+Cada agente tiene un set de evals construido con casos reales, organizado por las responsabilidades y los "nunca" de su carta. Para The Fixer, eso significa hallazgos reales con planes que un revisor humano aceptó, hallazgos que debieron escalarse, y hallazgos diseñados para tentarlo a cambiar una severidad. He argumentado antes que [el set de evals es la especificación](/es/blog/eval-set-is-the-spec); para los agentes, la carta es lo que te dice qué necesita contener el set de evals.
+
+Encima de los evals, alguien lee una muestra de ejecuciones reales de producción cada semana. No un dashboard. Las ejecuciones reales. Esa lectura es de donde salen la mayoría de los cambios a la carta: un nuevo "nunca" porque el agente encontró un desvío creativo, una responsabilidad más estrecha porque dos agentes seguían traslapándose, un nuevo disparador de escalación porque un revisor seguía arreglando el mismo tipo de error.
+
+La carta tiene un número de versión exactamente por esa razón. Es un documento vivo, revisado como una descripción de rol que evoluciona a medida que el equipo aprende cuál es realmente el trabajo.
+
+<Callout type="info" title="Evalúa al agente como a una nueva contratación">
+Hazte las mismas preguntas que harías sobre una persona con tres meses en un rol. ¿Está haciendo el trabajo para el que fue contratada? ¿Está haciendo cosas para las que no fue contratada? ¿Pide ayuda en los momentos correctos? ¿Algo te ha sorprendido? Si no puedes responder eso desde tus evals y tus muestras de ejecuciones, todavía no sabes cómo se está desempeñando tu agente.
+</Callout>
+
+## Lo que Cambió en la Práctica
+
+No quiero exagerar. Escribir cartas no volvió brillantes a los agentes. Los volvió legibles.
+
+Cuando algo sale mal ahora, la primera pregunta no es "¿por qué el modelo hizo eso?" Es "¿eso estaba en la carta?" Si sí, la carta o la herramienta estaban mal y las arreglamos. Si no, faltaba la aplicación o el eval y arreglamos eso. De cualquier forma, la conversación es sobre un documento que todo un equipo puede leer, no sobre sensaciones en un prompt.
+
+También cambió las conversaciones de producto. Cuando alguien pregunta "¿Vector_10 también puede hacer X?", la respuesta ya no es un debate sobre de qué es capaz el modelo. Es una pregunta sobre si X pertenece a este puesto o a uno nuevo. La mayoría de las veces, es uno nuevo.
+
+## El Hilo
+
+Si tuviera que comprimirlo en una oración: **un agente sin descripción de puesto se inventará una, y no te va a gustar lo que escriba.**
+
+Dale a cada agente una responsabilidad, un conjunto nombrado de herramientas, una lista explícita de cosas que nunca debe hacer, una persona real a quien escalar, y una evaluación de desempeño basada en trabajo real. Luego asegúrate de que esas palabras vivan en código y en evals, no solo en el prompt. La personalidad puede quedarse. Simplemente no debería ser lo único que contrataste.
+
+---
+
+*Si estás construyendo agentes y siguen haciendo cosas útiles que nadie pidió, [contáctame](/contact). Con gusto reviso tus cartas, o te ayudo a escribir la primera. Usualmente es un documento más corto de lo que la gente espera, y uno más útil.*

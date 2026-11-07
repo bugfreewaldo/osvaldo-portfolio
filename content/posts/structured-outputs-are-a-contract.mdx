@@ -1,0 +1,241 @@
+---
+title: "Structured Outputs Are a Contract: Treat LLM JSON Like an API, Not a Suggestion"
+description: "The model's JSON is not data until something has checked it. Why I treat every structured LLM output like an incoming API payload: schemas as the spec, validation at the boundary, one bounded repair attempt and then rejection, enums instead of free text, versioned schemas, and a hard rule that 'mostly JSON' never reaches the database."
+date: 2026-07-14
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "Structured Outputs", "Zod", "Validation", "LLM Reliability"]
+author: "Osvaldo Restrepo"
+tldr: "An LLM that returns JSON is a third-party API with no SLA and a creative streak. Most teams treat its output as data the moment JSON.parse succeeds, and that is how half-valid records end up in production databases. I treat structured outputs as a contract: the schema, not the prompt, is the spec; every output is validated at the boundary with zod or pydantic; a failed validation gets exactly one repair attempt with the validator's errors fed back, then it is rejected and quarantined; enums replace free text wherever a downstream system makes a decision; schemas are versioned like any public API; and nothing that is 'mostly JSON' is ever written to the database. The model is allowed to be wrong. The boundary is not."
+faqs:
+  - question: "If my provider supports JSON mode or tool schemas, do I still need validation?"
+    answer: "Yes. Provider-level structured output features dramatically reduce malformed JSON, and you should use them. But they guarantee shape, not meaning. A field can be a perfectly valid string and still be 'N/A' in a date field, a made-up enum value that slipped through a loose schema, or a number in the wrong unit. Your own validator encodes your business rules, and the provider cannot know those. Use both: the provider for syntax, your schema for semantics."
+  - question: "Why only one repair attempt? Wouldn't more retries fix more outputs?"
+    answer: "More retries fix more outputs and hide more problems. If an output fails validation twice with the errors spelled out, the issue is usually the input, the prompt, or the schema itself, not bad luck. Unbounded repair loops burn cost and latency, and they convert a visible quality signal into an invisible one. One repair, then reject and quarantine, keeps the failure rate honest and gives you real examples to fix."
+  - question: "How do you version a schema for LLM output?"
+    answer: "The same way you version an API. Every record stores the schema version it was validated against. Additive, optional fields are minor changes. Renaming, removing, or tightening a field is a breaking change that gets a new version, a migration plan for stored records, and an eval run on the new prompt-plus-schema pair before it ships. The prompt and the schema change together, in the same commit, because they are two halves of one contract."
+relatedPosts: ["designing-llm-retry-fallbacks", "eval-set-is-the-spec", "api-design-lessons-learned"]
+---
+
+The bug report said a document had "a renewal date of N/A." Not missing. Not null. The literal string "N/A," sitting in a date field, in a production database, quietly breaking a sort on a dashboard that a user was trying to use to find contracts expiring next quarter.
+
+I knew exactly how it got there, because I had written the code that let it in. An extraction step asked the model for JSON. The model returned JSON. `JSON.parse` succeeded. A TypeScript type annotation said the field was a string, which it technically was. And so the record went in, looking perfectly healthy, until a human tried to do something with it.
+
+Nothing had crashed. That was the problem. A crash would have been caught in an hour. A plausible-looking wrong value can live in a database for months.
+
+That afternoon I stopped thinking of model output as "the response" and started thinking of it as what it actually is: **an incoming payload from a third-party API with no SLA, no versioning discipline, and a creative streak.** You would never write an unvalidated webhook payload straight into your database. LLM output deserves at least the same suspicion, and probably more.
+
+Here is the contract I hold it to now.
+
+## 1. The Schema Is the Spec, Not the Prompt
+
+Most structured output bugs start with the prompt carrying the entire definition of the data. "Return a JSON object with the party names, the effective date, the renewal date, and the risk level." The prompt is the only place the shape lives, and so the shape is whatever the model decides that sentence means today.
+
+I flip that. The schema is written first, in code, and it is the source of truth. The prompt is derived from it, or at minimum reviewed against it. If the two ever disagree, the schema wins, because the schema is the thing that actually runs at the boundary.
+
+Here is a simplified version of what an extraction contract looks like in a TypeScript service:
+
+```ts
+import { z } from "zod";
+
+export const RISK_LEVELS = ["low", "medium", "high", "needs_review"] as const;
+
+export const ContractExtractionV2 = z.object({
+  schemaVersion: z.literal(2),
+  parties: z.array(z.string().min(1)).min(2),
+  effectiveDate: z.string().date().nullable(),   // ISO date or explicit null
+  renewalDate: z.string().date().nullable(),     // never "N/A", never "TBD"
+  autoRenews: z.boolean().nullable(),
+  riskLevel: z.enum(RISK_LEVELS),
+  riskReasons: z.array(z.string().max(280)).max(5),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+
+export type ContractExtraction = z.infer<typeof ContractExtractionV2>;
+```
+
+A few deliberate choices in there. Dates are ISO dates or an explicit `null`, so "I could not find it" has exactly one spelling. Risk is an enum, not a sentence. Reasons are bounded in count and length so a chatty model cannot stuff an essay into a field the UI renders in one line. And the version is a literal inside the object, so every stored record carries the contract it was validated against.
+
+The TypeScript type is inferred from the schema, not the other way around. That matters more than it looks. A type annotation on the result of `JSON.parse` is a promise you are making to the compiler with no evidence. An inferred type from a schema that actually ran is a promise backed by a check.
+
+<Callout type="info" title="A type annotation is not validation">
+Writing `as ContractExtraction` on parsed model output tells the compiler to trust you. It checks nothing at runtime. The only types you can trust at the boundary are the ones produced by a validator that actually executed against the data.
+</Callout>
+
+## 2. Validate at the Boundary, Every Time
+
+The boundary is the single place where model output becomes application data. Everything on the far side of it is untrusted text. Everything on the near side is typed, validated, and safe to reason about.
+
+I keep that boundary as one function per contract, and nothing is allowed to skip it:
+
+```
+  model response (text)
+          │
+          ▼
+  ┌──────────────────────────┐
+  │  extract JSON payload    │   tool-call args, or the raw body
+  └────────────┬─────────────┘
+               ▼
+  ┌──────────────────────────┐
+  │  schema.safeParse()      │   shape + business rules
+  └──────┬────────────┬──────┘
+     ok  │            │  fail
+         ▼            ▼
+   typed record    repair once (rule 3)
+   → database        │
+                     ├── ok   → typed record
+                     └── fail → quarantine + alert
+```
+
+Use the structured output features your provider offers. Tool schemas and JSON modes cut malformed output down enormously, and there is no reason to parse prose when you do not have to. But those features guarantee *syntax*, not *meaning*. The provider can promise you a string. It cannot promise you that the string is a real date, that the parties are not the same company listed twice, or that a risk level of "high" came with at least one reason.
+
+Those are business rules, and they belong in your schema, where you can test them:
+
+```ts
+export const ContractExtractionChecked = ContractExtractionV2.superRefine((v, ctx) => {
+  if (v.effectiveDate && v.renewalDate && v.renewalDate < v.effectiveDate) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["renewalDate"],
+      message: "renewalDate must not be earlier than effectiveDate",
+    });
+  }
+  if (v.riskLevel === "high" && v.riskReasons.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["riskReasons"],
+      message: "high risk requires at least one reason",
+    });
+  }
+});
+```
+
+The same idea works in Python with pydantic validators; the language does not matter. What matters is that the rules live in one executable place, close to the boundary, instead of being scattered across the prompt, the UI, and a reviewer's memory.
+
+## 3. Repair Once, Then Reject
+
+When validation fails, there is a strong temptation to just ask again. And again. A retry loop feels robust. In practice it is where quality problems go to hide.
+
+My rule is one repair attempt, and it is not a blind retry. The repair call gets the original input, the invalid output, and the validator's actual error messages, and it is asked to fix only what failed:
+
+```ts
+async function extractContract(doc: string): Promise<ExtractionResult> {
+  const first = await callModel(buildExtractionPrompt(doc));
+  const parsed = ContractExtractionChecked.safeParse(first.json);
+  if (parsed.success) return { status: "ok", data: parsed.data };
+
+  const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
+  const repaired = await callModel(buildRepairPrompt(doc, first.raw, issues));
+  const second = ContractExtractionChecked.safeParse(repaired.json);
+  if (second.success) return { status: "repaired", data: second.data };
+
+  await quarantine({ doc, attempts: [first.raw, repaired.raw], issues });
+  return { status: "rejected", issues };
+}
+```
+
+Notice the return type has three states, not two. "Repaired" is tracked separately from "ok," because a rising repair rate is an early warning that a prompt or a model version has drifted, long before anything is actually rejected. I wrote more about retry budgets and fallbacks in [designing LLM retry fallbacks](/blog/designing-llm-retry-fallbacks); the short version is that every retry should earn its cost by carrying new information, and "the validator said exactly this" is the most useful information you can give a model.
+
+If the repair also fails, the output is rejected. Not coerced. Not defaulted. Rejected, quarantined with everything needed to reproduce it, and surfaced to a human or a review queue. Two failures in a row with the errors spelled out almost always means the problem is the input, the prompt, or the schema itself. Those are things I want to see, not things I want a loop to paper over.
+
+<Callout type="warning" title="Coercion is a silent repair">
+"If the date does not parse, just store null" sounds harmless. It turns a model error into a fact in your database that nobody ever reviews. If you are going to default a value, make it an explicit, schema-level decision with a reason, not a catch block that swallows the evidence.
+</Callout>
+
+## 4. Enums Over Free Text, Wherever a Machine Decides
+
+This is the rule with the highest payoff per line of code.
+
+Any field that a downstream system will branch on — a filter, a routing rule, a notification threshold, a dashboard color — should be an enum. Not a string the model is "asked" to keep to a few values. An actual enum that the validator enforces.
+
+```
+free text:    "riskLevel": "Moderate-to-high, pending legal review"
+              → which dashboard bucket is that?
+              → does it trigger the alert?
+              → every consumer writes its own string matching
+
+enum:         "riskLevel": "needs_review"
+              → one bucket, one rule, one meaning
+              → the nuance goes in riskReasons, where humans read it
+```
+
+The split is the important part. Models are good at nuance, and nuance is valuable. But nuance belongs in fields humans read, like reasons or summaries. Decisions belong in fields machines read, and those fields need a closed vocabulary.
+
+I also always include an escape hatch value like `needs_review` or `unknown`. Without one, a closed enum pressures the model to pick the closest wrong answer when the honest answer is "I cannot tell." That is the same calibration problem I wrote about in [two tones of wrong](/blog/two-tones-of-wrong-clinical-ai): if you do not give uncertainty a legitimate place to go, it shows up disguised as confidence.
+
+## 5. Version the Schema Like a Public API
+
+A schema for model output changes more often than most API schemas, because every prompt improvement tempts you to add a field, rename one, or tighten a rule. Each of those is a contract change, and the data already in the database was written under the old contract.
+
+So I treat it exactly like an API:
+
+```
+additive, optional field            → minor change, same version
+new required field                  → breaking: new version
+renamed or removed field            → breaking: new version
+tightened rule (enum shrinks,       → breaking: new version
+  max length drops, new refinement)
+```
+
+Every stored record carries its `schemaVersion`. Readers handle the versions they know about and fail loudly on ones they do not. A breaking change ships with a migration plan for existing records, even if that plan is "mark old records as v1 and let the UI show them read-only."
+
+And the prompt and the schema change together, in the same commit, reviewed together. They are two halves of one contract. A prompt change that does not touch the schema is fine. A schema change without a prompt change is almost always a bug waiting for traffic. Before either ships, it runs against the eval set, because, as I argued in [the eval set is the spec](/blog/eval-set-is-the-spec), the eval set is how you find out whether the new contract is actually being honored, not just whether it compiles.
+
+<Callout type="tip" title="Store the version with the data">
+A `schemaVersion` field costs a few bytes per record and saves you from the worst kind of archaeology: staring at a production record and trying to guess which prompt, under which rules, produced it. Put the version inside the payload, validate it as a literal, and never infer it from a timestamp.
+</Callout>
+
+## 6. "Mostly JSON" Never Touches the Database
+
+This is the rule that the "N/A" bug taught me, and the one I enforce most strictly.
+
+There is a gravitational pull toward accepting output that is *almost* right. Nine fields are perfect and one is a little off. Surely it is better to save the nine than lose all ten? It feels pragmatic. It is how databases rot.
+
+Once a partially valid record is in your primary store, every consumer has to defend against it. Every query needs a guard. Every report needs a footnote. The cost of the bad field is no longer paid once at the boundary; it is paid forever, by everyone, in every read path. And in a platform where many apps read the same kinds of records through APIs, one sloppy writer becomes everyone's problem.
+
+So the database only ever sees records that passed the full contract. Everything else goes to a quarantine store that is designed for it:
+
+```
+primary store          quarantine store
+─────────────          ────────────────
+validated only         raw output, every attempt
+typed, versioned       validator issues
+read by apps           input reference (not a copy of sensitive data
+                         unless retention rules allow it)
+                       reviewed by humans, feeds the eval set
+```
+
+The quarantine is not a trash can. It is the most valuable dataset you have, because it is a curated list of exactly the cases where your contract and your model disagreed. Some of those turn out to be model errors, and they become eval cases. Some turn out to be schema errors — a rule that was too strict for real documents — and they become schema changes. Either way, they get looked at. Nothing that is half right sneaks into the place where everything is assumed to be right.
+
+When a user does need to see something from a rejected extraction, the UI shows it as what it is: a draft that could not be verified, clearly marked, with a path to fix it by hand. It does not show up in the same table as verified data, wearing the same font.
+
+## What This Looks Like in Practice
+
+None of this is exotic. It is the same discipline good backend teams have applied to external APIs for years, pointed at a new kind of external API. Day to day, it comes down to a small checklist I run on any feature where a model produces structured data:
+
+```
+□ schema written in code first; types inferred from it
+□ provider structured-output feature on (syntax)
+□ own validator at the boundary (semantics + business rules)
+□ machine-read fields are enums, with an "unknown" escape hatch
+□ human-read nuance lives in separate, bounded text fields
+□ one repair attempt with validator errors fed back
+□ ok / repaired / rejected tracked as separate metrics
+□ rejected output quarantined with everything to reproduce it
+□ schemaVersion stored inside every record
+□ prompt + schema change in the same commit, run against evals
+```
+
+The interesting thing is what happens to the team's relationship with the model once this is in place. People stop being afraid of it. When the boundary is solid, you can experiment with prompts, swap models, and try a cheaper tier, because the worst case is a higher rejection rate on a dashboard, not corrupted data in production. The contract is what makes iteration safe.
+
+## The Throughline
+
+If I compress all of this into one sentence: **the model is allowed to be wrong; the boundary is not.**
+
+Language models are probabilistic, and some fraction of their structured output will always be malformed, invented, or subtly off. That is not a defect you can prompt away. It is the nature of the component. What you control is whether those outputs get checked, repaired once with real feedback, and rejected cleanly — or whether they slide into your database looking exactly like the truth.
+
+A schema is a promise your system makes to every downstream consumer. Keep it, even when the model does not.
+
+---
+
+*If you are building extraction or classification pipelines on top of LLMs and want a second pair of eyes on your schemas, your repair logic, or your quarantine design, [reach out](/contact). The cheapest place to catch a bad field is the boundary, and it is a lot easier to design that boundary before the first "N/A" shows up in production.*

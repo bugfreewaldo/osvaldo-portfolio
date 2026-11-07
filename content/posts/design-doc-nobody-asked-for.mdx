@@ -1,0 +1,182 @@
+---
+title: "The Design Doc Nobody Asked For: Why I Write One Page Before I Build"
+description: "No one at a small, fast company requires a design doc, and that is exactly why I write one. As a remote engineer working from Panama, a one-page doc is the cheapest alignment tool I have: it surfaces disagreements while they cost a comment instead of a rewrite. Here is the template I use (context, decision, alternatives, risks, rollout) and the rules that keep it short."
+date: 2026-10-27
+published: true
+category: "Engineering Leadership"
+tags: ["Engineering Leadership", "Design Docs", "Remote Work", "Async Communication", "Technical Writing"]
+author: "Osvaldo Restrepo"
+tldr: "Most teams I work with do not require design docs, and most features do not need a twenty-page RFC. But almost every non-trivial change benefits from one honest page written before the first commit. For a remote engineer, that page is async alignment: it lets people in other time zones disagree with you while disagreement is still cheap. My template has five parts: context, decision, alternatives, risks, and rollout. The rules are simple: one page, written in plain language, decision stated in the first paragraph, alternatives that are real, and a rollout section that says how you will undo it. The doc is not bureaucracy. It is the cheapest code review you will ever get, because it reviews the code before it exists."
+faqs:
+  - question: "Isn't writing a design doc slower than just building the thing?"
+    answer: "For a one-hour change, yes, so do not write one. For anything that touches more than one service, changes a data shape, or will take more than a few days, the doc is faster in total. It costs an hour or two up front and routinely saves days of rework, because the expensive disagreements show up as comments on a page instead of change requests on a finished pull request."
+  - question: "What if nobody reads it?"
+    answer: "Some docs will not get comments, and that is fine. Writing it still forces you to state the decision and the alternatives clearly, which catches a surprising number of your own bad ideas. And a doc nobody commented on is still a dated record of why the system looks the way it does, which the next person (often you, six months later) will be grateful for."
+  - question: "How is this different from an architecture decision record?"
+    answer: "They are close cousins. An ADR usually records a decision after it is made. The one-page design doc is written before building, to invite disagreement while it is still cheap. In practice, a good design doc becomes the ADR once the decision is settled: you add the outcome and a date, and you move it to wherever your decisions live."
+relatedPosts: ["technical-decision-making", "small-commits-deep-reviews", "working-from-panama-building-global"]
+---
+
+A few months into my work at TheGreyMatter, I opened a pull request for a piece of shared infrastructure that I was quite proud of. It was clean. It had tests. It solved the problem I thought we had.
+
+The first comment, from someone eight hours into a day that was just starting for me, was a single question: "Why does this live here and not in each app?"
+
+It was a good question. It was, in fact, the question. And it arrived after I had already written about two days of code built around an answer I had never said out loud. We talked it through, the answer turned out to be "it should live in a shared service, but the data it touches should stay with each app," and I rewrote a good chunk of what I had built. Nobody was upset. The code got better. But I sat there in Panama City that evening doing the math on how much cheaper that conversation would have been if it had happened on a page instead of on a diff.
+
+Nobody had asked me for a design doc. There was no template, no review board, no process. That was the problem. Since then I write one anyway, for almost everything non-trivial, and it has become the single highest-leverage habit I have as a remote engineer.
+
+## Why Nobody Asks for Them
+
+At big companies, design docs are often mandatory, and they get a bad reputation for the same reason mandatory things usually do. They become long, defensive, written for approval rather than for thinking. People learn to write fifteen pages that say nothing risky.
+
+At small, fast companies the pendulum swings the other way. Nobody wants process. The founders want to see things ship. The unspoken rule is "just build it and we will review the PR." For small changes, that rule is right.
+
+For bigger changes it quietly fails, because a pull request is a terrible place to discuss a decision. By the time a PR exists, the decision is already encoded in hundreds of lines. Reviewers can comment on naming, on edge cases, on test coverage. What they almost never do is say "I think this whole approach is wrong," because saying that to a finished PR feels rude, costs the author days, and usually gets negotiated down to "let's fix it later." Later rarely comes.
+
+<Callout type="info" title="The PR is the wrong venue for the big question">
+Code review is excellent at catching local mistakes and terrible at changing direction. If the most important question about a change is "should we do it this way at all," that question needs to be asked before the code exists, on something cheap enough to throw away.
+</Callout>
+
+## Why It Matters More When You Are Remote
+
+I work from Panama with teammates spread across time zones. That shape of work has a lot going for it, and I have written about it in [working from Panama](/blog/working-from-panama-building-global). But it has one structural weakness: the hallway conversation does not exist.
+
+In an office, the design doc often happens informally. You mention the idea at lunch, someone frowns, you adjust. Remote, that frown never reaches you. You build in silence for three days and the frown arrives as a PR comment, when it is most expensive.
+
+A one-page doc replaces the hallway. It is async by nature. Someone in a different time zone can read it with their morning coffee and leave the frown as a comment while you are asleep. You wake up to the disagreement instead of discovering it at the end.
+
+```
+  without a doc                         with a one-page doc
+
+  day 1   build                          day 1   write page (1-2 hrs)
+  day 2   build                                  share it, keep working
+  day 3   open PR                                on low-risk pieces
+  day 4   "why not in each app?"         day 2   comments arrive overnight
+  day 5   rewrite                                adjust the plan
+  day 6   rewrite                        day 3   build the agreed thing
+  day 7   re-review                      day 4   PR: review is about code,
+                                                 not direction
+```
+
+The diagram is illustrative, not a time study. But the shape is real, and I have lived both columns.
+
+## The Template: Five Sections, One Page
+
+My template is deliberately boring. Five sections, each a few sentences or a short list. If it does not fit on one page, the problem is either too big for one doc or I do not understand it yet. Both are useful things to find out.
+
+```markdown
+# [Short name of the change]
+Author: Osvaldo · Date: 2026-10-27 · Status: draft | agreed | superseded
+
+## Context
+What is true today, and what problem does that cause?
+Two to five sentences. Link the ticket or the incident.
+
+## Decision
+What I propose to do, in one paragraph. Stated plainly,
+as if it were already agreed. No hedging.
+
+## Alternatives
+2-3 options I seriously considered, including "do nothing".
+One line each on why I did not pick them.
+
+## Risks
+What could go wrong, what I am unsure about,
+and what would make me change my mind.
+
+## Rollout
+How it ships (flag, migration, phased), how we will know
+it works, and exactly how we undo it if it does not.
+```
+
+That is all. Let me go through why each piece earns its place.
+
+### Context: make the problem undeniable
+
+The context section exists so that a reader who knows nothing can agree the problem is real before they see your solution. If people disagree with your context, you have found the cheapest possible disagreement: you are not even solving the same problem. That happens more often than you would think, and it is far better to find out in paragraph one than in week two.
+
+### Decision: put it first, say it plainly
+
+The most common mistake I see in design docs (and made myself for years) is building up to the decision like a mystery novel. Three pages of exploration and then, finally, the reveal. Readers skim, miss it, and comment on the wrong thing.
+
+State the decision near the top, in the voice of something already agreed. "We will move webhook signing into the shared file service and have each app verify signatures with the SDK." Clear decisions attract clear disagreement, which is the whole point. Vague decisions attract polite nods and then surprised faces at review time.
+
+### Alternatives: real ones, including "do nothing"
+
+This section is where the doc earns its keep. If your alternatives are straw men, readers can tell, and they stop trusting the rest. Write down the options you genuinely weighed, and always include "do nothing," because sometimes it is the right answer and it is a healthy discipline to argue against it in writing.
+
+When I wrote the doc that should have existed before that PR, the alternatives were: put the logic in each app, put the logic and the data in a shared service, or put the logic in a shared service and keep the data with each app. Seeing all three side by side made the answer obvious in a way that two days of coding had not. That is the same framing I describe in [technical decision-making](/blog/technical-decision-making): the decision gets easier the moment the options are written next to each other with their real costs.
+
+<Callout type="tip" title="The alternatives section is for your own blind spots">
+Writing down two serious alternatives forces you to argue against your own plan. More than once, I have changed my decision while writing the alternatives section, before anyone else read a word. That is the cheapest review there is.
+</Callout>
+
+### Risks: say what scares you
+
+This is the section people are most tempted to skip or sanitize. Do not. Write what you are actually unsure about. "I do not know how this behaves under bulk uploads." "I am assuming the QuickBooks API rate limit is per-company; if it is per-app, this design needs a queue."
+
+Naming a risk is not a confession of weakness. It is an invitation for the one person who knows the answer to tell you. On a remote team, that person might be in a time zone you rarely overlap with. The risks section is how you find them.
+
+### Rollout: how it ships and how it un-ships
+
+The last section is the one most design docs leave out, and it is the one that makes reviewers relax. How does this reach production? Behind a flag? Phased by app? Is there a data migration? And critically: if it goes wrong, what exactly do we do?
+
+If you cannot write the rollback in two sentences, you have learned something important about the risk of the change. That is a signal to make it smaller, add a flag, or split the migration, before you have built anything that makes those changes expensive.
+
+## Five Rules That Keep It Short
+
+The template is half of it. The other half is discipline, because design docs have a natural tendency to grow until nobody reads them.
+
+**1. One page, hard limit.** If it spills over, I either cut or split. A doc for "the connector service" is too big. A doc for "how the connector service stores OAuth tokens" is the right size.
+
+**2. Write for someone tired.** Plain language, short sentences, no internal jargon that a new teammate would not know. If a sentence needs to be read twice, it needs to be rewritten once.
+
+**3. Time-box the writing.** One to two hours. If I am still writing after that, I usually do not understand the problem yet, and the better move is a quick spike or a conversation, then back to the page.
+
+**4. Set a comment window.** "I will start building on Thursday unless someone objects." That turns silence into consent and keeps the doc from becoming a reason to stall. Async alignment needs a deadline, or it becomes async waiting.
+
+**5. Update the status, then stop touching it.** When the decision is agreed, I mark it agreed and add a line about what changed from the draft. When it gets replaced later, I mark it superseded and link the new one. The doc is a dated record, not a living spec.
+
+<Callout type="warning" title="A design doc is not a spec">
+A one-page doc records a decision and its reasons. It does not describe every function signature or every field. If you find yourself writing the implementation in prose, stop: that belongs in the code and its tests. The doc should still be true after the code changes a dozen times.
+</Callout>
+
+## What Changes When You Do This Regularly
+
+The obvious benefit is fewer rewrites. The less obvious benefits took me longer to notice.
+
+**Reviews get better.** When the direction is already agreed on a page, the PR review can focus on what PR reviews are actually good at: correctness, edge cases, readability. Reviewers stop relitigating the approach, because the approach has a link. It pairs well with the habit I describe in [small commits, deep reviews](/blog/small-commits-deep-reviews): agree on the shape first, then ship it in small pieces that are easy to review.
+
+**Onboarding gets easier.** A folder of one-page decision docs is the best onboarding material I have ever seen, because it answers the question every new engineer has: "why on earth is it built like this?" The answer is written down, with the alternatives that were rejected and the risks that were known at the time.
+
+**Agents read them too.** More of my day now involves AI coding assistants. A short design doc in the repo is excellent context for them: it tells the agent what was decided and what was ruled out, so it stops suggesting the alternative we already rejected. A doc written for a tired human turns out to be well shaped for a model, too.
+
+**You become the person who makes decisions legible.** This is the leadership part, and it is the part nobody puts in a job description. You do not need a title to write a one-page doc. But when you consistently make decisions visible, invite disagreement early, and write down how to undo things, people start bringing you the hard questions. That is what senior influence looks like on a remote team. It is mostly writing.
+
+## When Not to Write One
+
+I do not write a doc for everything. A bug fix does not need one. A UI copy change does not need one. A refactor inside one module, with no change to its interface, usually does not need one.
+
+My rough test:
+
+```
+write a one-page doc if any of these are true:
+
+  - it touches more than one service or app
+  - it changes a data shape someone else depends on
+  - it will take more than ~3 days of work
+  - it is hard or impossible to roll back
+  - you can imagine a reasonable colleague disagreeing
+```
+
+The last one is the real test. If a reasonable person could disagree, you want that disagreement on a page, not in a PR.
+
+## The Throughline
+
+If I had to compress it into one sentence: **a one-page design doc is the cheapest code review you will ever get, because it reviews the code before it exists.**
+
+Nobody asked me to write them. Nobody had to. The PR that got rewritten taught me what silence costs on a remote team, and a page of plain writing is the cheapest way I know to break that silence early. Context, decision, alternatives, risks, rollout. One page. A deadline for comments. Then build.
+
+---
+
+*If you are on a team where decisions keep getting made in pull requests and you want to try a lighter way, [reach out](/contact). I am happy to share the template and talk through what a first one-page doc could look like for your next change.*

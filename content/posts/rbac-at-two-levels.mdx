@@ -1,0 +1,234 @@
+---
+title: "RBAC at Two Levels: Deal, Company, and the Model That Must Never Peek"
+description: "How I think about role-based access control in a multi-tenant AI platform where permissions live at both the company level and the deal level. Roles that compose instead of stack, permission checks that apply to what the AI retrieves (not just what the user clicks), derived artifacts that inherit their sources' access, and an audit log entry on every single mutation. With a TypeScript authorize() you can actually read."
+date: 2026-09-29
+published: true
+category: "Backend Engineering"
+tags: ["Backend Engineering", "RBAC", "Authorization", "Multi-Tenancy", "AI Security"]
+author: "Osvaldo Restrepo"
+tldr: "In a multi-tenant AI platform, access control has two jobs that most RBAC designs only half do. The first is the familiar one: decide what a user can see and change. The second is new: make sure the AI, acting on that user's behalf, can never see more than the user can. At TheGreyMatter.ai, permissions live at two levels — company and deal — and they compose by intersection: your company role says what kind of actions you can take, your deal membership says where. Retrieval for the model is filtered by the same authorize() function as the UI, at query time, never after. Summaries, embeddings, and other derived artifacts inherit the access of their sources. And every mutation, whether a person or an agent made it, writes an audit entry naming both. The rule underneath: the model is a guest in the user's permissions, never a superuser."
+faqs:
+  - question: "Why not just use company-level roles for everything?"
+    answer: "Because in deal-oriented work, the most sensitive boundary is usually inside a company, not between companies. Two colleagues at the same firm can have very different rights to a specific deal, a specific data room, or a specific board package. Company-level roles alone force you to either over-share inside the firm or create a combinatorial explosion of roles. A second level, scoped to the deal, keeps the role list short and the boundaries accurate."
+  - question: "How do you make sure an AI model never sees a document the user can't?"
+    answer: "Apply the same authorization check to retrieval that you apply to the UI, and apply it inside the query, not after it. The retriever should only ever be able to return documents the requesting user is allowed to read, so filtering is enforced before anything reaches the prompt. Derived artifacts like summaries and embeddings must carry the access scope of the documents they came from. And the model should call tools with the user's identity, not a service account with broad access."
+  - question: "Isn't logging every mutation too expensive?"
+    answer: "It is much cheaper than the alternative, which is not being able to answer 'who changed this and why' during an incident, an audit, or a customer dispute. Audit entries are small, append-only, and written in the same transaction or event flow as the change. The real cost is discipline: making the audit write part of the mutation path so it cannot be skipped, rather than a log line someone remembers to add."
+relatedPosts: ["multi-tenant-saas-architecture", "authentication-patterns-modern-apps", "mcp-servers-that-dont-leak"]
+---
+
+The bug report that changed how I think about authorization was polite, short, and slightly terrifying. During internal testing, a user asked the assistant for "a summary of everything we know about this company's financials." The answer was good. Too good. It included a detail from a document attached to a different deal — a deal that tester was not a member of.
+
+Nobody had clicked on anything they should not have. The UI had done its job perfectly. Every screen checked permissions. Every download link was scoped. But the retrieval step that fed the model was asking a slightly different question: "which documents are about this company?" instead of "which documents about this company is *this user* allowed to read?" One missing clause in a query, and the model had walked straight past a wall the UI respected.
+
+It never left a test environment, and the fix was small. The lesson was not. In an AI platform, access control has two audiences: the person, and the model acting for the person. If you only design for the first one, the second one will find the gaps for you.
+
+## 1. Two Levels, Because the Sensitive Boundary Is Inside the Company
+
+Most multi-tenant SaaS starts with one level of access control: the tenant. You belong to a company, the company has data, your role inside the company decides what you can do. I covered the basics of that model in [multi-tenant SaaS architecture](/blog/multi-tenant-saas-architecture), and it is fine for a lot of products.
+
+It breaks down in deal-oriented work. The platform behind apps like DueDiligence9, Contracts9, and Board9 deals with material where the most important boundary is not between companies. It is *inside* one. Two people at the same firm can have completely different rights to a specific deal: one is on the team, one is not. One can upload to the data room, one can only read the summary. One can see a board package, one should not know it exists.
+
+You can try to model that with company-level roles alone. You end up with role names like "analyst-deal-a-read-only" and a role list that grows with every new deal. I have seen that list. It is not a security model. It is a spreadsheet nobody trusts.
+
+So permissions live at two levels:
+
+```
+  COMPANY LEVEL  (who you are in the organization)
+  ┌──────────────────────────────────────────────────┐
+  │  owner · admin · member · viewer                 │
+  │  answers: what KINDS of actions can you take?    │
+  └──────────────────────────────────────────────────┘
+                        ∩   (intersection)
+  DEAL LEVEL  (what you are on this specific deal)
+  ┌──────────────────────────────────────────────────┐
+  │  lead · contributor · reviewer · (not a member)  │
+  │  answers: WHERE can you take them?               │
+  └──────────────────────────────────────────────────┘
+                        =
+  EFFECTIVE PERMISSION for (user, deal, action)
+```
+
+The company role is a ceiling on capability. The deal role is a grant of place. You need both.
+
+## 2. Roles Compose by Intersection, Not by Stacking
+
+The question every two-level design has to answer is: when the levels disagree, who wins?
+
+I have seen systems answer that with union — your rights are everything your company role gives you plus everything your deal role gives you. That is how you end up with a company admin who can silently read every deal's data room, including the ones under a strict need-to-know arrangement. Union is convenient. It is also how a single over-privileged account becomes a single point of catastrophe.
+
+My rule is intersection, with a short list of deliberate exceptions:
+
+- **Content access requires both levels.** To read a deal's documents, you need a company role that permits reading *and* membership on the deal. Being a company admin does not, by itself, make you a reader of every deal.
+- **Administrative actions are company-level.** Managing users, billing, and integrations is about the organization, not any single deal, so those actions check the company role alone.
+- **Explicit deny wins.** If someone is excluded from a deal — a conflict of interest, a wall that has to hold — that exclusion beats any other grant. No role, at any level, overrides it.
+- **No implicit inheritance downward for content.** Admins can *manage* deal membership, including adding themselves, but that action is an explicit, audited mutation. They do not get to read silently.
+
+That last one is the one people push back on. "Our admins should be able to see everything." Maybe. But "can grant themselves access, visibly, with a log entry" and "can see everything without anyone knowing" are very different properties, and only the first one survives a serious customer security review.
+
+<Callout type="warning" title="Union is how superusers are born">
+When two permission levels combine by union, the most privileged role at either level quietly becomes the effective role everywhere. Combine by intersection, make the exceptions explicit, and let explicit denies win. Your future incident review will be much shorter.
+</Callout>
+
+## 3. One authorize() Function, Called Everywhere
+
+The single most valuable thing I did for authorization was to make it boring: one function, one place, called by every path that touches data. The UI calls it. The API calls it. The retriever that feeds the model calls it. Background jobs call it with the identity of the user they are acting for.
+
+Here is a simplified version:
+
+```typescript
+type CompanyRole = "owner" | "admin" | "member" | "viewer";
+type DealRole = "lead" | "contributor" | "reviewer";
+
+type Action =
+  | "deal:read" | "deal:comment" | "deal:upload" | "deal:edit"
+  | "deal:manage-members" | "company:manage-users" | "company:billing";
+
+interface Principal {
+  userId: string;
+  companyId: string;
+  companyRole: CompanyRole;
+  dealRoles: Record<string, DealRole>;   // dealId -> role
+  deniedDeals: Set<string>;              // explicit exclusions
+  actingAgent?: string;                  // set when an agent acts on the user's behalf
+}
+
+const COMPANY_CAN: Record<CompanyRole, Action[]> = {
+  owner:  ["deal:read", "deal:comment", "deal:upload", "deal:edit",
+           "deal:manage-members", "company:manage-users", "company:billing"],
+  admin:  ["deal:read", "deal:comment", "deal:upload", "deal:edit",
+           "deal:manage-members", "company:manage-users"],
+  member: ["deal:read", "deal:comment", "deal:upload", "deal:edit"],
+  viewer: ["deal:read", "deal:comment"],
+};
+
+const DEAL_CAN: Record<DealRole, Action[]> = {
+  lead:        ["deal:read", "deal:comment", "deal:upload", "deal:edit", "deal:manage-members"],
+  contributor: ["deal:read", "deal:comment", "deal:upload"],
+  reviewer:    ["deal:read", "deal:comment"],
+};
+
+export function authorize(
+  p: Principal,
+  action: Action,
+  resource: { companyId: string; dealId?: string },
+): { allowed: boolean; reason: string } {
+  // tenant boundary first: never cross companies
+  if (resource.companyId !== p.companyId) return { allowed: false, reason: "cross-tenant" };
+
+  // company-only actions check the company role alone
+  if (action.startsWith("company:")) {
+    const ok = COMPANY_CAN[p.companyRole].includes(action);
+    return { allowed: ok, reason: ok ? "company-role" : "company-role-missing" };
+  }
+
+  const dealId = resource.dealId;
+  if (!dealId) return { allowed: false, reason: "deal-required" };
+
+  // explicit deny beats everything
+  if (p.deniedDeals.has(dealId)) return { allowed: false, reason: "explicit-deny" };
+
+  // admins may manage membership without being members (audited elsewhere)
+  if (action === "deal:manage-members" && COMPANY_CAN[p.companyRole].includes(action)) {
+    return { allowed: true, reason: "company-admin-manage" };
+  }
+
+  // content actions need BOTH levels: intersection
+  const dealRole = p.dealRoles[dealId];
+  if (!dealRole) return { allowed: false, reason: "not-a-member" };
+
+  const ok = COMPANY_CAN[p.companyRole].includes(action) && DEAL_CAN[dealRole].includes(action);
+  return { allowed: ok, reason: ok ? "company-and-deal" : "insufficient-role" };
+}
+```
+
+A few choices in there are deliberate. It returns a reason, not just a boolean, because "denied" with no reason is impossible to debug and useless in an audit. The tenant check comes first and is unconditional. And the agent does not have its own role at all. When an agent acts, it acts as a principal that is the user, with `actingAgent` filled in for the record. It inherits the user's permissions exactly, never more.
+
+That design means the authorization logic is testable in isolation, which matters a lot. Our Playwright and Vitest harness has a table of principals, actions, and expected outcomes, and every release runs it. Authorization bugs are the kind you want to catch in a table, not in a bug report.
+
+## 4. The Model Must Never See What the User Can't
+
+Back to the bug from the opening. The UI was correct. The retriever was not, because it filtered *after* searching instead of searching *within* what the user could read.
+
+There are two ways to filter retrieval, and only one of them is safe:
+
+```
+  UNSAFE: search everything, filter results afterward
+    query ──▶ index (all docs) ──▶ top-k ──▶ filter by permission ──▶ prompt
+    problems: leaks via ranking, empty results look like "no data",
+              and one forgotten filter call exposes everything
+
+  SAFE: constrain the search space before ranking
+    query + principal ──▶ allowed scope ──▶ index (allowed docs only) ──▶ prompt
+    the retriever is physically unable to return a forbidden doc
+```
+
+In practice that means every document and every chunk carries its access scope as metadata — company, deal, and any narrower restriction — and the retriever builds its filter from the same rules `authorize()` uses before it ever ranks anything.
+
+```typescript
+async function retrieveForUser(p: Principal, query: string, companyId: string) {
+  // deals this principal may read, computed with the same authorize() as the UI
+  const readableDeals = Object.keys(p.dealRoles).filter(
+    (dealId) => authorize(p, "deal:read", { companyId, dealId }).allowed,
+  );
+
+  if (readableDeals.length === 0) return [];
+
+  return searchIndex(query, {
+    filter: { companyId, dealId: { in: readableDeals } },  // applied BEFORE ranking
+    topK: 8,
+  });
+}
+```
+
+The same principle applies to tools. When the model calls a tool — fetch a document, list a deal's files, search contracts — the tool receives the user's principal and calls `authorize()` itself. The model never holds a service credential that can see more than the person typing. I went deeper on this for MCP specifically in [MCP servers that don't leak](/blog/mcp-servers-that-dont-leak): the server enforces, the model requests.
+
+<Callout type="danger" title="Filter inside the query, never after">
+Post-filtering retrieval results is a leak waiting for one forgotten line of code. If the retriever can return a document the user cannot read, eventually it will, and the model will summarize it beautifully. Constrain the search space with the user's permissions before ranking, so a forbidden document is not merely hidden but unreachable.
+</Callout>
+
+## 5. Derived Artifacts Inherit Their Sources' Access
+
+This is the part that is easy to miss. In an AI platform, documents are not the only thing that holds information. Summaries do. Extracted fields do. Embeddings do. Cached answers do. Every one of those is a derived artifact, and every one of them can leak its source.
+
+Our ingestion pipeline runs upload, then extraction, then AI analysis, then notifications. Each stage produces something new. The rule is simple and strict: **a derived artifact's access scope is the intersection of its sources' scopes.** A summary built from a deal's data room is readable by exactly the people who can read that data room. A summary that combines documents from two deals is readable only by people who can read both. An embedding carries the scope of the chunk it came from.
+
+Caching deserves its own warning. A cached model answer keyed only by the question text is a cross-user leak with excellent latency. Cache keys have to include the permission scope that produced the answer, or the cache has to live per user. I learned that one in a design review, thankfully, not in production.
+
+## 6. An Audit Entry on Every Mutation, Naming Both Actors
+
+Every mutation on the platform writes an audit entry. Not "important" mutations. Every one: uploads, edits, role changes, membership changes, deletions, settings. The audit write is part of the mutation path, so it cannot be skipped by a handler that forgot to log.
+
+```typescript
+interface AuditEntry {
+  at: string;                    // ISO timestamp
+  companyId: string;
+  dealId?: string;
+  actorUserId: string;           // the human whose permissions were used
+  actingAgent?: string;          // set when an agent performed the action
+  action: Action | string;
+  resource: { type: string; id: string };
+  decision: { allowed: boolean; reason: string };   // straight from authorize()
+  changes?: { field: string; before?: unknown; after?: unknown }[];  // PII fields masked
+}
+```
+
+Two fields matter most. `actingAgent` means that when an agent does something on a user's behalf — files a document, updates a field, drafts a change — the record shows both the human whose authority was used and the agent that acted. "Who did this?" has an honest answer even when the answer is "the assistant did, on Maria's behalf." And `decision.reason` comes straight from `authorize()`, so the log explains not just what happened but why it was allowed.
+
+Fields we encrypt at the field level for PII are masked in the audit trail too. An audit log that copies sensitive values in plaintext is just another place to leak them.
+
+<Callout type="tip" title="Log the reason, not just the result">
+An audit entry that says "allowed" is half an answer. An entry that says "allowed: company-and-deal" or "denied: explicit-deny" lets you reconstruct the decision months later without re-deriving it. Return reasons from your authorization function and persist them.
+</Callout>
+
+## The Throughline
+
+If I had to compress this whole post into one sentence: **the model is a guest in the user's permissions, never a superuser.**
+
+Two levels of roles let you draw boundaries where they actually are — inside the company, around the deal. Composing them by intersection keeps privilege from quietly accumulating. A single `authorize()` called by the UI, the API, the tools, and the retriever means there is only one place to get it right. Derived artifacts inheriting their sources' access closes the gaps AI creates. And an audit entry on every mutation, naming both the person and the agent, means you can always answer the question that matters most when something goes wrong: who did this, and why were they allowed to?
+
+The UI in that opening bug was perfect. It did not matter. In an AI platform, the screen is no longer the only door.
+
+---
+
+*If you are designing authorization for a platform where AI reads on your users' behalf, and you want a second pair of eyes on where the model might walk past a wall, [reach out](/contact). These gaps are much cheaper to find in a design review than in a bug report.*

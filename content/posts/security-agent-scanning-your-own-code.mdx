@@ -1,0 +1,199 @@
+---
+title: "TheHacker: Building a Security Agent That Only Scans Your Own House"
+description: "What I learned building TheHacker, an agent that looks for vulnerabilities in our own systems at TheGreyMatter.ai. Scope it to assets you own, keep it read-only by default, turn every finding into a ticket with evidence, treat false-positive triage as the real product, and let the agent propose while humans fix. It complements SAST and dependency scanning; it does not replace them."
+date: 2026-09-15
+published: true
+category: "Security"
+tags: ["Security", "AI Agents", "TheHacker", "DevSecOps", "Vulnerability Management"]
+author: "Osvaldo Restrepo"
+tldr: "TheHacker is an agent I built at TheGreyMatter.ai to look for weaknesses in our own platform before anyone else does. The name is the most aggressive thing about it. It is scoped to an explicit list of assets we own, it is read-only by default, and it never fixes anything on its own. Every finding becomes a ticket with evidence, a severity, and a reproduction path a human can verify. Most of the engineering went into false-positive triage, because a security tool that cries wolf gets muted within a week. It sits alongside static analysis and dependency scanning rather than replacing them, covering the gaps between them: configuration drift, permission mistakes, and the seams between services. The rule underneath everything: the agent proposes, humans fix."
+faqs:
+  - question: "Isn't it risky to give an AI agent a security-scanning job at all?"
+    answer: "It is risky if you give it an open-ended mandate. It is manageable if you give it a narrow one: an explicit allowlist of assets your organization owns, read-only credentials by default, no ability to change anything, rate limits, and a full audit trail of every action. The agent should be the least privileged identity in your system that still does useful work. The danger is not the model; it is the scope you hand it."
+  - question: "Does a security agent replace SAST, dependency scanning, or a penetration test?"
+    answer: "No. Static analysis and dependency scanning are cheap, deterministic, and should run on every pull request. A professional penetration test brings human creativity and accountability that an agent does not. A security agent is most useful in the gaps: checking configuration against intent, noticing permission drift, correlating findings across services, and writing up evidence in a form engineers can act on. Think of it as a tireless junior reviewer, not a replacement for the rest of the program."
+  - question: "How do you keep a security agent from flooding the team with false positives?"
+    answer: "Make triage a first-class stage, not an afterthought. Require evidence for every finding, deduplicate against known and accepted risks, let engineers mark findings as false positives with a reason, and feed those decisions back into the agent's context. Track the precision of findings as a health metric. If engineers stop opening the tickets, the tool has already failed, no matter how many issues it technically found."
+relatedPosts: ["your-agent-needs-a-job-description", "first-ai-feature-should-be-read-only", "mcp-servers-that-dont-leak"]
+---
+
+When I told the team I was building an internal agent called TheHacker, the first reaction was a long pause on the call. The second was a very reasonable question: "Hacking what, exactly?"
+
+Fair. The name was a joke that stuck. The actual job is boring in the best way: look at our own platform, the way an attacker would, and write down what we got wrong before somebody else finds it. Our own repos, our own cloud configuration, our own APIs. Nothing else. Ever.
+
+The first full run produced a long list of findings. I was proud of that list for about fifteen minutes, which is how long it took to realize most of it was noise. A handful of real issues were buried in a pile of "this endpoint returns a header that could theoretically be a problem in a configuration we do not use." If I had shipped that list to the engineering team as-is, they would have muted the tool by Friday, and they would have been right to.
+
+That gap — between "found a lot" and "found what matters" — is what this post is about. Building a security agent is mostly not a model problem. It is a scope problem, a permissions problem, and a triage problem. Here are the rules I ended up with.
+
+<Callout type="info" title="What this post is not">
+This is about defensive scanning of systems you own and are authorized to test. There are no exploit techniques here, and there will not be. If your agent can point at something you do not own, you have built a liability, not a security tool.
+</Callout>
+
+## 1. Scope Is the First Feature, Not a Config Option
+
+The most important line of code in TheHacker is not a prompt. It is the scope manifest.
+
+Every asset the agent is allowed to look at lives in an explicit allowlist: which repositories, which environments, which API base URLs, which cloud subscriptions. If it is not in the manifest, the agent does not touch it. Not "is discouraged from." Cannot. The tools it calls check the target against the manifest before doing anything, and the check lives in code, not in the system prompt.
+
+```typescript
+type AssetKind = "repo" | "api" | "cloud-config" | "container-image";
+
+interface ScopeManifest {
+  owner: string;              // the team accountable for this scope
+  approvedBy: string;         // the human who signed off
+  expiresAt: string;          // scopes expire; renewals are deliberate
+  assets: Array<{
+    kind: AssetKind;
+    id: string;               // repo slug, base URL, subscription id...
+    environment: "dev" | "staging" | "prod";
+    mode: "read-only" | "active-nondestructive";
+  }>;
+}
+
+function assertInScope(manifest: ScopeManifest, kind: AssetKind, id: string) {
+  const asset = manifest.assets.find((a) => a.kind === kind && a.id === id);
+  if (!asset) throw new ScopeError(`Out of scope: ${kind}:${id}`);
+  if (new Date(manifest.expiresAt) < new Date()) throw new ScopeError("Scope expired");
+  return asset;
+}
+```
+
+Three details in there matter more than they look. Every scope has an owner and an approver, so there is always a human who said yes. Scopes expire, so nothing quietly stays in reach forever. And each asset carries a mode, so "look at the staging API" and "look at production" are different decisions made by different people.
+
+A model is very good at following instructions most of the time. "Most of the time" is not a security posture. The scope boundary has to be enforced by the tools, so that even a confused or manipulated agent physically cannot step outside it. I wrote about giving every agent a narrow, explicit mandate in [your agent needs a job description](/blog/your-agent-needs-a-job-description); for a security agent, the job description is a legal and ethical boundary, not a nice-to-have.
+
+## 2. Read-Only by Default, and Earn Every Step Beyond It
+
+TheHacker runs with the least privileged identity on the platform that can still do useful work. By default, it reads. It reads code, it reads infrastructure configuration, it reads the responses our own APIs give to ordinary, well-formed requests. It does not write, delete, deploy, or change a single setting.
+
+This is the same principle I keep returning to in [your first AI feature should be read-only](/blog/first-ai-feature-should-be-read-only), and it applies doubly here. A security tool with write access is itself one of the most attractive targets in your system.
+
+There is a small set of checks that need more than reading — for example, confirming that an endpoint really does reject a request without a valid token, which means sending that request. Those checks run only against assets marked as active-nondestructive in the manifest, only in non-production environments unless someone explicitly approved otherwise, and only with rate limits that make it impossible for the agent to become its own incident.
+
+```
+                 ┌──────────────────────────────────────┐
+  scope manifest │  allowlist of owned assets           │
+  ─────────────▶ │  (owner, approver, expiry, mode)     │
+                 └──────────────────┬───────────────────┘
+                                    │  every tool call checks scope
+                                    ▼
+                 ┌──────────────────────────────────────┐
+                 │  read-only collectors                │
+                 │  code · config · API responses       │
+                 └──────────────────┬───────────────────┘
+                                    ▼
+                 ┌──────────────────────────────────────┐
+                 │  agent reasons over evidence         │
+                 │  drafts candidate findings           │
+                 └──────────────────┬───────────────────┘
+                                    ▼
+                 ┌──────────────────────────────────────┐
+                 │  triage: dedupe · known risks ·      │
+                 │  evidence check · severity           │
+                 └──────────────────┬───────────────────┘
+                                    ▼
+                    ticket for a human owner ──▶ human fixes
+```
+
+Every call in that diagram goes to an audit log: which tool, which asset, which identity, which time. If anyone ever asks "what did the security agent do last Tuesday," the answer is a query, not a shrug.
+
+<Callout type="warning" title="Your security agent is a target">
+An identity that can see across your systems is exactly what an attacker wants to borrow. Give it short-lived credentials, the narrowest permissions that still work, rate limits, and a complete audit trail. If the agent's own credentials would be a disaster to leak, it has too many of them.
+</Callout>
+
+## 3. A Finding Is a Ticket With Evidence, or It Is Nothing
+
+The first version of TheHacker produced findings that read like opinions. "This service may be vulnerable to misconfigured access control." May be. Might. Could. Engineers read that and, reasonably, do nothing, because there is nothing to do.
+
+The fix was a strict output contract. A finding is not a paragraph. It is a structured object, and the agent is not allowed to file one unless every required field is filled with something real.
+
+```typescript
+interface Finding {
+  title: string;
+  asset: { kind: AssetKind; id: string; environment: string };
+  category: "authz" | "secrets" | "config-drift" | "exposure" | "dependency" | "other";
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  evidence: Array<{
+    type: "file-line" | "config-snapshot" | "request-response" | "scanner-output";
+    ref: string;              // path + line, resource id, or log reference
+    excerpt: string;          // redacted; never raw secrets
+  }>;
+  reproduction: string;       // how a human verifies it, step by step
+  suggestedFix: string;       // a proposal, not a patch that gets applied
+  confidence: "confirmed" | "likely" | "needs-review";
+}
+```
+
+Two rules make this work. First, no evidence, no finding. If the agent cannot point at a specific file and line, a specific configuration snapshot, or a specific response, the observation goes into a low-priority "hunches" log for a human to skim, not into the ticket queue. Second, evidence is always redacted. If the finding is "a secret is committed in this file," the ticket says which file and which line, and shows a masked excerpt. A security tool that copies secrets into a ticketing system has just created a second leak.
+
+I treat that schema the way I treat any structured output: as a contract the rest of the system depends on. The ticket integration, the dashboards, and the triage stage all read those fields. If the model drifts, validation fails loudly, and nothing half-formed reaches a human's queue.
+
+## 4. False-Positive Triage Is the Actual Product
+
+Here is the uncomfortable truth about security tooling: finding things is easy. Finding things that matter, in a form people will act on, is the entire job.
+
+Every security team has a graveyard of tools that "found thousands of issues" and were quietly ignored. The tool did not fail at detection. It failed at trust. Once engineers learn that most tickets from a source are noise, they stop opening tickets from that source, including the one that was real.
+
+So the triage stage in TheHacker gets as much engineering attention as the scanning stage. Concretely:
+
+- **Deduplication.** The same root cause showing up in twelve files is one finding with twelve pieces of evidence, not twelve tickets.
+- **Known and accepted risks.** Some things look like issues and are deliberate decisions, documented and signed off. Those live in a register the agent reads before filing. If a finding matches an accepted risk, it is suppressed with a link to the decision.
+- **Context checks.** "This endpoint has no authentication" is critical for a data endpoint and irrelevant for a public health-check route. The agent has to reason about what the asset is for, which is exactly where a language model earns its keep over a rule engine.
+- **Human verdicts feed back.** When an engineer closes a ticket as a false positive, they choose a reason. Those reasons become context for the next run. The agent learns, in a very literal sense, what this codebase considers noise.
+
+The metric I watch is not "number of findings." It is the share of tickets that engineers confirm as real. When that number is healthy, people open the tickets. When it drops, I treat it as a bug in TheHacker, not as engineers being lazy.
+
+<Callout type="tip" title="Precision buys attention">
+A security tool has a fixed budget of human attention. Every false positive spends some of it. Ten real findings that get fixed are worth more than two hundred findings that get muted. Optimize for the share of findings people act on, not the count.
+</Callout>
+
+## 5. The Agent Proposes, Humans Fix
+
+TheHacker never fixes anything on its own. This is the rule people push back on most, so let me explain why I hold it so firmly.
+
+A security fix is a change to production behavior, usually in the most sensitive part of the system. Tightening a permission can break a legitimate workflow. Rotating a credential can take down an integration at the worst possible moment. Changing a configuration can open something else while closing the intended hole. These are judgment calls with blast radius, and they need an accountable human who understands the system around the change.
+
+What the agent does very well is everything leading up to that judgment. It explains the issue in plain language. It points at the exact evidence. It suggests a fix, often with a draft diff attached to the ticket for the engineer to read. It links to similar past findings and how they were resolved. That turns a security ticket from "go investigate something vague" into "review this specific proposal," which is a much smaller ask on a busy afternoon.
+
+The pattern is the same one I use with The Fixer, our compliance remediation agent: the machine does the tedious gathering and drafting, the human makes the decision and owns the change. It is not a lack of trust in the model. It is a recognition that accountability cannot be delegated to something that cannot be held accountable.
+
+## 6. It Complements the Scanners You Already Have
+
+When I first described TheHacker, someone asked whether we could drop our static analysis and dependency scanning now. No. Absolutely not.
+
+Static analysis and dependency scanning are cheap, fast, deterministic, and they belong in the pipeline on every pull request. They catch whole classes of problems reliably, and their results are reproducible. Replacing them with a language model would trade a reliable tool for a probabilistic one, which is a bad trade for anything that has a deterministic answer.
+
+TheHacker lives in the gaps between those tools:
+
+```
+  tool                         good at                         blind to
+  ───────────────────────────  ──────────────────────────────  ──────────────────────────────
+  static analysis (SAST)       known code patterns, per file   intent, cross-service context
+  dependency scanning          known vulnerable packages       your own logic and config
+  security agent (TheHacker)   config vs. intent, permission   anything outside its scope;
+                               drift, cross-service seams,     deterministic guarantees
+                               readable evidence write-ups
+  human review / pentest       creativity, accountability      continuous coverage
+```
+
+Where the agent shines is in questions that require reading several things at once. Does this service's actual permission configuration match what the architecture document says it should be? Did a role that was supposed to be temporary quietly become permanent? Does this new endpoint enforce the same authorization checks as its siblings? Those are the seams between services, and in a platform with many apps sharing auth, file, and connector services, the seams are where the interesting mistakes live.
+
+It also does something the deterministic tools do not: it reads their output. A dependency scanner flags a vulnerable package; the agent checks whether the vulnerable function is actually reachable from our code, and adjusts the severity it proposes accordingly. The final call on that severity is still a human's, but the human starts from context instead of a raw alert.
+
+## What I Would Do Differently
+
+If I started over, I would build the triage stage before the scanning stage. I built them in the obvious order — find things first, filter later — and spent weeks drowning in output I could not yet evaluate. Starting from "what does a ticket an engineer will actually act on look like?" and working backward would have saved me most of that.
+
+I would also involve the engineers who receive the tickets from day one. The best improvements to TheHacker came from people closing tickets with reasons like "this is behind the gateway, which already handles it." That one sentence, fed back as context, eliminated an entire category of noise. The people on the receiving end know where the noise is. Ask them early.
+
+## The Throughline
+
+If I had to compress all of this into one sentence: **a security agent is only as safe as its scope and only as useful as its precision.**
+
+Point it at what you own and nothing else. Let it read before it ever does anything more. Make every finding carry evidence a human can verify. Treat false positives as bugs in your tool, not as the cost of doing business. And keep the fix in human hands, because the person who changes production should be someone who can explain why.
+
+The name TheHacker still gets a raised eyebrow in meetings. I have come to like that. It reminds everyone, me included, that the whole point is to think like an attacker so that we can behave like careful engineers.
+
+---
+
+*If you are building security tooling with agents, or trying to get your team to trust the findings from the tools you already have, [reach out](/contact). Most of the hard problems here are about scope and triage, and they are much easier to work through with someone who has made the same mistakes.*

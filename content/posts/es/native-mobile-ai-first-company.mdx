@@ -1,0 +1,197 @@
+---
+title: "Por Qué una Plataforma AI-First Todavía Envía Apps Móviles Nativas"
+description: "Toda empresa AI-first eventualmente escucha 'solo envuelve la app web.' Por qué la plataforma GreyMatter envía clientes nativos de iOS (Swift/SwiftUI) y Android (Kotlin) en su lugar: federación OAuth bien hecha con PKCE y almacenamiento seguro, respuestas de IA que sobreviven a redes inestables, notificaciones push impulsadas por el pipeline de eventos, estados offline honestos, y lo que haría diferente si empezara de nuevo."
+date: 2026-07-28
+published: true
+category: "Desarrollo Móvil"
+tags: ["Desarrollo Móvil", "iOS", "Android", "OAuth", "Streaming"]
+author: "Osvaldo Restrepo"
+translationOf: "native-mobile-ai-first-company"
+tldr: "Cuando el producto es mayormente IA y mayormente web, un wrapper móvil parece el atajo obvio. Para la plataforma GreyMatter en TheGreyMatter.ai enviamos clientes nativos de iOS (Swift/SwiftUI) y Android (Kotlin) en su lugar, y las razones tienen menos que ver con el pulido que con las partes difíciles de la IA en un teléfono. El inicio de sesión tiene que pasar por el navegador del sistema con PKCE y guardar los tokens en el Keychain o en el Android Keystore, no en un web view embebido. Las respuestas de IA tienen que sobrevivir a ascensores, túneles y al paso a segundo plano, lo que significa que el servidor es dueño de la generación y el cliente puede reanudar. Las notificaciones deben venir del mismo pipeline de eventos que procesa los documentos, llevando punteros en vez de payloads sensibles. Offline tiene que ser un estado honesto, no un spinner. Y si empezara de nuevo, generaría los modelos de la API a partir de un solo contrato, enviaría menos pantallas pero más profundas, e instrumentaría los clientes móviles desde el primer día."
+faqs:
+  - question: "¿No es suficiente un framework multiplataforma o un wrapper web para una app de IA?"
+    answer: "Depende de lo que haga la app. Para un acompañante mayormente de solo lectura con un inicio de sesión simple, un wrapper puede estar bien. El problema empieza con las partes en las que los productos AI-first se apoyan más: OAuth federado que debe usar el navegador del sistema y almacenamiento seguro de llaves, respuestas en streaming de larga duración que tienen que sobrevivir al segundo plano y a cambios de red, y notificaciones atadas al procesamiento del lado del servidor. Esas son exactamente las áreas donde las APIs nativas de la plataforma más importan, y donde los wrappers tienden a hacer agua."
+  - question: "¿Cómo haces streaming de respuestas de IA de forma confiable en redes móviles?"
+    answer: "Deja de tratar el stream como la fuente de verdad. El servidor es dueño de la generación como un job con un ID y persiste el progreso a medida que avanza. El cliente se suscribe al stream para una vista en vivo, y si la conexión se cae o la app pasa a segundo plano, se reconecta y reanuda desde el último evento que recibió, o simplemente descarga el resultado terminado. El usuario nunca pierde una respuesta porque un túnel interrumpió un socket."
+  - question: "¿Qué debería contener una notificación push de una funcionalidad de IA?"
+    answer: "Lo menos posible. Un mensaje corto y no sensible, y un identificador que la app pueda usar para descargar el contenido real después de que el usuario la abra y la app se haya autenticado. Los payloads de push pasan por servicios de entrega de terceros y aparecen en pantallas de bloqueo, así que el contenido de los documentos, los nombres y los resultados de análisis nunca deberían viajar dentro de ellos."
+relatedPosts: ["streaming-llm-responses-guide", "authentication-patterns-modern-apps", "event-driven-data-pipelines"]
+---
+
+La pregunta salió en una conversación de planificación y, honestamente, fui yo quien la hizo primero: "¿De verdad necesitamos apps nativas? El producto es una plataforma web. La inteligencia está en el servidor. ¿No podríamos envolver la app web y enviarla a ambas tiendas en una semana?"
+
+Es una pregunta justa para una empresa AI-first. Los modelos corren en la nube. La interfaz es mayormente texto, documentos y dashboards. La app web ya funciona. Un wrapper es barato, y lo barato es atractivo cuando estás construyendo la columna vertebral de más de diecisiete apps verticales al mismo tiempo.
+
+Así que lo intenté, en un prototipo rápido. En pocos días, tres cosas se habían roto de formas que no eran cosméticas. El inicio de sesión a través de nuestro flujo OAuth federado se comportaba mal dentro de un web view embebido. Un stream largo de análisis de IA moría cada vez que cambiaba de app para contestar un mensaje, y volvía como una pantalla en blanco. Y no había una forma limpia de hacer llegar una notificación al teléfono cuando un documento terminaba de procesarse en el servidor.
+
+Ninguno de esos era un problema de pulido. Eran el núcleo de lo que hace un producto de IA en un teléfono. Ese prototipo es la razón por la que la plataforma GreyMatter envía clientes nativos de iOS en Swift y SwiftUI, y clientes nativos de Android en Kotlin.
+
+Esto es lo que esa decisión realmente nos compró, y lo que cambiaría si lo hiciera de nuevo.
+
+## 1. El Inicio de Sesión Pertenece al Navegador del Sistema, Con PKCE
+
+La plataforma usa un servicio compartido de OAuth SSO, y cada app confía en la misma capa de identidad. En la web, ese flujo está bien entendido. En un teléfono, tiene algunas reglas que son fáciles de romper y caras de hacer mal.
+
+La primera regla: no corras la página de login dentro de tu propio web view embebido. El usuario no puede verificar dónde está escribiendo su contraseña, tu app técnicamente puede ver todo lo que pasa en esa vista, y muchos proveedores de identidad lo desaconsejan activamente o lo bloquean. La respuesta nativa de la plataforma es la sesión de autenticación del sistema — `ASWebAuthenticationSession` en iOS y Custom Tabs en Android — que muestra una superficie de navegador real en la que el usuario puede confiar y le devuelve el control a la app a través de una redirección.
+
+La segunda regla: las apps móviles son clientes públicos. No pueden guardar un client secret, porque cualquier cosa que vaya en el binario se puede extraer. Para eso existe PKCE. La app genera un secreto de un solo uso, envía solo su hash cuando inicia el flujo, y demuestra que tiene el original al intercambiar el código por tokens. Un atacante que intercepte la redirección obtiene un código que no puede usar.
+
+En iOS, el núcleo es pequeño:
+
+```swift
+import CryptoKit
+import Foundation
+import Security
+
+struct PKCE {
+    let verifier: String
+    let challenge: String
+
+    static func make() -> PKCE {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let verifier = Data(bytes).base64URLEncodedString()
+        let digest = SHA256.hash(data: Data(verifier.utf8))
+        let challenge = Data(digest).base64URLEncodedString()
+        return PKCE(verifier: verifier, challenge: challenge)
+    }
+}
+
+extension Data {
+    func base64URLEncodedString() -> String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}
+```
+
+La tercera regla: los tokens viven en el almacenamiento seguro de la plataforma. En iOS eso es el Keychain; en Android es almacenamiento respaldado por el Android Keystore. No `UserDefaults`, no shared preferences en texto plano, no un archivo en la carpeta de documentos de la app. Un refresh token es una credencial de larga duración hacia una plataforma que guarda documentos de negocio confidenciales. Merece protección respaldada por hardware donde el dispositivo la ofrezca.
+
+<Callout type="warning" title="Un web view embebido no es una pantalla de login">
+Correr tu inicio de sesión OAuth dentro de un web view dentro de la app entrena a los usuarios a escribir credenciales en una superficie que no pueden verificar, y le da acceso a ellas a tu propia app. Usa la sesión de autenticación del sistema, usa PKCE porque una app móvil no puede guardar un secreto, y pon los tokens en el Keychain o el Keystore. Esas tres reglas cubren la mayoría de los errores de autenticación móvil que he visto.
+</Callout>
+
+El trabajo del SDK cliente que describí en [el SDK es la API real](/es/blog/sdk-is-the-real-api) también importó aquí. Los clientes móviles siguen las mismas reglas que el SDK web hace cumplir — refrescar antes de la expiración, un refresco a la vez, un conjunto cerrado de errores de autenticación — solo que implementadas de forma nativa. El mismo contrato, otro lenguaje.
+
+## 2. En un Teléfono, el Stream No Es la Fuente de Verdad
+
+En un navegador de escritorio con el Wi-Fi de la oficina, hacer streaming de una respuesta de IA token por token es un problema resuelto. Escribí sobre la mecánica en [streaming de respuestas de LLMs](/es/blog/streaming-llm-responses-guide). En un teléfono, la red es una negociación.
+
+Los usuarios entran a ascensores. Cambian de Wi-Fi a datos móviles. Mandan la app a segundo plano para contestar un mensaje justo cuando un análisis largo de un documento va por la mitad. El sistema operativo está en todo su derecho de suspender tu conexión. Si la respuesta solo existe dentro de ese stream, la respuesta se perdió.
+
+El arreglo es arquitectónico, no un bucle de reintentos. El servidor es dueño de la generación:
+
+```
+  cliente                     servidor
+  ───────                     ────────
+  pedir análisis    ───────▶  crear job (id: a91f)
+                    ◀───────  { jobId: "a91f" }
+  abrir stream(a91f) ──────▶  la generación corre en el servidor,
+                    ◀─ ─ ─ ─  progreso persistido como eventos
+     ...túnel...               (sigue sin el cliente)
+  reconectar(a91f,
+    lastEvent: 37)  ───────▶  repetir desde el evento 38
+                    ◀─ ─ ─ ─  ...resto del stream
+  ¿la app murió?    ───────▶  GET /jobs/a91f
+                    ◀───────  resultado terminado
+```
+
+El cliente es un espectador, no el dueño. El stream es una ventana en vivo hacia un job que sigue corriendo, lo esté mirando alguien o no. Si la conexión se cae, el cliente se reconecta con el último evento que vio. Si la app murió, el siguiente arranque descarga el resultado terminado. Si el análisis tarda lo suficiente como para que el usuario se vaya, una notificación lo trae de vuelta.
+
+Del lado del cliente, modelo esto como una máquina de estados explícita en vez de una pila de booleanos. En Kotlin, se ve más o menos así:
+
+```kotlin
+sealed interface AnalysisState {
+    data object Idle : AnalysisState
+    data class Streaming(val jobId: String, val text: String, val lastEventId: Int) : AnalysisState
+    data class Reconnecting(val jobId: String, val text: String, val lastEventId: Int) : AnalysisState
+    data class Done(val jobId: String, val text: String) : AnalysisState
+    data class Failed(val jobId: String?, val message: String, val canRetry: Boolean) : AnalysisState
+}
+```
+
+El estado `Reconnecting` es el que los wrappers usualmente no tienen. Mantiene el texto parcial en pantalla, muestra un indicador discreto de "reconectando," y retoma donde se quedó. El usuario ve una pausa breve, no una respuesta perdida. SwiftUI y Jetpack Compose hacen que este tipo de UI guiada por estados sea agradable, lo cual es uno de los argumentos más silenciosos para ir nativo.
+
+<Callout type="tip" title="Haz que el servidor sea dueño de todo lo que tarde más que un túnel">
+Si una operación de IA puede tardar más que una interrupción de red típica, córrela como un job del lado del servidor con un ID y progreso persistido. El cliente hace streaming para la experiencia en vivo pero siempre puede reanudar o descargar el resultado. Una conexión caída debería costarle al usuario una pausa, nunca la respuesta.
+</Callout>
+
+## 3. Las Notificaciones Vienen del Pipeline de Eventos
+
+La plataforma procesa documentos a través de un pipeline orientado a eventos: carga, luego extracción, luego análisis de IA, luego notificaciones. Escribí sobre el patrón general en [pipelines de datos orientados a eventos](/es/blog/event-driven-data-pipelines). Los clientes móviles no son un caso especial atornillado al costado de ese pipeline. Son simplemente otro consumidor de su última etapa.
+
+Cuando un análisis termina, el mismo evento que actualiza el dashboard web dispara una notificación push. Eso mantiene una sola fuente de verdad para "esto está listo" y evita un segundo sistema de polling exclusivo para móvil que se desincroniza.
+
+La regla de qué va dentro del push es estricta: **un puntero, no un payload.**
+
+```
+push malo                               push bueno
+─────────                               ──────────
+"El análisis de riesgo de [Empresa]     "Tu análisis de documento está listo."
+ encontró 3 problemas de alta            data: { type: "analysis",
+ severidad en la cláusula de                     id: "a91f" }
+ indemnización..."
+
+→ contenido sensible en la pantalla     → la app abre, se autentica,
+  de bloqueo                              descarga el contenido real
+→ pasa por entrega de terceros            por la API normal
+→ queda en el historial de notificaciones
+```
+
+Los mensajes push viajan por servicios de entrega de la plataforma, aparecen en pantallas de bloqueo y viven en el historial de notificaciones. En una plataforma que maneja documentos de negocio confidenciales y cifra los campos sensibles en reposo, sería absurdo luego poner resultados de análisis en el payload de una notificación. El push dice "algo está listo" y lleva un ID. La app abre, se autentica por el flujo normal, y descarga el contenido a través de la misma API, con las mismas verificaciones de acceso, que todo lo demás.
+
+## 4. Offline Es un Estado, No un Error
+
+Los productos AI-first son, casi por definición, productos en línea. El modelo está en la nube. No puedes correr un análisis de contrato en modo avión. Es tentador concluir que offline no importa.
+
+Importa mucho, solo que de otra forma. La pregunta no es "¿puede correr la IA offline?" Es "¿qué ve el usuario cuando abre la app sin conexión?" Y la peor respuesta es un spinner infinito, seguido de un error genérico que hace que la app se sienta rota.
+
+Lo que hacen los clientes nativos en su lugar:
+
+```
+offline, el usuario abre la app
+  → resultados recientes mostrados desde el caché local, claramente
+    etiquetados con cuándo se actualizaron por última vez
+  → acciones de IA visibles pero deshabilitadas, con una razón simple:
+    "El análisis necesita conexión."
+  → nada que requiera el servidor finge funcionar
+
+vuelve la conexión
+  → el caché se refresca en silencio
+  → las acciones deshabilitadas regresan
+  → cualquier job que terminó mientras estaba offline aparece como listo
+```
+
+Dos decisiones ahí son deliberadas. El contenido cacheado se etiqueta con su antigüedad, porque un análisis viejo presentado como actual es una forma silenciosa de estar mal. Y las acciones de IA no se encolan para correr "cuando vuelvas a estar en línea." Encolar un pedido de análisis de un documento suena útil, pero significa que el usuario se va creyendo que pasó algo que no pasó. Un botón deshabilitado con una razón honesta lo respeta más.
+
+Las plataformas nativas hacen esto más fácil que los wrappers, porque la detección de conectividad, el refresco en segundo plano y el almacenamiento local seguro son todas APIs de primera clase en vez de cosas a las que llegas a través de un puente.
+
+## 5. Lo Que Haría Diferente
+
+Ir nativo fue la decisión correcta. No fue gratis, y cometí errores en el camino que evitaría si empezara de nuevo.
+
+**Generar los modelos de la API a partir de un solo contrato, desde el primer día.** Al principio, los modelos en Swift, los modelos en Kotlin y los tipos de TypeScript para los mismos objetos de la API se escribieron a mano, tres veces. Se desviaron. Un campo se volvió opcional en el servidor y un cliente se cayó al decodificarlo. El arreglo — generar los modelos del cliente a partir de un solo contrato de API — debió ser el punto de partida, no un proyecto de limpieza.
+
+**Enviar menos pantallas, más profundas.** La tentación con los clientes nativos es la paridad: todo lo que hace la app web, el teléfono también debería hacerlo. Es una trampa. El móvil es donde la gente revisa resultados, aprueba cosas y recibe notificaciones, no donde construye dashboards complejos. Un número pequeño de flujos móviles excelentes le gana a un espejo completo de la app web con cada pantalla a medio terminar.
+
+**Instrumentar los clientes desde el inicio.** Tenía una observabilidad excelente en el backend y casi ninguna en los teléfonos durante el primer tramo. Cuando un usuario decía "el análisis nunca cargó," podía ver que el job se había completado en el servidor y no tenía idea de qué había pasado en el dispositivo. Logging estructurado en el cliente, reporte de crashes, y un ID de correlación que viaje desde el teléfono a través del backend y de regreso deberían ser trabajo del primer día.
+
+**Meter los clientes móviles en la compuerta de releases.** Las apps web tenían pruebas automatizadas que controlaban los releases; los clientes móviles se probaban más a mano. Cambios del backend que técnicamente eran compatibles ocasionalmente rompían una ruta de decodificación en móvil. Pruebas de contrato que corran contra los modelos móviles en cada cambio del backend los habrían atrapado antes que cualquier usuario.
+
+<Callout type="info" title="Lo nativo es un compromiso, no una funcionalidad">
+Elegir clientes nativos significa mantener dos codebases más con sus propias herramientas, procesos de revisión y releases en las tiendas. Vale la pena cuando los problemas difíciles — autenticación, trabajo de IA de larga duración, notificaciones, offline — son centrales para el producto. Si no lo son, un wrapper genuinamente puede ser el intercambio correcto. Decide según dónde viven tus problemas difíciles.
+</Callout>
+
+## El Hilo
+
+Si comprimo todo esto en una oración: **la inteligencia de un producto de IA vive en el servidor, pero su confiabilidad vive en el dispositivo.**
+
+Al modelo no le importa si lo llaman desde un navegador o desde un teléfono. Al usuario sí. Le importa si iniciar sesión se siente seguro, si una respuesta sobrevive a un túnel, si una notificación filtra el negocio de su cliente en una pantalla de bloqueo, y si la app dice la verdad cuando la red desaparece. Esos no son problemas de IA. Son problemas de plataforma, y las propias herramientas de la plataforma son la mejor forma de resolverlos.
+
+Un wrapper habría salido más rápido. También habría fallado exactamente en los momentos en que los usuarios deciden si confiar en el producto.
+
+---
+
+*Si estás evaluando clientes nativos versus un wrapper para un producto de IA, o peleando con OAuth móvil, streams reanudables o diseño de push, [contáctame](/contact). Esas decisiones son mucho más baratas de conversar antes del primer release en las tiendas que después.*

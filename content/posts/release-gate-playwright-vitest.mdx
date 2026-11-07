@@ -1,0 +1,254 @@
+---
+title: "The Release Gate: How Playwright and Vitest Guard 17 Apps on One Platform"
+description: "When seventeen-plus apps share one auth service, one file service, and one SDK, a small change in the platform can break a login screen three repos away. How I built the QA harness that gates GreyMatter releases: Vitest for units and contracts, Playwright for the few user journeys that must never break, structural assertions for non-deterministic AI features, a strict flaky-test policy, and a clear line between what blocks a release and what only warns."
+date: 2026-09-08
+published: true
+category: "DevOps"
+tags: ["DevOps", "Testing", "Playwright", "Vitest", "Platform Engineering"]
+author: "Osvaldo Restrepo"
+tldr: "On a shared platform, the most dangerous change is the one that is correct in its own repo and wrong in everyone else's. The GreyMatter release gate exists to catch exactly that. Vitest covers units and, more importantly, contracts: the shapes the auth SDK, file service, and events promise to every app. Playwright covers a short list of critical user journeys end to end, like logging in through SSO and uploading a document that flows through extraction and AI analysis to a notification. AI features are tested on structure, not wording: schema validity, required fields, value ranges, citations, language, and refusal behavior. Flaky tests are quarantined with an owner and an expiry date, never silently retried forever. And the gate is explicit about what blocks a release and what only warns, because a gate that blocks on everything gets bypassed, and a gate that blocks on nothing is decoration."
+faqs:
+  - question: "Why use both Vitest and Playwright instead of one tool?"
+    answer: "They answer different questions at different costs. Vitest is fast and cheap, so it can check thousands of units and every contract between the platform and its apps on every commit. Playwright is slow and expensive but sees what a user sees: a real browser, real redirects, real network calls. Using Playwright for everything makes the suite slow and flaky. Using Vitest for everything misses the bugs that only exist when the pieces are wired together."
+  - question: "How do you write end-to-end tests for AI features that never return the same text twice?"
+    answer: "Stop asserting on wording and start asserting on structure and behavior. Check that the output validates against its schema, that required fields are present, that numbers fall in plausible ranges, that every claim has a citation back to the source document, that it is in the expected language, and that it refuses when it should. Use recorded model responses for most tests so they are deterministic, and keep a small live-model smoke test that runs the real thing with structural assertions only."
+  - question: "What should block a release and what should only warn?"
+    answer: "Block on anything that breaks a contract, a critical user journey, security or access control, or the structural validity of AI output. Warn on things that matter but are not emergencies: performance regressions within a tolerance, accessibility issues on non-critical screens, visual diffs, and quarantined tests. The key is writing the list down in advance, so nobody decides what counts as blocking at 5 p.m. on release day."
+relatedPosts: ["ci-cd-pipeline-design", "structured-outputs-are-a-contract", "sdk-is-the-real-api"]
+---
+
+The change was four lines. I was cleaning up the auth client SDK, and I renamed an internal helper and tightened the type of one claim we read from the token. My unit tests were green. The SDK's own tests were green. I was pleased with myself.
+
+Then the release gate went red, and not in the SDK. In a Playwright journey for one of the apps that consumed it, the login flow redirected back from SSO and landed on a blank page. That app had been reading the claim in a slightly different shape than I assumed, and my "tightening" turned a field it relied on into `undefined`. Nothing in my repo could have told me that. Only a test that logged in like a user, through the real redirect, in a real browser, against the real app, could.
+
+That is the problem with platforms. At TheGreyMatter.ai, the GreyMatter 3.0 backbone sits behind seventeen-plus vertical apps. They share an OAuth SSO service with a TypeScript client SDK, a central file service, a communications service, connectors, and an event-driven ingestion pipeline. A change that is correct in its own repo can be wrong in everyone else's. The release gate exists to catch that before users do.
+
+## What the Gate Is For
+
+I want to be precise about the job, because "we have tests" means nothing on its own.
+
+The gate answers one question before anything ships: **did this change break a promise?** Promises come in three sizes:
+
+```
+promise size        example                                    tool
+─────────────────   ────────────────────────────────────────   ──────────
+a unit's promise    "parseClaims rejects an expired token"     Vitest
+a contract          "the auth SDK returns this user shape"     Vitest
+a user's promise    "I can log in and upload a document and    Playwright
+                     get notified when analysis is done"
+```
+
+Most test suites over-invest in the first row, under-invest in the second, and either skip the third or try to do everything there. On a shared platform, the second row is where most real breakage lives, and the third row is where it becomes visible.
+
+## Vitest: Units, and Above All Contracts
+
+Vitest is fast, runs everywhere, and speaks TypeScript natively, which matters when the platform and the apps are all React 18 and TypeScript on top of Azure Functions. It runs on every commit and should finish in the time it takes to refill a coffee.
+
+Unit tests are table stakes. The tests that earn their keep on a platform are contract tests: tests that pin down the exact shape the platform promises to its consumers.
+
+```typescript
+// packages/auth-sdk/test/contract.test.ts
+import { describe, it, expect } from "vitest";
+import { z } from "zod";
+import { getSession } from "../src";
+import { signedTestToken } from "./fixtures/tokens";
+
+// This schema IS the contract. Apps depend on it. Changing it is a breaking change.
+const SessionContract = z.object({
+  userId: z.string().min(1),
+  email: z.string().email(),
+  tenantId: z.string().min(1),
+  roles: z.array(z.string()),
+  dealScopes: z.array(z.string()),
+  expiresAt: z.number().int().positive(),
+});
+
+describe("auth SDK session contract", () => {
+  it("returns a session that satisfies the published contract", async () => {
+    const session = await getSession(signedTestToken({ roles: ["analyst"] }));
+    expect(() => SessionContract.parse(session)).not.toThrow();
+  });
+
+  it("never returns undefined for fields apps read directly", async () => {
+    const session = await getSession(signedTestToken({ roles: [] }));
+    expect(session.roles).toEqual([]);       // empty, not undefined
+    expect(session.dealScopes).toEqual([]);
+  });
+});
+```
+
+That second test exists because of the story at the top. Now the contract says, in code, that arrays are always arrays. The consuming apps import the same schema in their own tests, so if I change the contract, their builds tell them, and if they rely on something outside the contract, their tests tell them.
+
+The same pattern covers the file service (what an upload returns, what the webhook payload looks like, how the HMAC signature header is formatted) and the ingestion events (what `document.analyzed` carries). I wrote more about why the SDK, not the HTTP API, is the thing apps actually depend on in [the SDK is the real API](/blog/sdk-is-the-real-api).
+
+<Callout type="tip" title="Publish your contracts as code">
+If a shape is a promise to other teams, it belongs in a schema that both sides import in tests, not in a wiki page. The provider tests that it produces the shape. The consumer tests that it only relies on the shape. When the two drift, a build fails instead of a user.
+</Callout>
+
+## Playwright: A Short List of Journeys That Must Never Break
+
+Playwright is the opposite trade. It is slow, it touches real infrastructure, and it is the only thing that sees what a user sees. So it gets a deliberately short list.
+
+I keep the critical journeys to a number I can say out loud. For the platform, the core ones are:
+
+1. **Log in through SSO** and land on the app with the right tenant and roles.
+2. **Upload a document** and watch it move through extraction, AI analysis, and a notification.
+3. **Access control holds**: a user without deal-level access cannot see that deal, even with a direct URL.
+4. **Sign out** really signs out, across apps.
+
+Each vertical app adds two or three of its own. That is it. Every journey on the list is something that, if broken, would make someone open a support ticket within the hour.
+
+The upload journey is the interesting one, because it crosses almost every shared service and ends asynchronously:
+
+```typescript
+// e2e/upload-to-notification.spec.ts
+import { test, expect } from "@playwright/test";
+import { loginViaSSO } from "./helpers/auth";
+
+test("upload flows through analysis to a notification", async ({ page }) => {
+  await loginViaSSO(page, { user: "e2e-analyst" });
+
+  await page.getByRole("link", { name: "Documents" }).click();
+  await page.getByLabel("Upload document").setInputFiles("fixtures/sample-agreement.pdf");
+
+  // The upload itself is synchronous from the user's point of view.
+  await expect(page.getByText("sample-agreement.pdf")).toBeVisible();
+  await expect(page.getByTestId("doc-status")).toHaveText(/processing/i);
+
+  // Extraction and AI analysis are event-driven. Poll the UI, not the internals.
+  await expect(page.getByTestId("doc-status")).toHaveText(/analyzed/i, {
+    timeout: 120_000,
+  });
+
+  // The notification is the user-visible end of the pipeline.
+  await page.getByRole("button", { name: "Notifications" }).click();
+  await expect(
+    page.getByRole("listitem").filter({ hasText: "sample-agreement.pdf" })
+  ).toBeVisible();
+});
+```
+
+A few choices in there are deliberate. The test logs in through the real SSO redirect, using a dedicated test identity, not a backdoor cookie, because the login redirect is exactly where my four-line change broke things. It waits on the UI with a generous timeout rather than sleeping, because the pipeline is asynchronous and its timing varies. And it asserts on what the user sees (status text, a notification) rather than poking at queues or databases, because the internals are allowed to change and the journey is not.
+
+## Testing AI Features Without Asserting on Words
+
+This is where most teams either give up or write tests that fail every other run.
+
+An AI analysis step will not produce the same sentence twice. If your test says `expect(summary).toBe("The agreement has a 30-day termination clause.")`, it will fail tomorrow for no reason, someone will add a retry, then a second retry, and then nobody trusts the suite.
+
+The trick is to stop testing the wording and start testing the **structure and behavior** the product depends on. I treat AI output as a contract, the same way I described in [structured outputs are a contract](/blog/structured-outputs-are-a-contract):
+
+```typescript
+// Assertions that hold no matter how the model phrases things.
+const Analysis = z.object({
+  language: z.enum(["en", "es"]),
+  documentType: z.enum(["agreement", "financials", "policy", "other"]),
+  findings: z.array(
+    z.object({
+      title: z.string().min(3).max(120),
+      severity: z.enum(["low", "medium", "high"]),
+      citation: z.object({ page: z.number().int().min(1), quote: z.string().min(5) }),
+    })
+  ),
+  confidence: z.number().min(0).max(1),
+});
+
+test("analysis output is structurally sound", async () => {
+  const result = Analysis.parse(await runAnalysis("fixtures/sample-agreement.pdf"));
+
+  expect(result.documentType).toBe("agreement");      // a classification, not prose
+  expect(result.findings.length).toBeGreaterThan(0);  // it found something
+
+  for (const f of result.findings) {
+    // Every finding must point back to text that really exists in the source.
+    expect(sourceText).toContain(normalize(f.citation.quote));
+  }
+});
+```
+
+What that checks: the output parses, the classification is right, there is at least one finding, and every finding cites a quote that actually appears in the document. That last check is the most valuable one I have. It is a cheap, deterministic test against the most expensive AI failure, which is a confident claim with nothing behind it.
+
+The other behaviors I assert on:
+
+```
+assert on                          not on
+────────────────────────────────   ──────────────────────────────
+schema validity                    exact wording
+required fields present            sentence order
+numbers within plausible ranges    specific phrasing of a summary
+citations exist in the source      number of findings, exactly
+response language matches input    tone (that is an eval, not a test)
+refuses out-of-scope input         which synonyms it chose
+```
+
+There are two layers to make this practical. Most tests run against **recorded model responses**, so they are fast, free, and deterministic; they test everything around the model, including parsing and the UI. A small **live smoke test** runs against the real model before a release, with only structural assertions, to catch the day a provider change makes output stop parsing.
+
+<Callout type="info" title="Tests and evals are different jobs">
+A test asks "is this structurally acceptable, yes or no?" and belongs in the release gate. An eval asks "how good is this, on a few hundred cases, compared to last time?" and belongs in its own pipeline. Mixing them gives you a gate that flickers on quality noise, or an eval that only checks whether JSON parses. Keep both. Keep them separate.
+</Callout>
+
+## The Flaky-Test Policy
+
+A flaky test in a release gate is worse than no test. It teaches everyone that red does not mean anything.
+
+End-to-end suites against real infrastructure will produce flakes; pretending otherwise is how you end up with `retries: 5` and a gate that is green by statistics. So I wrote down a policy and stuck to it:
+
+1. **One retry, logged.** Playwright retries a failed test once. A pass on retry is still recorded as a flake, with the trace.
+2. **Flake twice in a week, you get quarantined.** The test moves to a quarantine tag. It still runs and reports, but it cannot block.
+3. **Quarantine has an owner and an expiry.** Every quarantined test has a named person and a date. If it is not fixed or deleted by then, it shows up in the weekly review, by name.
+4. **Fix the cause, not the timeout.** The usual causes are waiting on time instead of state, shared test data between parallel runs, and depending on third-party services in the critical path. Bumping a timeout is allowed only with a comment that explains why.
+5. **Deleting is allowed.** A test that has been quarantined for weeks and nobody misses was not protecting anything.
+
+```typescript
+// playwright.config.ts (excerpt)
+export default defineConfig({
+  retries: process.env.CI ? 1 : 0,
+  reporter: [["list"], ["./reporters/flake-tracker.ts"]],
+  projects: [
+    { name: "critical", grep: /@critical/, grepInvert: /@quarantine/ },
+    { name: "quarantine", grep: /@quarantine/ },
+  ],
+});
+```
+
+<Callout type="warning" title="Retries hide bugs as well as flakes">
+Some flakes are real race conditions that users also hit, just less often. If a test passes on retry, look at the trace before you shrug. More than once, the "flaky" test was the only one noticing a real ordering bug in an event-driven flow.
+</Callout>
+
+## What Blocks and What Warns
+
+The last piece is the one that makes the gate trustworthy: a written list of what stops a release and what only raises a flag.
+
+```
+BLOCKS the release                       WARNS (visible, not blocking)
+──────────────────────────────────────   ──────────────────────────────────────
+any Vitest unit or contract failure      performance regression within tolerance
+any @critical Playwright journey fails   accessibility issues on secondary screens
+access control or RBAC test fails        visual diffs on non-critical pages
+AI output fails schema or citation       quarantined tests failing
+  checks in the live smoke test          new console warnings
+security scan finds high severity        dependency updates available
+audit log missing on a mutation          coverage dropping on a changed file
+```
+
+Two principles drive that list. First, anything touching auth, access control, or audit logging blocks, full stop, because a platform that handles companies' sensitive documents does not get to ship a permissions bug and fix it later. Second, anything the team cannot act on in the next hour does not block, because a gate that blocks on noise gets bypassed, and a bypassed gate is worse than an honest one.
+
+There is also an escape hatch, because there always has to be one. An override requires a named approver and a written reason, and it is logged like any other mutation. In practice, having to write the reason is usually enough to make someone go fix the test instead.
+
+I wrote about the general shape of pipelines in [CI/CD pipeline design](/blog/ci-cd-pipeline-design). The release gate is the part of that pipeline where the platform keeps its promises to the apps on top of it.
+
+<Callout type="danger" title="Decide what blocks before release day">
+If the rule for what blocks a release lives only in someone's head, it will be renegotiated every time a deadline is close. Write the list down, put it in the repo next to the config, and change it in a pull request like any other code.
+</Callout>
+
+## The Throughline
+
+If I had to compress all of this into one sentence: **a release gate is a list of promises, checked by the cheapest tool that can see each one.**
+
+Vitest checks the promises a unit and a contract make, quickly, on every commit. Playwright checks the few promises a user would notice, slowly, in a real browser. AI features are held to the promises that matter, which are structure, grounding, and behavior, not wording. Flakes are treated as bugs with owners. And the line between blocking and warning is written down, so nobody draws it under pressure.
+
+My four-line change never reached a user. Not because I was careful. Because the gate did not care how careful I was.
+
+---
+
+*If you are running a shared platform and your release process feels like either a rubber stamp or a wall, [reach out](/contact). I am happy to compare notes on contracts, journeys, and how to test AI features without losing your mind to flakes.*

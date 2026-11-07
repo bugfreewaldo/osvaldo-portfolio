@@ -1,0 +1,201 @@
+---
+title: "Ontologies Before Embeddings: What Vector_10 Taught Me About Keeping the 'Why'"
+description: "When your domain already has a framework, encode it as structure first and use embeddings for fuzzy matching second. Lessons from building Vector_10, an agent that reasons over a 9-vector business ontology: why pure vector search finds similar text but loses the reasoning, how a small graph plus embeddings beats either alone, and what GraphRAG looks like when the graph is something experts already agreed on."
+date: 2026-09-22
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "Knowledge Graphs", "GraphRAG", "Embeddings", "Vector_10"]
+author: "Osvaldo Restrepo"
+tldr: "Embeddings are excellent at answering 'what text looks like this?' and bad at answering 'why does this belong here?' When I built Vector_10, an agent that reasons over a 9-vector ontology for evaluating businesses, my first version was pure vector search over the framework's documents. It retrieved plausible paragraphs from the wrong part of the framework and could not explain its own classifications. The fix was to encode the ontology as structure first — a small graph of vectors, dimensions, indicators, and explicit relationships — and use embeddings only for the fuzzy step of mapping messy real-world evidence onto that structure. Retrieval then walks the graph, so every answer comes with a path that explains it. If experts have already agreed on how a domain is organized, do not ask a vector index to rediscover it."
+faqs:
+  - question: "When should I use a knowledge graph or ontology instead of plain vector search?"
+    answer: "When your domain already has a stable, expert-agreed structure — a framework, a taxonomy, a regulatory hierarchy, a clinical classification — and the answers you need depend on relationships, not just similarity. If users ask 'why' or 'what does this affect' as often as 'what is this,' you need structure. If your corpus is a loose pile of documents with no agreed organization, plain vector search is a reasonable starting point."
+  - question: "Do I need a dedicated graph database to do GraphRAG?"
+    answer: "Not necessarily. A dedicated graph database is great when the graph is large or the traversals are complex. For a compact ontology with a few hundred nodes and well-defined relationship types, adjacency stored in documents or relational tables and traversed in application code works fine. What matters is that the structure is explicit and versioned, not which engine stores it."
+  - question: "If I have an ontology, do I still need embeddings at all?"
+    answer: "Yes, for the fuzzy step. Real evidence never arrives labeled with your ontology's terms. A board memo, a customer complaint, or a financial note has to be mapped onto the structure, and that mapping is a similarity problem where embeddings shine. The design is structure for reasoning, embeddings for matching — each doing the job it is actually good at."
+relatedPosts: ["graph-databases-neo4j-guide", "vector-databases-ai-apps", "building-production-rag-systems"]
+---
+
+The first demo of Vector_10 went fine right up until someone asked it a follow-up question.
+
+Vector_10 is an agent I built at TheGreyMatter.ai that reasons over our 9-vector ontology: a framework for evaluating a business along nine dimensions, each broken into more specific areas and indicators. The idea is simple to say. You feed the agent evidence about a company — documents, notes, metrics — and it tells you where that evidence lands in the framework, what it suggests, and what to look at next.
+
+In the demo, I gave it a short note about a business that depended heavily on a couple of large customers. It answered confidently, placing the issue in the framework and summarizing the relevant guidance. Nice. Then someone asked: "Why that vector and not the other one? And what else does this affect?"
+
+The agent produced three well-written paragraphs. They were relevant. They were also pulled from two different parts of the framework, stitched together, and they did not answer the question, because the system did not actually know why. It knew which chunks of text were *near* the question in embedding space. That is not the same thing as knowing where something belongs, and it is nowhere close to knowing what it affects.
+
+That afternoon I stopped thinking of the framework as a pile of documents and started treating it as what it actually is: a structure that experts already agreed on. This post is about what changed when I did.
+
+## 1. Embeddings Answer "Similar," Not "Why"
+
+I like embeddings. I have written a whole guide on [vector databases for AI apps](/blog/vector-databases-ai-apps), and I use them every week. But it is worth being precise about what they do.
+
+An embedding turns a piece of text into a point in space where similar meanings land close together. Vector search finds the points nearest your query. That is a powerful primitive for "find me text that talks about this." It has no notion of hierarchy, no notion of direction, and no notion of *because*.
+
+Here is what that looks like in practice with a framework:
+
+```
+query: "revenue depends on two large customers — why is this a risk?"
+
+pure vector search returns (top 3 by cosine similarity):
+  1. paragraph about customer concentration   (correct area)
+  2. paragraph about supplier concentration   (similar words, different area)
+  3. paragraph about sales pipeline coverage  (similar words, different vector)
+
+what the user actually needed:
+  concentration risk ──belongs_to──▶ area ──part_of──▶ vector
+        │
+        ├──affects──▶ cash flow predictability
+        ├──affects──▶ negotiating leverage
+        └──evidenced_by──▶ top-customer share of revenue (indicator)
+```
+
+The top three results are all reasonable text. Two of them are in the wrong place. And none of them carry the relationships the user asked about, because those relationships are not *in* any single paragraph. They live in the structure of the framework — in how the parts connect — and chunking a document destroys exactly that.
+
+<Callout type="warning" title="Chunking deletes structure">
+When you split a framework document into chunks and embed them, you keep the words and throw away the outline. The headings, the nesting, the "this rolls up into that" — the part experts spent years agreeing on — is precisely what does not survive. Similarity search cannot give back what chunking removed.
+</Callout>
+
+## 2. If Experts Already Built the Map, Encode the Map
+
+The insight that unlocked Vector_10 was embarrassingly obvious in hindsight. The 9-vector framework is not unstructured knowledge waiting to be discovered. It is a taxonomy with explicit levels and explicit relationships, designed by people who think about businesses for a living. My job was not to have a model infer that structure from prose. My job was to write it down.
+
+So the ontology became data. Not a giant graph — a small, deliberate one. Nodes for vectors, the areas under them, and the indicators that provide evidence. Edges with a short list of named relationship types. Each node carries a definition written by a human, and that definition is what gets embedded.
+
+```typescript
+type NodeKind = "vector" | "area" | "indicator";
+
+type RelationType =
+  | "part_of"        // area ──▶ vector, indicator ──▶ area
+  | "affects"        // area ──▶ area (directional influence)
+  | "evidenced_by"   // area ──▶ indicator
+  | "conflicts_with";// two areas that pull in opposite directions
+
+interface OntologyNode {
+  id: string;
+  kind: NodeKind;
+  label: string;
+  definition: string;      // human-written; this is what we embed
+  version: string;         // the ontology is versioned like code
+}
+
+interface OntologyEdge {
+  from: string;
+  to: string;
+  type: RelationType;
+  rationale: string;       // why this edge exists, in one sentence
+}
+```
+
+Two fields in there carry more weight than they look. The `rationale` on every edge is the "why" that pure vector search lost: a one-sentence explanation of why one area affects another. When the agent walks that edge, it can quote the reason instead of inventing one. And `version` means the ontology changes through review, like code. When the framework evolves, the change is a diff someone approved, not a re-embedding job that silently shifts every answer.
+
+I wrote about the mechanics of graph modeling in [the Neo4j guide](/blog/graph-databases-neo4j-guide). For Vector_10, though, I want to be honest: the graph is small enough that the engine matters much less than the discipline. It could live in a dedicated graph database, or as adjacency lists in documents traversed in application code. The decision that mattered was making the structure explicit, not where it is stored.
+
+## 3. Use Embeddings for the Fuzzy Step, and Only That Step
+
+None of this means embeddings went away. They moved to the one job where they are genuinely the best tool: mapping messy evidence onto clean structure.
+
+Real evidence never arrives labeled. A board memo does not say "this belongs to area X of vector Y." It says something like "we are a little nervous about the renewal with our biggest account." Getting from that sentence to the right node in the ontology is a fuzzy matching problem, and that is exactly what embeddings are for.
+
+The pipeline ended up looking like this:
+
+```
+  evidence (memo, note, metric)
+            │
+            ▼
+  ┌──────────────────────────────┐
+  │ 1. EMBED + MATCH             │  fuzzy: which ontology nodes
+  │    against node definitions  │  does this evidence resemble?
+  └──────────────┬───────────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │ 2. CONFIRM                   │  model picks among top candidates,
+  │    model + constraints       │  must cite the evidence span
+  └──────────────┬───────────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │ 3. TRAVERSE                  │  structural: walk part_of,
+  │    the graph                 │  affects, evidenced_by edges
+  └──────────────┬───────────────┘
+                 ▼
+  ┌──────────────────────────────┐
+  │ 4. ANSWER WITH A PATH        │  every claim traces to a node,
+  │                              │  an edge, and a rationale
+  └──────────────────────────────┘
+```
+
+Step 1 is pure vector search, but against a small, curated set of node definitions rather than against chunks of a long document. That alone made matching dramatically more stable, because each target is a crisp, human-written description of one concept instead of a paragraph that happens to mention three.
+
+Step 2 is where the model earns its place. It sees the top few candidate nodes and the evidence, and it has to choose — or choose none — and cite the exact span of evidence that justifies the choice. "None of these fit" is an allowed answer, and I treat it as a healthy one.
+
+Step 3 is deterministic. Once the evidence is anchored to a node, the agent does not search for related ideas. It follows edges. What does this area affect? What indicators would confirm it? What does it conflict with? Those answers come from the structure, not from similarity.
+
+<Callout type="tip" title="Structure for reasoning, embeddings for matching">
+Let each tool do the job it is good at. Embeddings are excellent at "which concept does this messy sentence resemble?" A graph is excellent at "given this concept, what follows from it?" Most retrieval systems ask one of them to do both jobs, and it shows.
+</Callout>
+
+## 4. GraphRAG Is Just RAG That Remembers the Outline
+
+GraphRAG gets talked about as if it were a new species. In practice, the version that works for me is modest: retrieval that returns a small subgraph instead of a pile of chunks, and a prompt that hands the model that subgraph as structured context.
+
+Here is a simplified version of the retrieval function:
+
+```typescript
+async function retrieveForEvidence(evidence: string, maxHops = 2) {
+  // 1. fuzzy: find candidate nodes by definition similarity
+  const candidates = await nodeIndex.search(await embed(evidence), { topK: 5 });
+
+  // 2. model confirms (or rejects) with a cited evidence span
+  const anchor = await confirmAnchor(evidence, candidates);
+  if (!anchor) return { anchor: null, subgraph: null, reason: "no-fit" };
+
+  // 3. structural: walk explicit relationships from the anchor
+  const subgraph = await ontology.traverse(anchor.nodeId, {
+    types: ["part_of", "affects", "evidenced_by", "conflicts_with"],
+    maxHops,
+  });
+
+  return { anchor, subgraph };
+}
+```
+
+What the model receives is not "here are five paragraphs that seem relevant." It is "this evidence was anchored to this area, because of this span. This area is part of this vector. It affects these two areas, for these stated reasons. These indicators would confirm it." The model's job shrinks from *figure out the domain* to *explain this specific path in plain language*, which is a job language models are very good at.
+
+And when someone asks "why that vector and not the other one?", the answer is no longer three plausible paragraphs. It is the path, with the rationale attached to each step. The follow-up question that broke the first demo became the easiest one to answer.
+
+I still use classic chunk-based retrieval too, for the long-form guidance attached to each node. That is the pattern from [building production RAG systems](/blog/building-production-rag-systems), just scoped: once the graph tells us *which* node matters, we retrieve guidance chunks filtered to that node. Structure narrows the search; similarity fills in the detail.
+
+## 5. The Ontology Is a Product Artifact, Not a Preprocessing Step
+
+The biggest change was not technical. It was about ownership.
+
+When the framework was a pile of embedded documents, nobody owned the structure, because the structure was implicit. When it became a graph with definitions and rationales, it became something people could read, argue about, and improve. Domain experts started reviewing edges. "These two areas should not be linked by `affects`; the influence only goes one way." That sentence is a one-line change to a versioned file. In the embedding-only world, the equivalent fix would have been "rewrite some paragraphs and hope the vectors move."
+
+That gave me three things I did not have before:
+
+- **Explainability by construction.** Every answer carries a path. Nobody has to trust the model's account of its own reasoning, because the reasoning is in the data.
+- **Testability.** I can write evals that check structure: given this evidence, the anchor should be this node, and the traversal should include these areas. That is far easier to assert than "the answer should feel right."
+- **Controlled change.** Ontology updates go through review and ship with a version. If answers change, I can point at the diff that changed them.
+
+<Callout type="info" title="Versioned structure beats silent drift">
+In an embedding-only system, updating the knowledge means re-embedding and watching answers shift in ways nobody can fully explain. In a structured system, updating the knowledge means a reviewed diff with a version number. One of those you can audit. The other you can only hope about.
+</Callout>
+
+## When This Is Overkill
+
+I do not want to oversell this. Building an ontology is real work, and if your domain does not already have one, inventing it is a research project, not a sprint.
+
+Structure first makes sense when the domain already has an agreed framework — a methodology, a taxonomy, a regulatory hierarchy, a clinical classification — and the questions you care about involve relationships: why, what else, what follows. In my PhD work on clinical decision support, this pattern shows up everywhere, because medicine is full of carefully built classifications that a vector index would happily flatten.
+
+If your corpus is a loose pile of support tickets or meeting notes with no agreed organization, start with vector search and see how far it gets you. You may discover a structure along the way. At that point, write it down.
+
+## The Throughline
+
+If I had to compress this whole post into one sentence: **when experts have already drawn the map, encode the map and use embeddings only to find where you are on it.**
+
+Pure vector search is a powerful way to find text that looks like your question. It is a poor way to preserve the reasoning that makes a domain a domain. Vector_10 got good when I stopped asking an index to rediscover a framework that people had already built, and started treating that framework as data: explicit, versioned, reviewable, and walkable. Embeddings did not lose their job. They just stopped being asked to do someone else's.
+
+---
+
+*If you are sitting on a domain framework and wondering whether to embed it or encode it, [reach out](/contact). The answer is usually "both, in a specific order," and the order is easier to work out together than alone.*

@@ -1,0 +1,229 @@
+---
+title: "Lo Difícil de los Agentes de Voz No Es el LLM. Es el Turno de Palabra."
+description: "Construir agentes de voz para pequeños negocios en Shining Image me enseñó que el modelo de lenguaje es la parte fácil. Lo difícil son las reglas de medio segundo de la conversación humana: saber cuándo terminó de hablar quien llama, dejar que te interrumpa, llenar el silencio sin mentir, y meter STT, LLM y TTS en un presupuesto de latencia que un humano tolere. Detección de fin de turno, interrupciones, reconocimientos de relleno, y qué hacer con la gente que le habla encima al bot."
+date: 2026-07-07
+published: true
+category: "Ingeniería de IA"
+tags: ["Agentes de Voz", "Twilio", "Latencia", "IA Conversacional", "Shining Image"]
+author: "Osvaldo Restrepo"
+translationOf: "voice-agents-turn-taking"
+tldr: "Cuando empecé a construir agentes de voz en Shining Image, asumí que el trabajo estaría en el prompt y en la base de conocimiento. No fue así. Las respuestas del modelo fueron buenas desde la primera semana. Lo que hacía que las llamadas se sintieran rotas era el turno de palabra: el bot interrumpiendo a quien llamaba a mitad de una idea, dejando aire muerto después de un simple 'sí', hablando encima de alguien que intentaba corregirlo, y reaccionando a un televisor de fondo. Los arreglos mayormente no tenían que ver con el LLM: detección de fin de turno adaptativa que espera más después de preguntas abiertas que de preguntas de sí o no, un presupuesto de latencia estricto a través de Twilio, Whisper, GPT-4 y ElevenLabs con streaming en cada etapa, reconocimientos cortos pre-grabados para cubrir huecos inevitables, interrupción real que detiene el audio y recorta la memoria del bot a lo que quien llamaba realmente escuchó, y una salida elegante para quienes siguen hablándole encima. A un agente de voz se le juzga por sus modales antes que por su inteligencia."
+faqs:
+  - question: "¿Qué es la detección de fin de turno (endpointing) en un agente de voz?"
+    answer: "Es la decisión de que quien llama terminó su turno y el agente debe responder. La versión ingenua espera un periodo fijo de silencio. Eso falla en ambas direcciones: muy corto y el bot interrumpe a la gente que pausa para pensar, muy largo y cada intercambio tiene un aire muerto incómodo. Una mejor detección adapta el umbral de silencio al contexto, por ejemplo esperando menos después de una pregunta de sí o no y más después de una pregunta abierta, y revisa si lo dicho hasta ahora suena completo, para que 'mi número es cinco cinco cinco' no cuente como terminado solo porque la persona hizo una pausa."
+  - question: "¿Cómo manejas que quien llama interrumpa al agente de voz (barge-in)?"
+    answer: "Detecta habla sostenida de quien llama mientras el agente está hablando, detén el audio del agente de inmediato, y limpia cualquier audio ya almacenado del lado telefónico. Luego, y esto es crítico, recorta el mensaje del propio agente en el historial de la conversación a lo que realmente se reprodujo antes de la interrupción. Si no, el modelo cree que quien llama escuchó cosas que nunca escuchó. También ayuda ignorar señales cortas como 'ajá' u 'okey' para que el agente no se detenga cada vez que alguien indica amablemente que está escuchando."
+  - question: "¿Qué latencia es aceptable para un agente de voz telefónico?"
+    answer: "La conversación humana funciona con huecos muy cortos entre turnos, así que cualquier cosa que se estire más allá de aproximadamente un segundo empieza a sentirse como si la línea se hubiera caído. Rara vez llegas a eso con un pipeline secuencial de STT, LLM y TTS, así que la respuesta práctica es hacer streaming en cada etapa, empezar a decir la primera oración antes de que exista la respuesta completa, y cubrir los huecos inevitables, como una consulta a la base de datos, con un reconocimiento corto y honesto. El número que importa es el tiempo hasta que quien llama escucha algo con sentido, no el tiempo total de procesamiento."
+relatedPosts: ["shipping-ai-to-non-technical-users", "streaming-llm-responses-guide", "building-for-small-business"]
+---
+
+La primera llamada de prueba real que le hice a nuestro agente de voz fue así. El agente me saludó, me preguntó en qué podía ayudarme, y yo dije: "Hola, sí, necesito mover mi cita para el, eh..."
+
+Y el agente se metió. "¡Con gusto le ayudo a reprogramar! ¿Qué día le funciona?"
+
+Yo no había terminado. Estaba en medio de pensar. Dije "jueves" encima de su pregunta, y siguió hablando otros dos segundos, luego pausó, luego respondió una pregunta que yo no había terminado de hacer, de una forma un poco confundida. Todo el intercambio tomó tal vez quince segundos y se sintió como una llamada con alguien que no estaba escuchando.
+
+Esta es la parte vergonzosa: las respuestas del modelo estaban bien. Si leías la transcripción después, cada respuesta individual era razonable. El prompt era bueno. La recuperación sobre las preguntas frecuentes del negocio era buena. La herramienta de agendamiento funcionaba. Y la llamada aun así era terrible, porque lo que estaba roto no era la inteligencia. Eran los modales.
+
+Ese fue el comienzo de una larga educación en el turno de palabra, que resultó ser el verdadero problema difícil de los agentes de voz.
+
+## El LLM Fue la Parte Fácil
+
+En Shining Image, los agentes de voz manejaban llamadas para pequeños negocios: agendamiento, captura de prospectos, respuestas a preguntas comunes, y como respaldo tomar un mensaje cuando algo estaba fuera de alcance. El stack era Twilio para telefonía, Whisper para voz a texto, GPT-4 para la conversación, ElevenLabs para la voz, y RAG sobre la información propia de cada negocio.
+
+Entré esperando pasar la mayor parte de mi tiempo en prompts y recuperación. Pasé la mayor parte en decisiones de medio segundo que los humanos toman sin pensar:
+
+- ¿Esta persona terminó de hablar, o solo está pausando?
+- ¿Cuánto puedo quedarme en silencio antes de que piense que se cayó la línea?
+- Empezó a hablar mientras yo hablaba. ¿Me detengo?
+- ¿Ese "ajá" fue una interrupción o una señal amable de que está escuchando?
+- ¿Esa voz es de quien llama, o de un televisor al fondo?
+
+Ninguna de esas es una pregunta de modelo de lenguaje. Todas deciden si la llamada se siente humana o robótica. He escrito sobre por qué [la latencia es una característica de UX para usuarios no-técnicos](/es/blog/shipping-ai-to-non-technical-users); en el teléfono, esa idea se lleva al extremo, porque quien llama no tiene pantalla, ni spinner, nada más que tiempo y tono.
+
+<Callout type="info" title="Quien llama juzga los modales antes que la inteligencia">
+Quien llama perdona a un agente de voz que no sabe la respuesta y lo dice con amabilidad. No perdona a uno que lo interrumpe, deja aire muerto, o habla encima de su corrección. Las fallas de turno de palabra se sienten como mala educación, y la mala educación termina llamadas más rápido que las respuestas equivocadas.
+</Callout>
+
+## 1. Detección de Fin de Turno: Decidir Cuándo Terminaron
+
+La detección de fin de turno (endpointing) es la decisión de que el turno de quien llama terminó y le toca hablar al agente. Suena trivial. Es la palanca más grande sobre cómo se siente una llamada.
+
+La versión ingenua es un umbral fijo de silencio: si quien llama se queda callado por cierta cantidad fija de tiempo, terminó. Elígelo corto y el bot interrumpe a la gente que pausa para pensar, que es lo que me pasó en esa primera llamada. Elígelo largo y cada intercambio tiene un hueco incómodo después de que la persona termina, que se lee como un bot lento o roto.
+
+No hay un número correcto único, porque los humanos no pausan de forma uniforme. Alguien respondiendo "¿le funciona el martes?" dice "sí" y se detiene. Alguien respondiendo "¿en qué le puedo ayudar?" pausa a mitad de oración para recordar el nombre de lo que quiere. Alguien dictando un número de teléfono pausa entre grupos de dígitos.
+
+Así que la detección se volvió sensible al contexto. El umbral depende de lo que el agente acaba de preguntar, y de si la transcripción parcial se ve completa:
+
+```typescript
+type ExpectedAnswer = "yes_no" | "short_value" | "open_ended" | "digits";
+
+// Valores ilustrativos; los ajustamos por despliegue escuchando llamadas reales.
+const BASE_SILENCE_MS: Record<ExpectedAnswer, number> = {
+  yes_no: 450,
+  short_value: 700,
+  open_ended: 1000,
+  digits: 1200,
+};
+
+function shouldEndTurn(opts: {
+  expected: ExpectedAnswer;
+  silenceMs: number;
+  partialText: string;
+}): boolean {
+  const { expected, silenceMs, partialText } = opts;
+  let threshold = BASE_SILENCE_MS[expected];
+
+  // Muletillas y conectores al final significan que todavía está pensando.
+  if (/\b(um+|uh+|and|so|but|to|the|my)\s*$/i.test(partialText.trim())) {
+    threshold += 600;
+  }
+
+  // Números de teléfono y fechas: esperar hasta que se vea completo.
+  if (expected === "digits" && countDigits(partialText) < 10) {
+    threshold += 800;
+  }
+
+  return silenceMs >= threshold;
+}
+```
+
+La primera regla, extender la espera cuando alguien se queda colgado en un "eh" o un "para" o un "mi", arregló por sí sola mi llamada de prueba original. "Necesito mover mi cita para el, eh..." no es una oración terminada, y cualquier oyente humano lo sabe.
+
+Un detalle práctico hizo esto más difícil de lo que parece: tal como usábamos Whisper, la transcripción corría sobre fragmentos de audio en vez de como un flujo continuo. Eso significaba que la detección de fin de turno no era solo una decisión conversacional, también era el disparador de cuándo empezaba el trabajo de transcripción. Termina el turno muy pronto y transcribes media oración. Termínalo muy tarde y cada milisegundo de espera cae directamente sobre quien llama.
+
+<Callout type="tip" title="Ajusta la detección escuchando, no leyendo">
+Las transcripciones esconden por completo los problemas de turno de palabra. El texto de una llamada mala y una buena puede ser idéntico. La única forma que encontré de ajustar la detección de fin de turno fue escuchar llamadas de prueba grabadas con los tiempos intactos, y marcar cada momento en que el bot cortó a alguien o lo dejó colgado.
+</Callout>
+
+## 2. El Presupuesto de Latencia
+
+Una vez que el agente sabe que es su turno, el reloj está corriendo. La conversación humana funciona con huecos muy cortos entre turnos. Pasado como un segundo de silencio, la gente empieza a decir "¿aló?", que es en sí una nueva intervención que choca con lo que el bot estaba por decir. El aire muerto no solo se siente lento. Activamente causa bugs de turno de palabra.
+
+El problema es que un agente de voz es una carrera de relevos, y cada tramo cuesta tiempo. Esta es la forma del presupuesto con el que trabajé. Los números son ilustrativos, para mostrar proporciones y no para medir nada:
+
+```
+quien llama deja de hablar
+        │
+        ▼
+┌──────────────────┬─────────────────────────────────────────┬──────────────┐
+│ etapa            │ qué pasa                                │ presup. (ms) │
+├──────────────────┼─────────────────────────────────────────┼──────────────┤
+│ fin de turno     │ silencio detectado, turno declarado     │   ~450-1000  │
+│ STT (Whisper)    │ último fragmento de audio a texto       │   ~200-400   │
+│ LLM (GPT-4)      │ tiempo a primera oración útil (stream)  │   ~400-800   │
+│ TTS (ElevenLabs) │ primeros bytes de audio de esa oración  │   ~200-400   │
+│ Twilio playback  │ audio de vuelta por el media stream     │   ~100-200   │
+├──────────────────┴─────────────────────────────────────────┼──────────────┤
+│ quien llama escucha la primera palabra                     │  1.3s - 2.8s │
+└────────────────────────────────────────────────────────────┴──────────────┘
+
+si se necesita una herramienta (calendario, reserva):   + 300 - 1500 ms
+```
+
+Súmalo de forma secuencial y estás muy por encima del punto donde la gente se pone nerviosa, antes siquiera de tocar un calendario. Así que toda la arquitectura se dobla alrededor de una métrica: **el tiempo hasta que quien llama escucha algo con sentido.** No el tiempo total de procesamiento. El tiempo al primer sonido.
+
+Lo que movió ese número:
+
+- **Streaming de todo.** El LLM transmite tokens; en cuanto existe la primera oración completa, va al TTS. El TTS transmite audio; en cuanto existen los primeros bytes, van a Twilio. Quien llama escucha la oración uno mientras la oración dos todavía se está generando. Escribí sobre la mecánica de esto en [streaming de respuestas de LLM](/es/blog/streaming-llm-responses-guide); en el teléfono, deja de ser una optimización y se vuelve un requisito.
+- **Haz corta la primera oración.** El prompt pide explícitamente una cláusula de apertura breve antes de los detalles. Primero "Claro, el jueves funciona.", luego los específicos. Una primera oración corta llega más rápido al TTS.
+- **Mantén el contexto ligero.** Cada token de contenido recuperado que el modelo tiene que leer es latencia. La recuperación devuelve unos pocos pasajes precisos, no todo lo que podría ser relevante.
+- **Calienta las conexiones.** Abrir conexiones nuevas a los proveedores de STT, LLM y TTS en medio de una llamada es un impuesto que pagas en cada turno. Mantenlas abiertas durante toda la llamada.
+
+## 3. Reconocimientos de Relleno: Cubrir el Hueco con Honestidad
+
+Algunos huecos no se pueden eliminar con streaming. Si quien llama pregunta "¿tienen algo el jueves en la tarde?", el agente tiene que revisar el calendario de verdad, y esa llamada a herramienta tiene su propia latencia, que el LLM no puede empezar a narrar hasta que sabe la respuesta.
+
+Ahí es donde entran los reconocimientos de relleno. En el momento en que el agente decide llamar una herramienta, reproduce un reconocimiento corto: "Déjeme revisar eso." "Un momento, estoy mirando el jueves." Los humanos hacen exactamente esto, y quien llama lo acepta al instante.
+
+Dos detalles importaron más de lo que esperaba.
+
+Primero, estas frases son **audio pre-grabado**, no generado al vuelo. Un puñado de reconocimientos, generados una vez con la voz del agente del negocio, guardados en caché, y reproducidos prácticamente sin demora. Si tienes que esperar a que el TTS produzca "un momento," derrotaste el propósito.
+
+Segundo, los rellenos tienen que ser **honestos y escasos**. Un agente que dice "¡excelente pregunta!" antes de cada respuesta suena a parodia de call center en tres turnos. Y un reconocimiento que promete algo que el agente no va a hacer, como "déjeme comunicarlo con alguien" cuando en realidad va a tomar un mensaje, es una pequeña mentira que cuesta confianza en el momento en que la persona lo nota. La regla en la que me quedé: usa un relleno solo cuando hay trabajo real ocurriendo, rota entre unas pocas variantes, y asegúrate de que las palabras describan lo que realmente está pasando.
+
+```
+quien llama:  "¿Tienen algo el jueves en la tarde?"
+              │
+              ├─▶ [~0 ms]   reproducir caché: "Déjeme revisar el jueves."
+              │
+              ├─▶ [paralelo] herramienta: calendar.availability(thursday, pm)
+              │
+              └─▶ [resultado] stream: "Tengo 2:30 o 4:00. ¿Cuál le queda mejor?"
+```
+
+<Callout type="warning" title="Los rellenos son un préstamo, no un regalo">
+Cada reconocimiento te compra un poco de paciencia, y tienes que pagarla pronto con una respuesta real. Un relleno seguido de otro relleno seguido de un silencio largo es peor que ningún relleno, porque ahora quien llama sabe que algo anda mal y tú le dijiste que todo estaba bien.
+</Callout>
+
+## 4. Barge-In: Dejar que te Interrumpan
+
+La gente interrumpe. Interrumpe para corregir al bot ("no, la otra sucursal"), para adelantarse ("sí, sí, ya sé, solo agéndelo"), o porque el bot está diciendo algo largo y ya entendieron. Un agente de voz que no se puede interrumpir se siente como un mensaje grabado que aprendió a contestar.
+
+La interrupción (barge-in) tiene tres partes, y la mayoría de las primeras implementaciones solo hacen la primera.
+
+**Detectarla.** Mientras el agente habla, sigue escuchando. Si quien llama produce habla sostenida, no una tos, no un "mm-hm" de una sílaba, trátalo como una interrupción.
+
+**Detenerse de inmediato.** Deja de generar TTS, y limpia cualquier audio ya almacenado del lado telefónico. Con los media streams bidireccionales de Twilio, eso significa enviar un mensaje de clear para el stream, para que el audio en cola no siga sonando otro segundo después de que decidiste detenerte.
+
+**Arreglar la memoria.** Esta es la que más tiempo me tomó entender. Cuando el bot es interrumpido a mitad de una oración, el historial de la conversación todavía contiene el mensaje completo que generó el LLM. El modelo ahora cree que quien llama escuchó todo. No lo escuchó. Así que la siguiente respuesta se construye sobre información que la persona nunca recibió.
+
+```typescript
+function onBargeIn(call: CallState) {
+  // 1. Dejar de hablar ya.
+  call.tts.cancel();
+  call.twilio.send({ event: "clear", streamSid: call.streamSid });
+
+  // 2. Reescribir el historial a lo que quien llama realmente escuchó.
+  const last = call.history.at(-1);
+  if (last?.role === "assistant") {
+    const heard = call.playback.textPlayedSoFar(); // rastreado por fragmento de audio
+    last.content = heard.length > 0
+      ? `${heard} [interrumpido por quien llama]`
+      : "[interrumpido antes de hablar]";
+  }
+
+  // 3. Volver a escuchar, con un fin de turno corto para la corrección.
+  call.turn = "caller";
+  call.expected = "short_value";
+}
+```
+
+La parte de `textPlayedSoFar` requiere rastrear a qué texto corresponde cada fragmento de audio, lo cual es engorroso. También es lo que hace que el agente responda correctamente a "no, la otra sucursal" en vez de continuar con el plan que ya había anunciado a medias.
+
+Y hay un equilibrio. La gente hace pequeños sonidos de escucha todo el tiempo: "ajá," "okey," "claro." Si cada uno de esos dispara una interrupción, el agente se detiene a mitad de oración constantemente y suena nervioso. Así que la interrupción necesita una duración mínima y una pequeña lista de palabras de asentimiento que por sí solas no cuentan como interrupciones.
+
+## 5. La Gente que le Habla Encima al Bot
+
+Algunas llamadas simplemente son difíciles. Altavoz en un carro. Un televisor de fondo. Alguien que habla continuo y rápido. Alguien que empieza a responder antes de que termine la pregunta, cada vez. Y la tramposa: la propia voz del agente haciendo eco por el altavoz de quien llama y siendo captada como habla de la persona, así que el agente se interrumpe a sí mismo.
+
+No puedes arreglar todo eso con detección ingeniosa. Lo que sí puedes hacer es notar cuando el turno de palabra va mal y cambiar de estrategia, igual que lo haría un humano educado en una línea mala:
+
+- **Cuenta los choques.** Cuenta los traslapes y las interrupciones repetidas dentro de una llamada. Un par es normal. Un patrón significa que la llamada está en problemas.
+- **Acorta los turnos.** Cuando los choques se acumulan, el agente cambia a oraciones muy cortas y una pregunta a la vez. Menos audio significa menos oportunidades de chocar.
+- **Haz preguntas cerradas.** "¿Es el jueves a las 2:30? ¿Sí o no?" es mucho más robusto en una línea ruidosa que una pregunta abierta.
+- **Repítelo de vuelta.** Antes de confirmar cualquier cosa, confírmalo explícitamente. Si la línea es ruidosa, la repetición atrapa el malentendido antes de que se convierta en una reserva equivocada.
+- **Sal con elegancia.** Si todavía no funciona, ofrece la salida: tomar un mensaje, o que alguien del negocio le devuelva la llamada. No como una falla, sino como lo educado.
+
+Eso último conecta con algo que aprendí construyendo para pequeños negocios en general: al dueño le importa mucho más no perder al cliente que el bot complete cada llamada por su cuenta. Un limpio "le estoy escuchando con dificultad, ¿puedo tomar su número para que el equipo le devuelva la llamada?" conserva el prospecto. Un bot que sigue intentando terco lo pierde.
+
+<Callout type="tip" title="Nota que la llamada va mal, y luego cambia tus modales">
+Los humanos adaptan cómo hablan cuando una línea está mala: oraciones más cortas, preguntas de sí o no, repeticiones, y eventualmente "déjeme devolverle la llamada." Tu agente de voz debería hacer lo mismo, disparado por señales medibles como traslapes repetidos, en vez de empujar el mismo guion al mismo ritmo.
+</Callout>
+
+## Lo que Me Diría el Primer Día
+
+Si pudiera volver a esa primera llamada de prueba incómoda, me diría que pasara la primera semana en los tiempos, no en los prompts. Graba llamadas con los tiempos reales. Escúchalas, no solo las leas. Marca cada interrupción y cada silencio. La mayor parte de la mejora en cómo se sentían los agentes salió de esa lista, no de un mejor modelo.
+
+Y me diría que el turno de palabra no es un detalle de pulido para el final del proyecto. Es el producto. Un agente de voz con un modelo brillante y mal turno de palabra es una mala llamada telefónica. Un agente de voz con un modelo decente y buen turno de palabra es una agradable, y agradable es lo que mantiene a la persona en la línea el tiempo suficiente para que la inteligencia importe.
+
+## El Hilo
+
+Si tuviera que comprimirlo todo en una oración: **en el teléfono, el tiempo es la interfaz, y a un agente de voz se le juzga por sus modales antes que por su inteligencia.**
+
+Sabe cuándo terminaron. Responde antes de que el silencio se vuelva incómodo. Llena los huecos con honestidad y con moderación. Detente en el momento en que te interrumpen, y recuerda solo lo que realmente escucharon. Y cuando la línea esté mala, baja el ritmo y ofrece una salida. El modelo nunca fue la parte difícil. Escuchar lo fue.
+
+---
+
+*Si estás construyendo un agente de voz y las transcripciones se ven geniales pero las llamadas se sienten mal, [contáctame](/contact). Casi siempre es el turno de palabra, y es mucho más fácil de escuchar que de leer.*

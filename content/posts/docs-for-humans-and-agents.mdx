@@ -1,0 +1,224 @@
+---
+title: "Your Docs Have Two Readers Now: New Engineers and Coding Agents"
+description: "Documentation used to have one audience: the next human. Now every README, CLAUDE.md, and API description is also read by a coding agent that never asks a follow-up question. What changes when you write for both: explicit invariants, examples over prose, 'do not' lists, docs that live next to the code, and why stale docs hurt agents far more than they hurt people."
+date: 2026-08-04
+published: true
+category: "Software Engineering"
+tags: ["Documentation", "Coding Agents", "CLAUDE.md", "Developer Experience", "MCP"]
+author: "Osvaldo Restrepo"
+tldr: "Documentation now has two readers: the new engineer and the coding agent. They fail differently. A confused human asks a question in chat; a confused agent picks the most plausible interpretation and writes code against it. That changes how I write docs. I state invariants explicitly instead of describing behavior, I lead with examples instead of paragraphs, I keep a short 'do not' list for every service, I keep docs in the same folder and pull request as the code they describe, and I treat stale docs as bugs, because an agent trusts an outdated README completely. Tool descriptions surfaced through MCP are docs too, and they deserve the same care. The good news is that docs written for agents turn out to be better docs for humans."
+faqs:
+  - question: "Do I need separate documentation for coding agents and for humans?"
+    answer: "Mostly no. The same qualities that make docs work for an agent — explicit rules, concrete examples, clear boundaries, and accuracy — make them work better for a new engineer too. The one exception is a short agent-facing file like CLAUDE.md that loads into every session; keep that one lean and point it to the longer docs instead of duplicating them."
+  - question: "Why are stale docs worse for agents than for humans?"
+    answer: "A human reading an outdated README usually notices something feels off, checks the code, or asks a teammate. An agent tends to treat the document as ground truth and act on it immediately, often confidently and at scale. A wrong sentence that costs a human ten minutes of confusion can cost you a plausible-looking pull request built on a rule that no longer exists."
+  - question: "What is the single highest-value change to make documentation agent-friendly?"
+    answer: "Write down your invariants as explicit, testable rules — the things that must always be true, the things that must never happen — next to the code they govern. Descriptions of how things currently work drift quietly; invariants are short, hard to misread, and easy to check in review. If you only do one thing, do that."
+relatedPosts: ["claude-md-token-management", "reading-code-you-wont-write", "mcp-model-context-protocol-guide"]
+---
+
+A few months ago, in the same week, two newcomers started working on the central file service I maintain at TheGreyMatter.ai. One was a new engineer. The other was a coding agent I had pointed at the repo to help with a refactor.
+
+Both read the same README. Both hit the same sentence, which said, roughly, that files are scoped to the uploading app. That had been true once. It had stopped being fully true when we added cross-app sharing through explicit grants, and nobody, meaning me, had updated the paragraph.
+
+The engineer read it, frowned, opened the code, saw the grant check, and sent me a message: "README says files are app-scoped, but there's a grants table. Which is it?" Five minutes, one fix to the README, done.
+
+The agent read it and believed it. It wrote a perfectly clean helper that filtered by app, skipped the grant lookup, and would have quietly broken sharing for every app that relied on it. Tests caught it. But the agent had done exactly what the document told it to do, and the document was wrong.
+
+That was the week I stopped thinking of documentation as something written for the next human. It has two readers now. And they fail in very different ways.
+
+## Two Readers, Two Failure Modes
+
+Here is the difference, as plainly as I can put it:
+
+```
+                    HUMAN READER                 AGENT READER
+                    ────────────                 ────────────
+ambiguity     ──▶   asks someone                 picks the most plausible reading
+staleness     ──▶   "this feels off", checks     treats it as ground truth
+missing info  ──▶   reads the code, guesses      fills the gap with convention
+wrong info    ──▶   loses ten minutes            ships a confident pull request
+volume        ──▶   skims, gets bored            reads all of it, every time
+```
+
+The human is slow and skeptical. The agent is fast and trusting. A human's skepticism has been silently covering for bad docs for decades. You could get away with a vague README because the people reading it would fill the gaps with Slack messages and hallway questions. Agents do not ask. They resolve ambiguity the way a very diligent new hire would on their first day if they were too shy to speak: by guessing reasonably and moving on.
+
+So everything below is about removing the need to guess. And, to my mild annoyance, every one of these changes also made the docs better for the humans.
+
+## 1. Write Invariants, Not Descriptions
+
+Most documentation describes how a system behaves. "The upload endpoint encrypts files and stores them in blob storage, then emits an event." That is fine prose. It is also a sentence that will drift, because behavior changes in small ways all the time and nobody rewrites the paragraph.
+
+What agents and new engineers actually need are the rules that must hold no matter how the implementation changes. Invariants. Short, explicit, checkable.
+
+```markdown
+## Invariants — file service
+
+- Every stored blob is encrypted with a per-file data key (envelope encryption).
+  Plaintext never touches blob storage. Not in temp files either.
+- A file is readable by: its owning app, OR an app holding an active grant.
+  Never by app ID alone — always go through `canRead(file, caller)`.
+- Every mutation writes an audit entry in the same operation. No audit, no write.
+- Webhook payloads never contain file contents or PII. IDs and event types only.
+```
+
+Notice what those are not. They are not explanations of how envelope encryption works, or a tour of the grants table. They are the four sentences that, if violated, mean somebody shipped a bug. An agent that reads them has a much harder time writing the wrong helper, because "never by app ID alone" is not ambiguous. A reviewer has a checklist. A new engineer knows where the sharp edges are on day one.
+
+I wrote about how the envelope encryption works in [a separate post](/blog/envelope-encryption-documents-ai-reads). That post is for understanding. The invariants list is for not breaking things. They are different documents with different jobs.
+
+<Callout type="tip" title="The test for an invariant">
+If you can imagine a reviewer pointing at a diff and saying "this violates rule 3," it is an invariant. If the only possible response is "hmm, I think that's not quite how it works," it is a description. Agents need the first kind far more than the second.
+</Callout>
+
+## 2. Examples Beat Prose, Every Time
+
+I used to write API docs like a lawyer: paragraphs about parameters, optionality, edge cases. Agents read those paragraphs and then produce code that is about eighty percent right, because prose leaves room for interpretation and the agent fills that room with whatever convention it has seen most often elsewhere.
+
+A single concrete example removes most of that room. Here is the shape I now use for every exported function in our TypeScript SDKs:
+
+```typescript
+/**
+ * Request a short-lived download URL for a file the caller can read.
+ *
+ * Throws `FileAccessDenied` if the caller has neither ownership nor an active grant.
+ * The URL expires after `ttlSeconds` (max 900). Do not cache it beyond that.
+ *
+ * @example
+ * const url = await files.getDownloadUrl({
+ *   fileId: "f_01J8Z...",
+ *   ttlSeconds: 300,
+ * });
+ * // => "https://.../f_01J8Z...?sig=...&exp=..."
+ *
+ * @example
+ * // Wrong: building the blob URL yourself bypasses the access check.
+ * // const url = `${BLOB_BASE}/${fileId}`;
+ */
+export async function getDownloadUrl(args: GetDownloadUrlArgs): Promise<string> {
+  // ...
+}
+```
+
+Two examples. One showing the right call. One showing the wrong call that someone, human or agent, is very likely to try. The second one does more work than any paragraph I could write, because it names the exact shortcut and says why it is a shortcut.
+
+This connects to something I argued in [the SDK is the real API](/blog/sdk-is-the-real-api): the place where developers actually learn your system is the type signature and the hover text, not the wiki. That is doubly true for agents, which read the code they are editing far more carefully than any external page.
+
+## 3. Write the "Do Not" List
+
+Every service I own now has a short section called "Do not." It is my favorite part of the docs, and it is the part that agents respect the most.
+
+```markdown
+## Do not
+
+- Do not read from another app's Cosmos container. Call its API. (Federation rule.)
+- Do not add fields to webhook payloads without bumping the event version.
+- Do not log request bodies on the upload route. They can contain PII.
+- Do not catch and swallow `KeyVaultError`. Let it fail loudly.
+- Do not "fix" the flaky retry test by raising the timeout. See issue notes in tests/README.
+```
+
+Each line exists because someone did that thing. Sometimes it was a human. Increasingly it was an agent doing something reasonable-looking that our architecture forbids for reasons that are not visible from the code alone. The federation rule is a good example: from inside one app, reading directly from a sibling app's database looks like a perfectly efficient shortcut. Nothing in the code says it is forbidden. Only the doc does. (The reasoning lives in [one database per app](/blog/one-database-per-app-federation), but the agent does not need the reasoning. It needs the rule.)
+
+A "do not" list is cheap, negative knowledge, and negative knowledge is exactly what is hardest to infer from code. Code shows you what is done. It almost never shows you what was tried, broke production, and got reverted.
+
+<Callout type="info" title="Negative knowledge is the expensive kind">
+Any capable reader can work out what the code does by reading it. Nobody can work out what the code must never do, or what was tried and abandoned, unless someone writes it down. That is where your documentation effort pays the most, for humans and agents alike.
+</Callout>
+
+## 4. Keep Docs Next to the Code They Describe
+
+The wiki is where documentation goes to die. I say that with affection for every wiki I have ever maintained.
+
+The problem is distance. When the doc lives in another system, updating it is a separate task, done later, by someone who remembers. Nobody remembers. When the doc lives in the same folder as the code, it shows up in the same diff, and a reviewer can say "you changed the grant logic but not the invariants file."
+
+My current layout for a service looks like this:
+
+```
+file-service/
+├── CLAUDE.md              ← short, agent-facing: pointers + top rules
+├── README.md              ← what this is, how to run it, where things live
+├── docs/
+│   ├── invariants.md      ← the rules that must always hold
+│   ├── do-not.md          ← the list above
+│   └── events.md          ← every webhook event, versioned, with examples
+├── src/
+│   ├── grants/
+│   │   └── README.md      ← local rules for this folder only
+│   └── ...
+└── tests/
+    └── README.md          ← how to run, what is flaky and why
+```
+
+The `CLAUDE.md` at the root is deliberately small. It loads into every agent session, so every line costs tokens on every message — I learned that the expensive way and wrote about it in [the CLAUDE.md token post](/blog/claude-md-token-management). It does not duplicate the invariants. It points to them: "Before editing anything in `src/grants`, read `docs/invariants.md` and `src/grants/README.md`." Agents follow pointers well. They do not need everything pre-loaded. They need to know where to look.
+
+Folder-level READMEs are the other quiet winner. An agent editing a file in `src/grants/` tends to look around the folder it is in. A three-line README there, with the local rules, gets read at exactly the moment it matters.
+
+## 5. Stale Docs Are Worse for Agents Than for Humans
+
+This is the lesson from the opening story, and it is the one I want to underline.
+
+For a human, a stale doc is an annoyance. It costs time and some trust, and the human compensates. For an agent, a stale doc is an instruction. The agent will follow it, faithfully, and produce work that looks correct, passes a casual review, and encodes a rule that no longer exists.
+
+Which means the old cultural shrug — "the docs are a bit out of date, just ask around" — is no longer acceptable. If agents are reading your docs, an incorrect doc is a latent bug with a delivery mechanism.
+
+Three things I do about it:
+
+- **Docs changes are part of the definition of done.** If a pull request changes behavior covered by an invariant or an event schema, the doc change ships in the same pull request. Reviewers check for it the same way they check for tests.
+- **Delete aggressively.** A missing doc makes the agent read the code, which is the source of truth. A wrong doc makes the agent ignore the code. Given the choice, I would rather have no paragraph than a wrong one.
+- **Make docs testable where possible.** Our webhook event examples in `docs/events.md` are validated against the actual schemas in CI. If someone changes the schema and not the example, the build fails. Not every doc can be tested, but the ones that describe contracts usually can.
+
+<Callout type="warning" title="A wrong doc overrides the code">
+When an agent sees a confident sentence in a README that contradicts the code, it often trusts the sentence. That inverts the normal order of truth. If you cannot keep a section accurate, delete it and let the code speak for itself.
+</Callout>
+
+## 6. Tool Descriptions Are Documentation Too
+
+There is a third kind of documentation that most teams do not think of as documentation at all: the descriptions on tools exposed to models.
+
+When I build MCP servers that expose our platform data to Claude, every tool has a name, a description, and an input schema. The model reads those to decide whether to call the tool, when, and with what arguments. That is documentation in the most literal sense, and it is read by an agent every single time, with no human in between.
+
+```typescript
+server.tool(
+  "get_company_snapshot",
+  // Bad: "Gets the snapshot."
+  // Better: say when to use it, what it returns, and what it does NOT do.
+  "Return the latest diagnostic snapshot for one company the caller can access. " +
+    "Use for 'how is this company doing' questions. " +
+    "Returns scores and the evidence they are based on; does not return raw documents. " +
+    "If the caller lacks access, returns an access error — do not retry with another ID.",
+  { companyId: z.string().describe("Company ID from list_companies, not a name.") },
+  async ({ companyId }) => {
+    // ...
+  }
+);
+```
+
+Same principles, compressed: when to use it, what it returns, what it does not do, and the one mistake the model is most likely to make (passing a company name instead of an ID). I covered the protocol side in [the MCP guide](/blog/mcp-model-context-protocol-guide), but the writing side deserves its own attention. A vague tool description is the agent equivalent of a vague README, and it fails the same way: plausible guesses, confidently executed.
+
+## What I Actually Changed
+
+If you want the short version to steal, here is the checklist I now run on any service before I let an agent work on it, or hand it to a new engineer:
+
+```
+[ ] invariants.md exists, under one page, every line checkable in review
+[ ] do-not.md exists, each line tied to a real past mistake
+[ ] every exported function has at least one @example (and one wrong-way example if tempting)
+[ ] CLAUDE.md is short and points to the docs, not a copy of them
+[ ] folder READMEs exist where local rules differ from the global ones
+[ ] contract docs (events, schemas) are validated in CI
+[ ] any doc nobody can vouch for has been deleted or rewritten
+```
+
+None of that is exotic. It is the documentation discipline people have recommended for years and most teams, including mine, quietly skipped because humans compensated for the gaps. Agents removed the compensation. The gaps are visible now.
+
+## The Throughline
+
+If I had to compress this into one sentence: **write your docs as if the reader will believe every word and never ask a question — because one of your readers now does exactly that.**
+
+The funny part is what happened with the new engineer from the opening story. A few weeks after I restructured the file service docs around invariants, examples, and a "do not" list, she told me the onboarding for the second service she touched was dramatically easier than the first, because the docs "actually say what not to do." I had written them for the agent. The human benefited most.
+
+That is the whole lesson. Agents did not invent a new kind of documentation. They just stopped forgiving us for the old kind.
+
+---
+
+*If your team is starting to let coding agents loose in a codebase and you want a second pair of eyes on what your docs are actually telling them, [reach out](/contact). It is usually a short list of fixes, and it pays off for every new reader, human or not.*

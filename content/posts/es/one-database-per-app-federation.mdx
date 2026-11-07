@@ -1,0 +1,195 @@
+---
+title: "Una Base de Datos por App: La Regla de Federación en un Ecosistema de 17 Apps"
+description: "GreyMatter corre más de diecisiete apps verticales de IA sobre una sola plataforma, y cada una es dueña de su propio Cosmos DB. Las apps comparten a través de APIs y la capa compartida de identidad y archivos — nunca leyendo los contenedores de otra. Por qué esa regla se sintió dolorosamente lenta al principio, qué tan tentador es 'solo leer su contenedor', qué nos compró en despliegues independientes, radio de impacto y propiedad, y los costos reales que no le escondería a nadie: duplicación y consistencia eventual."
+date: 2026-06-09
+published: true
+category: "Diseño de Sistemas"
+tags: ["Diseño de Sistemas", "Arquitectura", "Cosmos DB", "Microservicios", "GreyMatter"]
+author: "Osvaldo Restrepo"
+translationOf: "one-database-per-app-federation"
+tldr: "En la plataforma GreyMatter, cada app vertical — DueDiligence9, Forecast9, Contracts9, Board9 y el resto — es dueña de su propio Cosmos DB. La regla de federación dice que las apps comparten datos solo a través de APIs y los servicios compartidos de identidad y archivos, nunca leyendo directamente los contenedores de otra app. Al principio se sintió como burocracia: una consulta de una línea se convertía en un endpoint, un cliente y un contrato. La tentación de simplemente leer el otro contenedor nunca se va. Pero la regla compró tres cosas que importan más a medida que el ecosistema crece: las apps se despliegan de forma independiente, una mala migración o una consulta desbocada se queda dentro de una app, y cada pedazo de datos tiene exactamente un dueño que puede cambiarlo. Los costos son reales — algunos datos se duplican, y las copias son eventualmente consistentes en vez de instantáneamente correctas — y tienes que diseñar para ellos a propósito. Tomaría la misma decisión otra vez."
+faqs:
+  - question: "¿No es una base de datos por app simplemente dogma de microservicios?"
+    answer: "Puede serlo, si lo aplicas a un sistema pequeño con un solo equipo. La regla se gana su costo cuando tienes muchas apps evolucionando a velocidades distintas sobre una plataforma compartida. En ese punto una base de datos compartida se vuelve un esquema compartido, y un esquema compartido se vuelve un impuesto de coordinación sobre cada cambio. Bases de datos separadas convierten ese acoplamiento implícito en APIs explícitas, que son más lentas de crear pero mucho más baratas para vivir con ellas."
+  - question: "¿Y los reportes o funciones de IA que necesitan datos de varias apps?"
+    answer: "Componen a través de APIs, o leen de una proyección construida para ese propósito. Una vista entre apps es su propio consumidor con sus propios datos, alimentada por las APIs o eventos de las apps dueñas. Lo que nunca hace es consultar directamente los contenedores fuente, porque en el momento en que lo hace, los esquemas de esos contenedores quedan congelados por un consumidor que sus dueños no conocen."
+  - question: "¿Cómo manejas la consistencia eventual entre apps?"
+    answer: "Decides, por cada pedazo de datos, qué tan desactualizado se le permite estar, y diseñas la UI para ser honesta al respecto. Para la mayoría de los datos entre apps, segundos o minutos de retraso están bien. Donde no — permisos, por ejemplo — no copias los datos para nada; le preguntas al dueño en el momento del request. El error es fingir que las copias siempre están al día."
+relatedPosts: ["scalable-microservices-architecture", "multi-tenant-saas-architecture", "api-design-lessons-learned"]
+---
+
+La primera vez que la regla de federación me costó una tarde real, la tarea parecía trivial. Una app necesitaba mostrar un pequeño resumen de datos que vivían en otra app. Un conteo y un estado, básicamente. Ambas apps corrían en la misma plataforma, en la misma suscripción de Azure, contra cuentas de Cosmos DB que podía ver desde mi laptop.
+
+La consulta habría sido de cinco líneas. Sabía exactamente cuál contenedor. Sabía la partition key. Podría haberlo enviado antes del almuerzo.
+
+En cambio, escribí un endpoint en la app dueña, agregué un método a su cliente, escribí una prueba para el contrato, e hice que la app consumidora lo llamara. Me tomó la tarde. Recuerdo estar levemente molesto con una regla que yo mismo había ayudado a escribir.
+
+Unos meses después, la app dueña cambió cómo guardaba ese estado — dividió un campo en dos, por buenas razones. Nada se rompió en la otra app. Nadie tuvo que coordinar nada. El equipo dueño actualizó su endpoint para seguir devolviendo la misma forma, y eso fue todo. Ese es el momento en que la regla dejó de sentirse como burocracia para mí.
+
+## La Regla
+
+GreyMatter 3.0 es la columna vertebral de plataforma detrás de más de diecisiete apps verticales de IA en TheGreyMatter.ai — DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, y otras. Comparten mucho: un servicio de autenticación con OAuth SSO y JWKS, un servicio central de archivos, un servicio de comunicaciones, un servicio de conectores para CRMs y sistemas contables.
+
+Lo que no comparten es una base de datos. La regla de federación es corta:
+
+```
+   1. Cada app es dueña de su propio Cosmos DB.
+   2. Solo la app dueña lee o escribe sus contenedores.
+   3. Las apps comparten datos vía APIs (y eventos), nunca vía almacenamiento.
+   4. Identidad y archivos son capas compartidas, accedidas por sus servicios.
+```
+
+Dibujado, se ve así:
+
+```
+   ┌─────────────┐        ┌─────────────┐        ┌─────────────┐
+   │  Forecast9  │  API   │ Contracts9  │  API   │   Board9    │
+   │     app     │◀──────▶│     app     │◀──────▶│     app     │
+   │  ┌───────┐  │        │  ┌───────┐  │        │  ┌───────┐  │
+   │  │ su DB │  │        │  │ su DB │  │        │  │ su DB │  │
+   │  └───────┘  │        │  └───────┘  │        │  └───────┘  │
+   └──────┬──────┘        └──────┬──────┘        └──────┬──────┘
+          │                      │                      │
+          ▼                      ▼                      ▼
+   ┌───────────────────────────────────────────────────────────┐
+   │  capa compartida:  auth (SSO + JWKS)  ·  archivos          │
+   │                    comunicaciones     ·  conectores        │
+   └───────────────────────────────────────────────────────────┘
+
+   las flechas entre apps pasan por APIs; ninguna app toca la DB de otra
+```
+
+Cada app puede saber quién es el usuario, porque la identidad es compartida. Cada app puede guardar y recuperar archivos, porque el servicio de archivos es compartido. Más allá de eso, si Board9 quiere algo que Forecast9 sabe, se lo pregunta a Forecast9.
+
+## Por Qué Se Sintió Lento
+
+Quiero ser justo con la versión de mí que estaba molesta, porque sus quejas eran correctas.
+
+**Cada necesidad entre apps se vuelve una API.** Lo que sería una consulta se vuelve un endpoint, un método de cliente, una verificación de autorización, una prueba de contrato, y un despliegue de la app dueña antes de que la app consumidora pueda usarlo. Durante los primeros meses, eso fue un montón de pequeñas ceremonias.
+
+**Necesitas saber quién es dueño de qué.** Con una base de datos compartida, solo miras los datos. Con federación, tienes que saber cuál app es la fuente de verdad para cada concepto, y a veces la respuesta honesta era "todavía no lo hemos decidido." Tomar esa decisión fue lento, porque era una decisión real.
+
+**Depurar cruza una red.** Un bug que abarca dos apps significa dos conjuntos de logs, dos despliegues, y un request en medio. Eso es más difícil que leer dos tablas en una consola.
+
+Nada de eso es imaginario. Si eres un equipo construyendo un producto, probablemente te diría que te saltes esta regla y uses una base de datos con buena disciplina. El balance se invierte en algún punto a medida que suben el número de apps y la velocidad de cambio, y con diecisiete y más apps moviéndose a velocidades distintas, estábamos muy pasados de ese punto.
+
+## La Tentación Nunca Se Va
+
+La regla no se vuelve más fácil de seguir. Se vuelve más fácil de justificar, que es distinto.
+
+La tentación aparece en una forma muy consistente. Alguien — a menudo yo — tiene una fecha límite y una necesidad perfectamente razonable. Los datos están justo ahí. El SDK puede conectarse a cualquier cuenta de Cosmos a la que la identidad tenga acceso. Y el argumento siempre es el mismo: "Es solo lectura. No estoy cambiando nada. ¿Qué daño hace?"
+
+El daño es que una lectura sigue siendo una dependencia. En el momento en que una app lee el contenedor de otra, el esquema de ese contenedor ya no es propiedad de su equipo. No pueden renombrar un campo, cambiar una partition key, dividir un contenedor, o migrar la forma de un documento sin romper a un consumidor que quizás ni saben que existe. Una consulta de solo lectura es una promesa de solo escritura que hiciste en nombre de otro.
+
+```typescript
+// La versión de cinco líneas. Tentadora. Prohibida.
+const other = cosmos.database("contracts9").container("agreements");
+const { resources } = await other.items
+  .query({
+    query: "SELECT c.id, c.status FROM c WHERE c.dealId = @dealId",
+    parameters: [{ name: "@dealId", value: dealId }],
+  })
+  .fetchAll();
+
+// La versión federada. Más lenta de construir una vez. Más barata para siempre.
+const agreements = await contractsClient.listAgreements({
+  dealId,
+  fields: ["id", "status"],
+});
+```
+
+La segunda versión se ve casi igual en el código que llama. La diferencia es todo lo que hay detrás: un endpoint que el equipo dueño controla, una verificación de autorización que respeta los permisos a nivel de deal, una forma de respuesta que prometieron mantener estable, y un lugar para evolucionar el almacenamiento sin avisarle a nadie.
+
+<Callout type="warning" title="Solo lectura no es libre de dependencias">
+Una lectura directa del almacenamiento de otra app congela su esquema sin el consentimiento de su dueño. También se salta su lógica de autorización, lo que significa que tu consulta puede devolver datos que el usuario no tiene permitido ver en esa app. "Es solo una lectura" es la frase más cara en un sistema federado.
+</Callout>
+
+Hacemos cumplir la regla de forma estructural además de cultural. La identidad administrada de cada app solo tiene acceso al plano de datos de su propia cuenta de Cosmos. La versión de cinco líneas no solo falla la revisión de código; falla en tiempo de ejecución con un error de permisos. He descubierto que las reglas que solo se sostienen con buenas intenciones duran hasta la primera fecha límite.
+
+## Lo que Nos Compró
+
+Aquí está el otro lado, que solo se volvió obvio con el tiempo.
+
+### 1. Despliegues independientes
+
+Cada app envía en su propio calendario. Una migración en Contracts9 no necesita un release coordinado con Board9. Mientras el contrato de la API se sostenga, el almacenamiento debajo puede cambiar libremente. Con muchas apps moviéndose a la vez, esta es la diferencia entre enviar cada semana y tener una reunión de calendario de releases.
+
+### 2. Radio de impacto contenido
+
+Cuando algo sale mal en la capa de datos de una app — una mala migración, una consulta desbocada que se come el presupuesto de throughput, un hot spot de partición — se queda en esa app. Los requests de otras apps hacia ella pueden fallar o ponerse lentos, pero fallan en un límite de API donde pueden hacer timeout, reintentar o degradarse con gracia. No descubren que sus propias consultas están siendo limitadas porque un vecino agotó una base de datos compartida. Escribí más sobre diseñar para fallas parciales en [arquitectura de microservicios escalables](/es/blog/scalable-microservices-architecture); la federación es lo que hace posible la falla parcial en primer lugar.
+
+### 3. Propiedad clara
+
+Cada pedazo de datos tiene un dueño. Si el estado de un deal está mal, hay exactamente un lugar donde puede estar mal, y un equipo que puede arreglarlo. Eso suena como algo pequeño hasta que has vivido en un sistema donde tres servicios escriben el mismo campo y nadie sabe cuál escritura ganó.
+
+### 4. Seguridad que sigue a los datos
+
+Esta no la esperaba. Como cada lectura pasa por la API de la app dueña, cada lectura también pasa por la autorización de la app dueña — RBAC a nivel de deal y a nivel de empresa, log de auditoría en cada mutación. Una base de datos compartida habría necesitado que cada consumidor reimplementara esas verificaciones correctamente. La federación significa que las verificaciones viven en un solo lugar, junto a los datos.
+
+<Callout type="tip" title="La API es donde vive la autorización">
+En una plataforma multi-app, el argumento más fuerte para la federación no es la pureza arquitectónica. Es que la API de la app dueña es el único lugar que entiende completamente quién puede ver qué. Cada atajo alrededor de esa API es un atajo alrededor de esas reglas.
+</Callout>
+
+## Lo que Cuesta
+
+Prometí los costos reales, así que aquí están sin barniz.
+
+### Duplicación
+
+A veces una app necesita datos de otra app con suficiente frecuencia como para que llamar a una API cada vez sea un desperdicio o demasiado lento. En esos casos guarda una copia local — una proyección — de las partes que necesita.
+
+Esa copia es duplicación, y la duplicación tiene que ser administrada. Las reglas que usamos:
+
+```
+   - La copia es de solo lectura en la app consumidora. Nunca se edita localmente.
+   - La copia guarda solo los campos que el consumidor realmente necesita.
+   - La copia registra de dónde vino y cuándo se refrescó por última vez.
+   - La app dueña sigue siendo la fuente de verdad. Siempre.
+```
+
+Una proyección es un caché con contrato, no una segunda fuente de verdad. En el momento en que una app consumidora empieza a editar su copia, tienes dos dueños y todos los problemas que la federación supuestamente iba a eliminar.
+
+### Consistencia eventual
+
+Una copia está, por definición, a veces desactualizada. Cuando la app dueña cambia algo, los consumidores se enteran por un evento o por el siguiente refresco, no al instante.
+
+Para la mayoría de los datos, unos segundos o minutos de retraso están bien. Un dashboard que muestra los números del pipeline de ayer no necesita estar correcto al milisegundo. Pero algunos datos no pueden estar desactualizados. Los permisos son el ejemplo más claro. Si un usuario pierde acceso a un deal, tiene que perderlo en todos lados de inmediato. Así que los permisos nunca se copian; se verifican contra la capa compartida de auth y la app dueña en el momento del request.
+
+La pregunta de diseño para cada pedazo de datos compartido se vuelve: **¿qué tan desactualizado se le permite estar?**
+
+```
+   retraso permitido     estrategia
+   ─────────────────     ─────────────────────────────────────
+   ninguno               llamar al dueño en el momento del request
+   segundos              proyección dirigida por eventos
+   minutos a horas       refresco programado de una proyección
+   "lo que sea"          probablemente no debería compartirse
+```
+
+Y la UI tiene que ser honesta al respecto. Un timestamp de "última actualización" en un widget entre apps no cuesta nada y ahorra muchas conversaciones confusas con soporte.
+
+### Las funciones entre apps son más difíciles
+
+Las funciones de IA son las que más lo sienten. Un agente que necesita una imagen a través de varias apps no puede correr una consulta; tiene que llamar varias APIs y combinar los resultados. Eso es más lento, y requiere que cada app exponga los endpoints correctos.
+
+He llegado a ver eso como una ventaja disfrazada. Un agente de IA que compone datos a través de las mismas APIs que usaría un usuario hereda los mismos permisos que el usuario. No puede ver lo que el usuario no puede ver, porque no hay puerta trasera por la cual verlo. Ese principio vuelve en grande cuando expones esas APIs a Claude a través de MCP, sobre lo que escribí en [servidores MCP que no filtran](/es/blog/mcp-servers-that-dont-leak).
+
+## Cómo Volvería a Introducir la Regla
+
+Si estuviera empezando una plataforma multi-app mañana, haría algunas cosas antes:
+
+1. **Escribir la propiedad antes de escribir código.** Una tabla simple: concepto, app dueña, cómo pueden accederlo los demás. La mayor parte del dolor temprano de la federación era en realidad propiedad sin decidir.
+2. **Hacer excelente la capa compartida primero.** Identidad y archivos son lo que todos necesitan. Si esos están sólidos, una gran parte de la presión para romper la regla desaparece.
+3. **Enviar clientes tipados con cada API.** El costo de llamar a otra app debería ser importar un cliente y llamar un método. Cuando la versión federada es tan fácil de escribir como la prohibida, la gente deja de buscar la prohibida.
+4. **Hacer cumplir el acceso a nivel de infraestructura.** La identidad de cada app recibe acceso a su propia base de datos. Nada más.
+5. **Presupuestar proyecciones.** Vas a necesitar algunas. Planea cómo se refrescan y se etiquetan en vez de dejar que cada equipo improvise.
+
+## El Hilo
+
+Si tuviera que comprimir todo en una oración: **una base de datos compartida es un esquema compartido, y un esquema compartido es una reunión a la que vas a tener que asistir para siempre.**
+
+La federación cambia la velocidad de la consulta de cinco líneas por la libertad de cambiar tus propios datos sin pedirle permiso a nadie. En un sistema pequeño, ese intercambio a menudo no vale la pena. En un ecosistema de diecisiete y más apps moviéndose a velocidades distintas, construido sobre una capa compartida de identidad y archivos, es lo que mantiene a cada app enviable, a cada falla contenida, y a cada pedazo de datos con un dueño que de verdad puede arreglarlo. Los costos — duplicación y retraso — son reales, pero son costos visibles para los que puedes diseñar. Los costos de una base de datos compartida son invisibles hasta que llegan todos al mismo tiempo.
+
+---
+
+*Si estás diseñando una plataforma con muchas apps sobre infraestructura compartida y peleando con dónde deberían ir los límites de los datos, [contáctame](/contact). Tengo opiniones fuertes sobre tablas de propiedad, y con gusto las comparto.*

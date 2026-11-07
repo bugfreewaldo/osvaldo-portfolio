@@ -1,0 +1,258 @@
+---
+title: "La Compuerta de Releases: Cómo Playwright y Vitest Protegen 17 Apps sobre una Plataforma"
+description: "Cuando más de diecisiete apps comparten un servicio de autenticación, un servicio de archivos y un SDK, un cambio pequeño en la plataforma puede romper una pantalla de login a tres repos de distancia. Cómo construí el arnés de QA que controla los releases de GreyMatter: Vitest para unidades y contratos, Playwright para los pocos recorridos de usuario que nunca deben romperse, aserciones estructurales para funciones de IA no deterministas, una política estricta para tests inestables, y una línea clara entre lo que bloquea un release y lo que solo advierte."
+date: 2026-09-08
+published: true
+category: "DevOps"
+tags: ["DevOps", "Testing", "Playwright", "Vitest", "Ingeniería de Plataforma"]
+author: "Osvaldo Restrepo"
+translationOf: "release-gate-playwright-vitest"
+tldr: "En una plataforma compartida, el cambio más peligroso es el que es correcto en su propio repo y está mal en el de todos los demás. La compuerta de releases de GreyMatter existe para atrapar exactamente eso. Vitest cubre unidades y, más importante, contratos: las formas que el SDK de autenticación, el servicio de archivos y los eventos le prometen a cada app. Playwright cubre una lista corta de recorridos críticos de usuario de punta a punta, como iniciar sesión por SSO y subir un documento que pasa por extracción y análisis de IA hasta una notificación. Las funciones de IA se prueban por estructura, no por redacción: validez del schema, campos requeridos, rangos de valores, citas, idioma y comportamiento de rechazo. Los tests inestables se ponen en cuarentena con un dueño y una fecha de vencimiento, nunca se reintentan en silencio para siempre. Y la compuerta es explícita sobre qué bloquea un release y qué solo advierte, porque una compuerta que bloquea todo termina siendo evadida, y una que no bloquea nada es decoración."
+faqs:
+  - question: "¿Por qué usar Vitest y Playwright en vez de una sola herramienta?"
+    answer: "Responden preguntas distintas a costos distintos. Vitest es rápido y barato, así que puede revisar miles de unidades y cada contrato entre la plataforma y sus apps en cada commit. Playwright es lento y caro pero ve lo que ve un usuario: un navegador real, redirecciones reales, llamadas de red reales. Usar Playwright para todo hace la suite lenta e inestable. Usar Vitest para todo deja pasar los bugs que solo existen cuando las piezas están conectadas."
+  - question: "¿Cómo escribes tests de punta a punta para funciones de IA que nunca devuelven el mismo texto dos veces?"
+    answer: "Deja de hacer aserciones sobre la redacción y empieza a hacerlas sobre la estructura y el comportamiento. Revisa que la salida valide contra su schema, que los campos requeridos estén presentes, que los números caigan en rangos plausibles, que cada afirmación tenga una cita de vuelta al documento fuente, que esté en el idioma esperado, y que rechace cuando debe. Usa respuestas grabadas del modelo para la mayoría de los tests para que sean deterministas, y mantén un pequeño smoke test con el modelo en vivo que corra lo real solo con aserciones estructurales."
+  - question: "¿Qué debería bloquear un release y qué solo debería advertir?"
+    answer: "Bloquea cualquier cosa que rompa un contrato, un recorrido crítico de usuario, la seguridad o el control de acceso, o la validez estructural de la salida de IA. Advierte sobre cosas que importan pero no son emergencias: regresiones de rendimiento dentro de una tolerancia, problemas de accesibilidad en pantallas no críticas, diferencias visuales, y tests en cuarentena. La clave es escribir la lista por adelantado, para que nadie decida qué cuenta como bloqueante a las 5 p.m. del día del release."
+relatedPosts: ["ci-cd-pipeline-design", "structured-outputs-are-a-contract", "sdk-is-the-real-api"]
+---
+
+El cambio era de cuatro líneas. Estaba limpiando el SDK cliente de autenticación, y renombré un helper interno y ajusté el tipo de un claim que leemos del token. Mis tests unitarios estaban en verde. Los tests propios del SDK estaban en verde. Estaba contento conmigo mismo.
+
+Entonces la compuerta de releases se puso en rojo, y no en el SDK. En un recorrido de Playwright de una de las apps que lo consumía, el flujo de login volvía de la redirección de SSO y aterrizaba en una página en blanco. Esa app había estado leyendo el claim con una forma ligeramente distinta a la que yo asumía, y mi "ajuste" convirtió un campo del que dependía en `undefined`. Nada en mi repo me lo podría haber dicho. Solo un test que iniciara sesión como un usuario, a través de la redirección real, en un navegador real, contra la app real, podía hacerlo.
+
+Ese es el problema de las plataformas. En TheGreyMatter.ai, la columna vertebral de GreyMatter 3.0 está detrás de más de diecisiete apps verticales. Comparten un servicio de OAuth SSO con un SDK cliente en TypeScript, un servicio central de archivos, un servicio de comunicaciones, conectores, y un pipeline de ingesta orientado a eventos. Un cambio que es correcto en su propio repo puede estar mal en el de todos los demás. La compuerta de releases existe para atrapar eso antes de que lo hagan los usuarios.
+
+## Para Qué Es la Compuerta
+
+Quiero ser preciso sobre el trabajo, porque "tenemos tests" no significa nada por sí solo.
+
+La compuerta responde una pregunta antes de que cualquier cosa se envíe: **¿este cambio rompió una promesa?** Las promesas vienen en tres tamaños:
+
+```
+tamaño de promesa      ejemplo                                       herramienta
+─────────────────────  ──────────────────────────────────────────    ───────────
+la de una unidad       "parseClaims rechaza un token expirado"       Vitest
+un contrato            "el SDK de auth devuelve esta forma de        Vitest
+                        usuario"
+la de un usuario       "puedo iniciar sesión, subir un documento     Playwright
+                        y recibir aviso cuando termina el análisis"
+```
+
+La mayoría de las suites de tests sobreinvierten en la primera fila, subinvierten en la segunda, y o se saltan la tercera o intentan hacerlo todo ahí. En una plataforma compartida, la segunda fila es donde vive la mayor parte de las roturas reales, y la tercera es donde se vuelven visibles.
+
+## Vitest: Unidades, y Sobre Todo Contratos
+
+Vitest es rápido, corre en todos lados, y habla TypeScript de forma nativa, lo cual importa cuando la plataforma y las apps son todas React 18 y TypeScript sobre Azure Functions. Corre en cada commit y debería terminar en lo que tardas en servirte otro café.
+
+Los tests unitarios son lo mínimo. Los tests que se ganan el sueldo en una plataforma son los tests de contrato: tests que fijan la forma exacta que la plataforma le promete a sus consumidores.
+
+```typescript
+// packages/auth-sdk/test/contract.test.ts
+import { describe, it, expect } from "vitest";
+import { z } from "zod";
+import { getSession } from "../src";
+import { signedTestToken } from "./fixtures/tokens";
+
+// Este schema ES el contrato. Las apps dependen de él. Cambiarlo es un cambio incompatible.
+const SessionContract = z.object({
+  userId: z.string().min(1),
+  email: z.string().email(),
+  tenantId: z.string().min(1),
+  roles: z.array(z.string()),
+  dealScopes: z.array(z.string()),
+  expiresAt: z.number().int().positive(),
+});
+
+describe("auth SDK session contract", () => {
+  it("returns a session that satisfies the published contract", async () => {
+    const session = await getSession(signedTestToken({ roles: ["analyst"] }));
+    expect(() => SessionContract.parse(session)).not.toThrow();
+  });
+
+  it("never returns undefined for fields apps read directly", async () => {
+    const session = await getSession(signedTestToken({ roles: [] }));
+    expect(session.roles).toEqual([]);       // vacío, no undefined
+    expect(session.dealScopes).toEqual([]);
+  });
+});
+```
+
+Ese segundo test existe por la historia del principio. Ahora el contrato dice, en código, que los arreglos siempre son arreglos. Las apps consumidoras importan el mismo schema en sus propios tests, así que si yo cambio el contrato, sus builds se lo dicen, y si ellas dependen de algo fuera del contrato, sus tests se lo dicen.
+
+El mismo patrón cubre el servicio de archivos (qué devuelve una carga, cómo se ve el payload del webhook, cómo está formateado el header de la firma HMAC) y los eventos de ingesta (qué lleva `document.analyzed`). Escribí más sobre por qué el SDK, no la API HTTP, es lo que realmente consumen las apps en [el SDK es la verdadera API](/es/blog/sdk-is-the-real-api).
+
+<Callout type="tip" title="Publica tus contratos como código">
+Si una forma es una promesa a otros equipos, pertenece a un schema que ambos lados importan en sus tests, no a una página de wiki. El proveedor prueba que produce la forma. El consumidor prueba que solo depende de la forma. Cuando los dos se desvían, falla un build en vez de un usuario.
+</Callout>
+
+## Playwright: Una Lista Corta de Recorridos que Nunca Deben Romperse
+
+Playwright es el intercambio opuesto. Es lento, toca infraestructura real, y es lo único que ve lo que ve un usuario. Así que recibe una lista deliberadamente corta.
+
+Mantengo los recorridos críticos en un número que puedo decir en voz alta. Para la plataforma, los principales son:
+
+1. **Iniciar sesión por SSO** y aterrizar en la app con el tenant y los roles correctos.
+2. **Subir un documento** y verlo pasar por extracción, análisis de IA y una notificación.
+3. **El control de acceso se sostiene**: un usuario sin acceso a nivel de deal no puede ver ese deal, ni siquiera con una URL directa.
+4. **Cerrar sesión** de verdad cierra sesión, en todas las apps.
+
+Cada app vertical agrega dos o tres propios. Eso es todo. Cada recorrido en la lista es algo que, si se rompe, haría que alguien abriera un ticket de soporte en menos de una hora.
+
+El recorrido de carga es el interesante, porque cruza casi todos los servicios compartidos y termina de forma asíncrona:
+
+```typescript
+// e2e/upload-to-notification.spec.ts
+import { test, expect } from "@playwright/test";
+import { loginViaSSO } from "./helpers/auth";
+
+test("upload flows through analysis to a notification", async ({ page }) => {
+  await loginViaSSO(page, { user: "e2e-analyst" });
+
+  await page.getByRole("link", { name: "Documents" }).click();
+  await page.getByLabel("Upload document").setInputFiles("fixtures/sample-agreement.pdf");
+
+  // La carga en sí es síncrona desde el punto de vista del usuario.
+  await expect(page.getByText("sample-agreement.pdf")).toBeVisible();
+  await expect(page.getByTestId("doc-status")).toHaveText(/processing/i);
+
+  // La extracción y el análisis de IA son orientados a eventos. Consulta la UI, no los internos.
+  await expect(page.getByTestId("doc-status")).toHaveText(/analyzed/i, {
+    timeout: 120_000,
+  });
+
+  // La notificación es el final visible del pipeline para el usuario.
+  await page.getByRole("button", { name: "Notifications" }).click();
+  await expect(
+    page.getByRole("listitem").filter({ hasText: "sample-agreement.pdf" })
+  ).toBeVisible();
+});
+```
+
+Algunas decisiones ahí son deliberadas. El test inicia sesión a través de la redirección real de SSO, usando una identidad de prueba dedicada, no una cookie por la puerta trasera, porque la redirección del login es exactamente donde mi cambio de cuatro líneas rompió las cosas. Espera a la UI con un timeout generoso en vez de dormir, porque el pipeline es asíncrono y sus tiempos varían. Y hace aserciones sobre lo que el usuario ve (el texto de estado, una notificación) en vez de hurgar en colas o bases de datos, porque a los internos se les permite cambiar y al recorrido no.
+
+## Probar Funciones de IA Sin Hacer Aserciones sobre Palabras
+
+Aquí es donde la mayoría de los equipos se rinden o escriben tests que fallan una corrida sí y otra no.
+
+Un paso de análisis de IA no va a producir la misma oración dos veces. Si tu test dice `expect(summary).toBe("The agreement has a 30-day termination clause.")`, va a fallar mañana sin razón, alguien va a agregar un reintento, luego un segundo reintento, y luego nadie confía en la suite.
+
+El truco es dejar de probar la redacción y empezar a probar la **estructura y el comportamiento** de los que depende el producto. Trato la salida de IA como un contrato, de la misma forma que describí en [las salidas estructuradas son un contrato](/es/blog/structured-outputs-are-a-contract):
+
+```typescript
+// Aserciones que se sostienen sin importar cómo redacte el modelo.
+const Analysis = z.object({
+  language: z.enum(["en", "es"]),
+  documentType: z.enum(["agreement", "financials", "policy", "other"]),
+  findings: z.array(
+    z.object({
+      title: z.string().min(3).max(120),
+      severity: z.enum(["low", "medium", "high"]),
+      citation: z.object({ page: z.number().int().min(1), quote: z.string().min(5) }),
+    })
+  ),
+  confidence: z.number().min(0).max(1),
+});
+
+test("analysis output is structurally sound", async () => {
+  const result = Analysis.parse(await runAnalysis("fixtures/sample-agreement.pdf"));
+
+  expect(result.documentType).toBe("agreement");      // una clasificación, no prosa
+  expect(result.findings.length).toBeGreaterThan(0);  // encontró algo
+
+  for (const f of result.findings) {
+    // Cada hallazgo debe apuntar a texto que realmente existe en la fuente.
+    expect(sourceText).toContain(normalize(f.citation.quote));
+  }
+});
+```
+
+Lo que eso revisa: la salida se parsea, la clasificación es correcta, hay al menos un hallazgo, y cada hallazgo cita un fragmento que de verdad aparece en el documento. Ese último chequeo es el más valioso que tengo. Es un test barato y determinista contra la falla de IA más cara, que es una afirmación confiada sin nada que la respalde.
+
+Los otros comportamientos sobre los que hago aserciones:
+
+```
+haz aserciones sobre                 no sobre
+──────────────────────────────────   ──────────────────────────────
+validez del schema                   la redacción exacta
+campos requeridos presentes          el orden de las oraciones
+números en rangos plausibles         la frase específica de un resumen
+las citas existen en la fuente       el número exacto de hallazgos
+el idioma coincide con la entrada    el tono (eso es un eval, no un test)
+rechaza entradas fuera de alcance    qué sinónimos eligió
+```
+
+Hay dos capas para que esto sea práctico. La mayoría de los tests corren contra **respuestas grabadas del modelo**, así que son rápidos, gratis y deterministas; prueban todo lo que rodea al modelo, incluyendo el parseo y la UI. Un pequeño **smoke test en vivo** corre contra el modelo real antes de un release, solo con aserciones estructurales, para atrapar el día en que un cambio del proveedor hace que la salida deje de parsear.
+
+<Callout type="info" title="Los tests y los evals son trabajos distintos">
+Un test pregunta "¿esto es estructuralmente aceptable, sí o no?" y pertenece a la compuerta de releases. Un eval pregunta "¿qué tan bueno es esto, en unos cientos de casos, comparado con la última vez?" y pertenece a su propio pipeline. Mezclarlos te da una compuerta que parpadea con el ruido de calidad, o un eval que solo revisa si el JSON parsea. Mantén ambos. Mantenlos separados.
+</Callout>
+
+## La Política de Tests Inestables
+
+Un test inestable en una compuerta de releases es peor que no tener test. Le enseña a todos que el rojo no significa nada.
+
+Las suites de punta a punta contra infraestructura real van a producir fallas intermitentes; fingir lo contrario es como terminas con `retries: 5` y una compuerta que está en verde por estadística. Así que escribí una política y me apegué a ella:
+
+1. **Un reintento, registrado.** Playwright reintenta un test fallido una vez. Un éxito en el reintento igual se registra como inestable, con el trace.
+2. **Falla intermitente dos veces en una semana, vas a cuarentena.** El test pasa a una etiqueta de cuarentena. Sigue corriendo y reportando, pero no puede bloquear.
+3. **La cuarentena tiene dueño y fecha de vencimiento.** Cada test en cuarentena tiene una persona con nombre y una fecha. Si no está arreglado o borrado para entonces, aparece en la revisión semanal, con nombre.
+4. **Arregla la causa, no el timeout.** Las causas usuales son esperar tiempo en vez de estado, datos de prueba compartidos entre corridas paralelas, y depender de servicios de terceros en la ruta crítica. Subir un timeout solo se permite con un comentario que explique por qué.
+5. **Borrar está permitido.** Un test que lleva semanas en cuarentena y que nadie extraña no estaba protegiendo nada.
+
+```typescript
+// playwright.config.ts (extracto)
+export default defineConfig({
+  retries: process.env.CI ? 1 : 0,
+  reporter: [["list"], ["./reporters/flake-tracker.ts"]],
+  projects: [
+    { name: "critical", grep: /@critical/, grepInvert: /@quarantine/ },
+    { name: "quarantine", grep: /@quarantine/ },
+  ],
+});
+```
+
+<Callout type="warning" title="Los reintentos esconden bugs además de fallas intermitentes">
+Algunas fallas intermitentes son condiciones de carrera reales que los usuarios también encuentran, solo que con menos frecuencia. Si un test pasa en el reintento, mira el trace antes de encogerte de hombros. Más de una vez, el test "inestable" era el único que estaba notando un bug real de orden en un flujo orientado a eventos.
+</Callout>
+
+## Qué Bloquea y Qué Advierte
+
+La última pieza es la que hace que la compuerta sea confiable: una lista escrita de lo que detiene un release y lo que solo levanta una bandera.
+
+```
+BLOQUEA el release                       ADVIERTE (visible, no bloquea)
+──────────────────────────────────────   ──────────────────────────────────────
+cualquier falla unitaria o de contrato   regresión de rendimiento en tolerancia
+falla un recorrido @critical             problemas de accesibilidad en pantallas
+falla un test de control de acceso/RBAC    secundarias
+la salida de IA falla schema o citas     diferencias visuales en páginas no
+  en el smoke test en vivo                 críticas
+el escaneo de seguridad encuentra        tests en cuarentena fallando
+  severidad alta                         nuevos warnings en consola
+falta el audit log en una mutación       actualizaciones de dependencias
+                                         cobertura bajando en un archivo cambiado
+```
+
+Dos principios guían esa lista. Primero, cualquier cosa que toque autenticación, control de acceso o audit logging bloquea, punto, porque una plataforma que maneja documentos sensibles de empresas no puede enviar un bug de permisos y arreglarlo después. Segundo, cualquier cosa sobre la que el equipo no puede actuar en la próxima hora no bloquea, porque una compuerta que bloquea por ruido termina siendo evadida, y una compuerta evadida es peor que una honesta.
+
+También hay una salida de emergencia, porque siempre tiene que haber una. Un override requiere un aprobador con nombre y una razón escrita, y se registra como cualquier otra mutación. En la práctica, tener que escribir la razón suele ser suficiente para que alguien vaya a arreglar el test en su lugar.
+
+Escribí sobre la forma general de los pipelines en [diseño de pipelines de CI/CD](/es/blog/ci-cd-pipeline-design). La compuerta de releases es la parte de ese pipeline donde la plataforma cumple sus promesas a las apps que tiene encima.
+
+<Callout type="danger" title="Decide qué bloquea antes del día del release">
+Si la regla de qué bloquea un release vive solo en la cabeza de alguien, se va a renegociar cada vez que una fecha límite esté cerca. Escribe la lista, ponla en el repo junto a la configuración, y cámbiala en un pull request como cualquier otro código.
+</Callout>
+
+## El Hilo
+
+Si tuviera que comprimir todo esto en una oración: **una compuerta de releases es una lista de promesas, revisada por la herramienta más barata que puede ver cada una.**
+
+Vitest revisa las promesas que hacen una unidad y un contrato, rápido, en cada commit. Playwright revisa las pocas promesas que un usuario notaría, despacio, en un navegador real. Las funciones de IA se miden contra las promesas que importan, que son estructura, fundamento y comportamiento, no redacción. Las fallas intermitentes se tratan como bugs con dueño. Y la línea entre bloquear y advertir está escrita, para que nadie la trace bajo presión.
+
+Mi cambio de cuatro líneas nunca llegó a un usuario. No porque yo haya sido cuidadoso. Porque a la compuerta no le importaba qué tan cuidadoso era yo.
+
+---
+
+*Si estás operando una plataforma compartida y tu proceso de releases se siente o como un sello de goma o como un muro, [contáctame](/contact). Con gusto comparo notas sobre contratos, recorridos, y cómo probar funciones de IA sin perder la cabeza con los tests inestables.*

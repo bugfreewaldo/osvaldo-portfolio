@@ -1,0 +1,201 @@
+---
+title: "TheHacker: Construyendo un Agente de Seguridad que Solo Revisa Tu Propia Casa"
+description: "Lo que aprendí construyendo TheHacker, un agente que busca vulnerabilidades en nuestros propios sistemas en TheGreyMatter.ai. Limítalo a los activos que te pertenecen, mantenlo en solo lectura por defecto, convierte cada hallazgo en un ticket con evidencia, trata el triaje de falsos positivos como el verdadero producto, y deja que el agente proponga mientras los humanos corrigen. Complementa el SAST y el escaneo de dependencias; no los reemplaza."
+date: 2026-09-15
+published: true
+category: "Seguridad"
+tags: ["Seguridad", "Agentes de IA", "TheHacker", "DevSecOps", "Gestión de Vulnerabilidades"]
+author: "Osvaldo Restrepo"
+translationOf: "security-agent-scanning-your-own-code"
+tldr: "TheHacker es un agente que construí en TheGreyMatter.ai para encontrar debilidades en nuestra propia plataforma antes de que lo haga alguien más. El nombre es lo más agresivo que tiene. Está limitado a una lista explícita de activos que nos pertenecen, es de solo lectura por defecto, y nunca corrige nada por su cuenta. Cada hallazgo se convierte en un ticket con evidencia, una severidad y un camino de reproducción que un humano puede verificar. La mayor parte de la ingeniería se fue en el triaje de falsos positivos, porque una herramienta de seguridad que grita 'lobo' queda silenciada en una semana. Vive junto al análisis estático y al escaneo de dependencias en vez de reemplazarlos, cubriendo los huecos entre ellos: deriva de configuración, errores de permisos y las costuras entre servicios. La regla debajo de todo: el agente propone, los humanos corrigen."
+faqs:
+  - question: "¿No es arriesgado darle a un agente de IA un trabajo de escaneo de seguridad?"
+    answer: "Es arriesgado si le das un mandato abierto. Es manejable si le das uno estrecho: una lista explícita de activos que tu organización posee, credenciales de solo lectura por defecto, ninguna capacidad de cambiar nada, límites de tasa y un rastro de auditoría completo de cada acción. El agente debería ser la identidad con menos privilegios de tu sistema que todavía hace trabajo útil. El peligro no es el modelo; es el alcance que le entregas."
+  - question: "¿Un agente de seguridad reemplaza al SAST, al escaneo de dependencias o a una prueba de penetración?"
+    answer: "No. El análisis estático y el escaneo de dependencias son baratos, deterministas, y deberían correr en cada pull request. Una prueba de penetración profesional aporta creatividad humana y responsabilidad que un agente no tiene. Un agente de seguridad es más útil en los huecos: comparar la configuración con la intención, notar la deriva de permisos, correlacionar hallazgos entre servicios y redactar evidencia en una forma sobre la que los ingenieros puedan actuar. Piénsalo como un revisor junior incansable, no como un reemplazo del resto del programa."
+  - question: "¿Cómo evitas que un agente de seguridad inunde al equipo con falsos positivos?"
+    answer: "Haz del triaje una etapa de primera clase, no una ocurrencia tardía. Exige evidencia para cada hallazgo, deduplica contra riesgos conocidos y aceptados, deja que los ingenieros marquen hallazgos como falsos positivos con una razón, y devuelve esas decisiones al contexto del agente. Mide la precisión de los hallazgos como una métrica de salud. Si los ingenieros dejan de abrir los tickets, la herramienta ya fracasó, sin importar cuántos problemas haya encontrado técnicamente."
+relatedPosts: ["your-agent-needs-a-job-description", "first-ai-feature-should-be-read-only", "mcp-servers-that-dont-leak"]
+---
+
+Cuando le conté al equipo que estaba construyendo un agente interno llamado TheHacker, la primera reacción fue una pausa larga en la llamada. La segunda fue una pregunta muy razonable: "¿Hackear qué, exactamente?"
+
+Justo. El nombre fue un chiste que se quedó. El trabajo real es aburrido de la mejor manera: mirar nuestra propia plataforma como la miraría un atacante, y anotar lo que hicimos mal antes de que alguien más lo encuentre. Nuestros propios repos, nuestra propia configuración en la nube, nuestras propias APIs. Nada más. Nunca.
+
+La primera corrida completa produjo una lista larga de hallazgos. Estuve orgulloso de esa lista durante unos quince minutos, que es lo que tardé en darme cuenta de que la mayor parte era ruido. Un puñado de problemas reales estaba enterrado bajo una pila de "este endpoint devuelve un header que teóricamente podría ser un problema en una configuración que no usamos." Si le hubiera mandado esa lista tal cual al equipo de ingeniería, habrían silenciado la herramienta para el viernes, y habrían tenido razón.
+
+Esa brecha — entre "encontró mucho" y "encontró lo que importa" — es de lo que trata este post. Construir un agente de seguridad mayormente no es un problema de modelo. Es un problema de alcance, un problema de permisos y un problema de triaje. Estas son las reglas con las que terminé.
+
+<Callout type="info" title="Lo que este post no es">
+Esto es sobre escaneo defensivo de sistemas que te pertenecen y que estás autorizado a probar. Aquí no hay técnicas de explotación, y no las habrá. Si tu agente puede apuntar a algo que no es tuyo, construiste un pasivo, no una herramienta de seguridad.
+</Callout>
+
+## 1. El Alcance Es la Primera Funcionalidad, No una Opción de Configuración
+
+La línea de código más importante de TheHacker no es un prompt. Es el manifiesto de alcance.
+
+Cada activo que el agente tiene permitido mirar vive en una lista explícita: qué repositorios, qué ambientes, qué URLs base de APIs, qué suscripciones en la nube. Si no está en el manifiesto, el agente no lo toca. No "se le desaconseja." No puede. Las herramientas que llama verifican el objetivo contra el manifiesto antes de hacer cualquier cosa, y esa verificación vive en código, no en el system prompt.
+
+```typescript
+type AssetKind = "repo" | "api" | "cloud-config" | "container-image";
+
+interface ScopeManifest {
+  owner: string;              // el equipo responsable de este alcance
+  approvedBy: string;         // el humano que lo aprobó
+  expiresAt: string;          // los alcances expiran; renovar es deliberado
+  assets: Array<{
+    kind: AssetKind;
+    id: string;               // slug del repo, URL base, id de suscripción...
+    environment: "dev" | "staging" | "prod";
+    mode: "read-only" | "active-nondestructive";
+  }>;
+}
+
+function assertInScope(manifest: ScopeManifest, kind: AssetKind, id: string) {
+  const asset = manifest.assets.find((a) => a.kind === kind && a.id === id);
+  if (!asset) throw new ScopeError(`Fuera de alcance: ${kind}:${id}`);
+  if (new Date(manifest.expiresAt) < new Date()) throw new ScopeError("Alcance expirado");
+  return asset;
+}
+```
+
+Tres detalles ahí importan más de lo que parecen. Cada alcance tiene un dueño y un aprobador, así que siempre hay un humano que dijo que sí. Los alcances expiran, así que nada se queda al alcance para siempre sin que nadie lo note. Y cada activo lleva un modo, así que "mirar la API de staging" y "mirar producción" son decisiones distintas tomadas por personas distintas.
+
+Un modelo es muy bueno siguiendo instrucciones la mayor parte del tiempo. "La mayor parte del tiempo" no es una postura de seguridad. El límite del alcance tiene que ser aplicado por las herramientas, para que incluso un agente confundido o manipulado físicamente no pueda salirse de él. Escribí sobre darle a cada agente un mandato estrecho y explícito en [tu agente necesita una descripción de puesto](/es/blog/your-agent-needs-a-job-description); para un agente de seguridad, la descripción de puesto es un límite legal y ético, no un lujo.
+
+## 2. Solo Lectura por Defecto, y Gánate Cada Paso Más Allá
+
+TheHacker corre con la identidad con menos privilegios de la plataforma que todavía puede hacer trabajo útil. Por defecto, lee. Lee código, lee configuración de infraestructura, lee las respuestas que nuestras propias APIs dan a solicitudes ordinarias y bien formadas. No escribe, no borra, no despliega, ni cambia una sola configuración.
+
+Es el mismo principio al que siempre vuelvo en [tu primera función de IA debería ser de solo lectura](/es/blog/first-ai-feature-should-be-read-only), y aquí aplica el doble. Una herramienta de seguridad con acceso de escritura es en sí misma uno de los objetivos más atractivos de tu sistema.
+
+Hay un conjunto pequeño de verificaciones que necesitan más que leer — por ejemplo, confirmar que un endpoint realmente rechaza una solicitud sin un token válido, lo que implica enviar esa solicitud. Esas verificaciones corren solo contra activos marcados como active-nondestructive en el manifiesto, solo en ambientes que no son de producción a menos que alguien lo haya aprobado explícitamente, y solo con límites de tasa que hacen imposible que el agente se convierta en su propio incidente.
+
+```
+                 ┌──────────────────────────────────────┐
+  manifiesto de  │  lista de activos propios            │
+  alcance ─────▶ │  (dueño, aprobador, expiración, modo)│
+                 └──────────────────┬───────────────────┘
+                                    │  cada llamada verifica el alcance
+                                    ▼
+                 ┌──────────────────────────────────────┐
+                 │  recolectores de solo lectura        │
+                 │  código · config · respuestas de API │
+                 └──────────────────┬───────────────────┘
+                                    ▼
+                 ┌──────────────────────────────────────┐
+                 │  el agente razona sobre la evidencia │
+                 │  redacta hallazgos candidatos        │
+                 └──────────────────┬───────────────────┘
+                                    ▼
+                 ┌──────────────────────────────────────┐
+                 │  triaje: deduplicar · riesgos        │
+                 │  conocidos · evidencia · severidad   │
+                 └──────────────────┬───────────────────┘
+                                    ▼
+                 ticket para un dueño humano ──▶ el humano corrige
+```
+
+Cada llamada en ese diagrama va a un log de auditoría: qué herramienta, qué activo, qué identidad, a qué hora. Si alguien pregunta alguna vez "¿qué hizo el agente de seguridad el martes pasado?", la respuesta es una consulta, no un encogimiento de hombros.
+
+<Callout type="warning" title="Tu agente de seguridad es un objetivo">
+Una identidad que puede ver a través de tus sistemas es exactamente lo que un atacante quiere tomar prestado. Dale credenciales de vida corta, los permisos más estrechos que todavía funcionen, límites de tasa y un rastro de auditoría completo. Si filtrar las credenciales del propio agente sería un desastre, tiene demasiadas.
+</Callout>
+
+## 3. Un Hallazgo Es un Ticket con Evidencia, o No Es Nada
+
+La primera versión de TheHacker producía hallazgos que se leían como opiniones. "Este servicio podría ser vulnerable a un control de acceso mal configurado." Podría. Quizás. Tal vez. Los ingenieros leen eso y, razonablemente, no hacen nada, porque no hay nada que hacer.
+
+El arreglo fue un contrato de salida estricto. Un hallazgo no es un párrafo. Es un objeto estructurado, y el agente no tiene permitido registrar uno a menos que cada campo requerido esté lleno con algo real.
+
+```typescript
+interface Finding {
+  title: string;
+  asset: { kind: AssetKind; id: string; environment: string };
+  category: "authz" | "secrets" | "config-drift" | "exposure" | "dependency" | "other";
+  severity: "critical" | "high" | "medium" | "low" | "info";
+  evidence: Array<{
+    type: "file-line" | "config-snapshot" | "request-response" | "scanner-output";
+    ref: string;              // ruta + línea, id del recurso, o referencia de log
+    excerpt: string;          // redactado; nunca secretos en crudo
+  }>;
+  reproduction: string;       // cómo lo verifica un humano, paso a paso
+  suggestedFix: string;       // una propuesta, no un parche que se aplica
+  confidence: "confirmed" | "likely" | "needs-review";
+}
+```
+
+Dos reglas hacen que esto funcione. Primero, sin evidencia, no hay hallazgo. Si el agente no puede apuntar a un archivo y una línea específicos, a una captura de configuración específica o a una respuesta específica, la observación va a un log de "corazonadas" de baja prioridad para que un humano lo hojee, no a la cola de tickets. Segundo, la evidencia siempre va redactada. Si el hallazgo es "hay un secreto commiteado en este archivo," el ticket dice qué archivo y qué línea, y muestra un extracto enmascarado. Una herramienta de seguridad que copia secretos a un sistema de tickets acaba de crear una segunda fuga.
+
+Trato ese esquema como trato cualquier salida estructurada: como un contrato del que depende el resto del sistema. La integración de tickets, los dashboards y la etapa de triaje leen esos campos. Si el modelo se desvía, la validación falla de forma ruidosa, y nada a medio formar llega a la cola de un humano.
+
+## 4. El Triaje de Falsos Positivos Es el Producto de Verdad
+
+Esta es la verdad incómoda sobre las herramientas de seguridad: encontrar cosas es fácil. Encontrar cosas que importan, en una forma sobre la que la gente va a actuar, es todo el trabajo.
+
+Cada equipo de seguridad tiene un cementerio de herramientas que "encontraron miles de problemas" y fueron ignoradas en silencio. La herramienta no falló en la detección. Falló en la confianza. Una vez que los ingenieros aprenden que la mayoría de los tickets de una fuente son ruido, dejan de abrir los tickets de esa fuente, incluido el que era real.
+
+Así que la etapa de triaje en TheHacker recibe tanta atención de ingeniería como la etapa de escaneo. En concreto:
+
+- **Deduplicación.** La misma causa raíz apareciendo en doce archivos es un hallazgo con doce piezas de evidencia, no doce tickets.
+- **Riesgos conocidos y aceptados.** Algunas cosas parecen problemas y son decisiones deliberadas, documentadas y aprobadas. Esas viven en un registro que el agente lee antes de registrar nada. Si un hallazgo coincide con un riesgo aceptado, se suprime con un link a la decisión.
+- **Verificaciones de contexto.** "Este endpoint no tiene autenticación" es crítico para un endpoint de datos e irrelevante para una ruta pública de health-check. El agente tiene que razonar sobre para qué sirve el activo, que es exactamente donde un modelo de lenguaje se gana el sueldo frente a un motor de reglas.
+- **Los veredictos humanos retroalimentan.** Cuando un ingeniero cierra un ticket como falso positivo, elige una razón. Esas razones se vuelven contexto para la siguiente corrida. El agente aprende, en un sentido muy literal, qué considera ruido este código.
+
+La métrica que vigilo no es "número de hallazgos." Es la proporción de tickets que los ingenieros confirman como reales. Cuando ese número está sano, la gente abre los tickets. Cuando baja, lo trato como un bug en TheHacker, no como ingenieros siendo flojos.
+
+<Callout type="tip" title="La precisión compra atención">
+Una herramienta de seguridad tiene un presupuesto fijo de atención humana. Cada falso positivo gasta un poco. Diez hallazgos reales que se corrigen valen más que doscientos hallazgos que se silencian. Optimiza para la proporción de hallazgos sobre los que la gente actúa, no para la cantidad.
+</Callout>
+
+## 5. El Agente Propone, los Humanos Corrigen
+
+TheHacker nunca corrige nada por su cuenta. Esta es la regla que más resistencia genera, así que déjame explicar por qué la sostengo con tanta firmeza.
+
+Una corrección de seguridad es un cambio al comportamiento de producción, usualmente en la parte más sensible del sistema. Endurecer un permiso puede romper un flujo legítimo. Rotar una credencial puede tumbar una integración en el peor momento posible. Cambiar una configuración puede abrir otra cosa mientras cierra el hueco que querías cerrar. Son decisiones de criterio con radio de impacto, y necesitan un humano responsable que entienda el sistema alrededor del cambio.
+
+Lo que el agente hace muy bien es todo lo que lleva hasta esa decisión. Explica el problema en lenguaje simple. Apunta a la evidencia exacta. Sugiere una corrección, muchas veces con un borrador de diff adjunto al ticket para que el ingeniero lo lea. Enlaza a hallazgos similares del pasado y cómo se resolvieron. Eso convierte un ticket de seguridad de "ve a investigar algo vago" en "revisa esta propuesta específica," que es una petición mucho más pequeña en una tarde ocupada.
+
+El patrón es el mismo que uso con The Fixer, nuestro agente de remediación de cumplimiento: la máquina hace la recolección y el borrador tediosos, el humano toma la decisión y es dueño del cambio. No es falta de confianza en el modelo. Es reconocer que la responsabilidad no se puede delegar a algo que no puede rendir cuentas.
+
+## 6. Complementa los Escáneres que Ya Tienes
+
+Cuando describí TheHacker por primera vez, alguien preguntó si ya podíamos quitar el análisis estático y el escaneo de dependencias. No. Absolutamente no.
+
+El análisis estático y el escaneo de dependencias son baratos, rápidos, deterministas, y pertenecen al pipeline en cada pull request. Atrapan clases enteras de problemas de forma confiable, y sus resultados son reproducibles. Reemplazarlos con un modelo de lenguaje sería cambiar una herramienta confiable por una probabilística, que es un mal intercambio para cualquier cosa que tenga una respuesta determinista.
+
+TheHacker vive en los huecos entre esas herramientas:
+
+```
+  herramienta                  bueno en                        ciego a
+  ───────────────────────────  ──────────────────────────────  ──────────────────────────────
+  análisis estático (SAST)     patrones de código conocidos,   intención, contexto entre
+                               por archivo                     servicios
+  escaneo de dependencias      paquetes vulnerables conocidos  tu propia lógica y config
+  agente de seguridad          config vs. intención, deriva    todo fuera de su alcance;
+  (TheHacker)                  de permisos, costuras entre     garantías deterministas
+                               servicios, evidencia legible
+  revisión humana / pentest    creatividad, responsabilidad    cobertura continua
+```
+
+Donde el agente brilla es en preguntas que requieren leer varias cosas a la vez. ¿La configuración real de permisos de este servicio coincide con lo que dice el documento de arquitectura? ¿Un rol que se suponía temporal se volvió permanente en silencio? ¿Este endpoint nuevo aplica las mismas verificaciones de autorización que sus hermanos? Esas son las costuras entre servicios, y en una plataforma con muchas apps compartiendo servicios de autenticación, archivos y conectores, las costuras son donde viven los errores interesantes.
+
+También hace algo que las herramientas deterministas no hacen: lee su salida. Un escáner de dependencias marca un paquete vulnerable; el agente verifica si la función vulnerable es realmente alcanzable desde nuestro código, y ajusta la severidad que propone en consecuencia. La decisión final sobre esa severidad sigue siendo de un humano, pero el humano empieza desde el contexto en vez de una alerta cruda.
+
+## Lo que Haría Diferente
+
+Si empezara de nuevo, construiría la etapa de triaje antes que la etapa de escaneo. Las construí en el orden obvio — encontrar cosas primero, filtrar después — y pasé semanas ahogándome en una salida que todavía no podía evaluar. Empezar desde "¿cómo se ve un ticket sobre el que un ingeniero realmente va a actuar?" y trabajar hacia atrás me habría ahorrado la mayor parte de eso.
+
+También involucraría desde el día uno a los ingenieros que reciben los tickets. Las mejores mejoras a TheHacker vinieron de personas cerrando tickets con razones como "esto está detrás del gateway, que ya lo maneja." Esa sola oración, devuelta como contexto, eliminó una categoría entera de ruido. La gente que recibe los tickets sabe dónde está el ruido. Pregúntales temprano.
+
+## El Hilo
+
+Si tuviera que comprimir todo esto en una oración: **un agente de seguridad es tan seguro como su alcance y tan útil como su precisión.**
+
+Apúntalo a lo que te pertenece y a nada más. Déjalo leer antes de que haga cualquier otra cosa. Haz que cada hallazgo cargue evidencia que un humano pueda verificar. Trata los falsos positivos como bugs en tu herramienta, no como el costo de hacer negocios. Y mantén la corrección en manos humanas, porque la persona que cambia producción debería ser alguien que pueda explicar por qué.
+
+El nombre TheHacker todavía levanta cejas en las reuniones. Me ha llegado a gustar eso. Nos recuerda a todos, incluido yo, que el punto entero es pensar como un atacante para poder comportarnos como ingenieros cuidadosos.
+
+---
+
+*Si estás construyendo herramientas de seguridad con agentes, o intentando que tu equipo confíe en los hallazgos de las herramientas que ya tienes, [contáctame](/contact). La mayoría de los problemas difíciles aquí son de alcance y triaje, y es mucho más fácil resolverlos con alguien que ha cometido los mismos errores.*
