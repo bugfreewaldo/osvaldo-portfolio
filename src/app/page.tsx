@@ -1,460 +1,287 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, ArrowUpRight, FileDown } from "lucide-react";
-import AttentionFigure from "@/components/home/AttentionFigure";
+import { ArrowRight, ArrowUpRight, FileDown, Github, Linkedin, Mail, MapPin, Brain, Bot, Phone, Layers } from "lucide-react";
 import { getAllPosts } from "@/lib/blog";
 import { availability } from "@/lib/availability";
 
-// ---------------------------------------------------------------------------
-// Content
-// ---------------------------------------------------------------------------
-
-const contributions = [
-  {
-    title: "LLMs & RAG",
-    body: "Retrieval-augmented generation, prompt caching, and eval pipelines for production LLM apps.",
-    tech: ["Claude", "OpenAI", "LangChain", "Hugging Face", "Cosmos DB"],
-  },
-  {
-    title: "AI agents",
-    body: "Tool-calling agents with memory, bounded loops, written charters, and human-in-the-loop hand-offs.",
-    tech: ["Claude", "MCP", "Tool use", "Audit logging"],
-  },
-  {
-    title: "Voice AI",
-    body: "Phone agents end to end — STT, TTS, turn-taking, barge-in, and graceful fallback to humans.",
-    tech: ["Twilio", "Whisper", "ElevenLabs", "WebRTC"],
-  },
-  {
-    title: "Safety & evaluation",
-    body: "Calibration, guardrails, hallucination checks, and eval suites wired into release gates.",
-    tech: ["Langfuse", "Arize", "Calibration", "OPA"],
-  },
-  {
-    title: "Clinical decision support",
-    body: "PhD research on AI for medicine: ground truth, inter-rater disagreement, and calibrated uncertainty.",
-    tech: ["NICU", "FHIR", "Human-in-the-loop"],
-  },
-  {
-    title: "Platforms & identity",
-    body: "Multi-app SaaS backbones: OAuth/JWKS federation, RBAC, envelope encryption, event-driven ingestion.",
-    tech: ["Azure Functions", "Key Vault", "RBAC", "JWT"],
-  },
-  {
-    title: "Data & ML pipelines",
-    body: "ETL, vector stores, ontologies + GraphRAG, and the plumbing that keeps AI fed with clean data.",
-    tech: ["PostgreSQL", "Neo4j", "Redis", "Python"],
-  },
-  {
-    title: "Full-stack & mobile",
-    body: "Production web apps and native iOS / Android clients that federate against the same APIs.",
-    tech: ["Next.js", "React", "Swift", "Kotlin"],
-  },
-];
-
-const results = [
-  { value: "10+", label: "years building software" },
+const facts = [
+  { value: "10+", label: "Years building software" },
   { value: "20+", label: "AI products shipped" },
-  { value: "17+", label: "apps on one AI platform" },
-  { value: "10+", label: "countries served" },
+  { value: "17+", label: "Apps on one AI platform" },
+  { value: "PhD", label: "Research in AI (medicine)" },
 ];
 
-type System = {
-  slug: string;
-  title: string;
-  domain: string;
-  summary: string;
-  result: string;
-  external?: string;
-};
-
-const systems: System[] = [
+const services = [
   {
-    slug: "mila-neonatal-llm",
+    icon: Brain,
+    title: "LLMs & RAG",
+    body: "Production LLM apps grounded in your own data, with evals so you know they work.",
+  },
+  {
+    icon: Bot,
+    title: "AI agents",
+    body: "Agents that use your tools and APIs safely — with limits, audit logs, and human hand-offs.",
+  },
+  {
+    icon: Phone,
+    title: "Voice AI",
+    body: "Phone agents that answer, book, and hand off to people without sounding robotic.",
+  },
+  {
+    icon: Layers,
+    title: "Full-stack & mobile",
+    body: "The whole product around the AI: web apps, APIs, auth, payments, iOS and Android.",
+  },
+];
+
+type Work = { title: string; what: string; result: string; href: string; external?: boolean };
+
+const work: Work[] = [
+  {
     title: "MILA",
-    domain: "Healthcare · NICU",
-    summary: "RAG assistant over hospital policies with role-based access and audit-friendly logging.",
-    result: "p95 ≈ 820 ms",
+    what: "AI assistant for NICU nurses and families, built on hospital policies.",
+    result: "Healthcare",
+    href: "/projects/mila-neonatal-llm",
   },
   {
-    slug: "ai-voice-agent",
-    title: "Voice Agent",
-    domain: "Small business · telephony",
-    summary: "Autonomous phone agent that answers, books jobs, and hands off to humans.",
-    result: "68% containment",
+    title: "AI Voice Agent",
+    what: "Answers calls, books jobs, and hands off to humans for small businesses.",
+    result: "68% of calls handled",
+    href: "/projects/ai-voice-agent",
   },
   {
-    slug: "9vectors",
+    title: "GreyMatter platform",
+    what: "Shared backbone behind 17+ AI apps: identity, files, MCP servers, agents, mobile.",
+    result: "17+ apps",
+    href: "/projects",
+  },
+  {
     title: "9Vectors.ai",
-    domain: "Enterprise strategy",
-    summary: "AI-powered strategic assessment platform for data-driven decisions.",
+    what: "AI strategic assessment platform for enterprises. Technical co-founder.",
     result: "Co-founder",
-    external: "https://9vectors.ai",
+    href: "https://9vectors.ai",
+    external: true,
   },
   {
-    slug: "fundraise9",
     title: "Fundraise9",
-    domain: "Private equity",
-    summary: "ILPA DDQ 2.0 portal — Claude-backed answers anchored to the firm's source documents.",
-    result: "ILPA DDQ 2.0",
+    what: "Due-diligence portal for private equity, with answers grounded in source documents.",
+    result: "Private equity",
+    href: "/projects/fundraise9",
   },
   {
-    slug: "measurement13",
-    title: "Measurement13.ai",
-    domain: "Leadership",
-    summary: "13-attribute leadership assessment with 360° feedback and 9-Box analytics.",
-    result: "Enterprise",
-    external: "https://measurement13.ai",
-  },
-  {
-    slug: "stripe-qb-reconcile",
-    title: "Reconciler",
-    domain: "Finance ops",
-    summary: "Stripe → QuickBooks reconciliation aggregating fees per payout.",
-    result: "$0 variance",
-  },
-  {
-    slug: "budgetcopilot",
     title: "BudgetCopilot",
-    domain: "Personal finance",
-    summary: "A humble AI finance agent: categorizes, explains, never moves money on its own.",
-    result: "Consumer",
-    external: "https://budgetcopilot.app",
-  },
-  {
-    slug: "waldoscodelab",
-    title: "Waldo's Code Lab",
-    domain: "Education",
-    summary: "Free, hands-on coding school for kids and teens.",
-    result: "Free",
-    external: "https://waldoscodelab.com",
+    what: "Personal AI finance agent that explains your money without touching it.",
+    result: "Consumer app",
+    href: "https://budgetcopilot.app",
+    external: true,
   },
 ];
-
-// ---------------------------------------------------------------------------
-// Small presentational helpers
-// ---------------------------------------------------------------------------
-
-function SectionHead({ n, title, aside }: { n: string; title: string; aside?: React.ReactNode }) {
-  return (
-    <div className="mb-8 flex items-end justify-between gap-4 border-b border-line pb-3">
-      <h2 className="text-2xl text-foreground sm:text-3xl">
-        <span className="mr-3 font-mono text-base font-normal text-accent">{n}</span>
-        {title}
-      </h2>
-      {aside}
-    </div>
-  );
-}
-
-function formatDate(d: string) {
-  return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" });
-}
-
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default function Home() {
-  const allPosts = getAllPosts("en");
-  const posts = allPosts.slice(0, 6);
-  const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const posts = getAllPosts("en").slice(0, 3);
 
   return (
-    <main className="relative px-4">
-      {/* ================= Title block ================= */}
-      <section className="mx-auto max-w-6xl pt-12 sm:pt-16">
-        <div className="flex flex-wrap items-center justify-between gap-3 font-mono text-[0.7rem] uppercase tracking-[0.14em] text-muted">
-          <span>Preprint · cs.AI · cs.HC · cs.SE</span>
-          <span>Panama City · {today}</span>
-        </div>
+    <main className="px-4">
+      {/* Hero */}
+      <section className="mx-auto grid max-w-5xl items-center gap-10 pt-14 sm:pt-20 md:grid-cols-[1fr_auto]">
+        <div className="order-2 md:order-1">
+          <Link
+            href="/contact"
+            className="inline-flex items-center gap-2 rounded-full border border-available/30 bg-available/10 px-3 py-1 text-sm font-medium text-available"
+          >
+            <span className="relative flex h-2 w-2" aria-hidden>
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-available opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-available" />
+            </span>
+            {availability.headline}
+          </Link>
 
-        <div className="mt-10 grid gap-10 lg:grid-cols-[1fr_auto] lg:items-start">
-          <div className="max-w-3xl">
-            <h1 className="text-[2.6rem] leading-[1.05] text-foreground sm:text-6xl lg:text-[4.4rem]">
-              Building AI that survives contact with{" "}
-              <em className="text-accent">the real world</em>
-            </h1>
+          <h1 className="mt-6 text-4xl leading-tight text-foreground sm:text-5xl lg:text-6xl">
+            Hi, I&apos;m Osvaldo. I build AI that works in production.
+          </h1>
 
-            <p className="mt-8 font-serif text-xl text-foreground sm:text-2xl">
-              Osvaldo “Waldo” Restrepo<sup className="ml-0.5 font-mono text-xs text-accent">1,2</sup>
-            </p>
-            <ol className="mt-3 space-y-1 font-serif text-[0.98rem] text-muted">
-              <li>
-                <sup className="mr-1 font-mono text-[0.65rem] text-accent">1</sup>
-                PhD research in Artificial Intelligence, clinical decision support — Technological University of Panama
-              </li>
-              <li>
-                <sup className="mr-1 font-mono text-[0.65rem] text-accent">2</sup>
-                Applied AI engineering, 10+ years in production — remote from{" "}
-                <Link href="/ai-engineer-panama" className="underline decoration-line underline-offset-4 hover:decoration-accent">
-                  Panama
-                </Link>
-              </li>
-            </ol>
-            <p className="mt-3 font-mono text-xs text-muted">
-              Correspondence:{" "}
-              <a href="mailto:me@osvaldorestrepo.dev" className="text-foreground hover:text-accent">
-                me@osvaldorestrepo.dev
-              </a>
-            </p>
-          </div>
+          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted">
+            AI Engineer with 10+ years of software experience and PhD research in AI. I design and ship LLM
+            apps, AI agents, and voice AI — end to end, from first prototype to real users.
+          </p>
 
-          {/* Author plate */}
-          <div className="flex items-center gap-4 lg:flex-col lg:items-end">
-            <div className="relative h-28 w-28 overflow-hidden rounded-sm border border-line bg-surface-2 sm:h-36 sm:w-36 lg:h-44 lg:w-44">
-              <Image
-                src="/images/waldoprofilepic.png"
-                alt="Osvaldo Restrepo"
-                fill
-                sizes="176px"
-                priority
-                className="object-cover grayscale contrast-[1.05] transition duration-500 hover:grayscale-0"
-              />
-            </div>
-            <p className="max-w-[11rem] font-serif text-sm italic leading-snug text-muted lg:text-right">
-              The author, mid-way through an argument with a tokenizer.
-            </p>
-          </div>
-        </div>
+          <p className="mt-4 inline-flex items-center gap-1.5 text-sm text-muted">
+            <MapPin className="h-4 w-4 shrink-0" /> Panama City · Remote, US &amp; LATAM time zones · English &amp; Spanish
+          </p>
 
-        {/* Availability statement */}
-        <div className="mt-12 grid gap-6 rounded-lg border border-available/30 bg-available/[0.06] p-5 sm:p-6 md:grid-cols-[1fr_auto] md:items-center">
-          <div>
-            <p className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.14em] text-available">
-              <span className="relative flex h-2.5 w-2.5" aria-hidden>
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-available opacity-60" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-available" />
-              </span>
-              Status · {availability.headline}
-            </p>
-            <p className="mt-2 font-serif text-lg leading-relaxed text-foreground">{availability.detail}</p>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {availability.looking.map((l) => (
-                <li key={l} className="rounded-full border border-line bg-surface px-3 py-1 text-xs text-muted">
-                  {l}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="flex flex-wrap gap-3 md:flex-col">
+          <div className="mt-8 flex flex-wrap gap-3">
             <Link
               href="/contact"
-              className="group inline-flex items-center justify-center gap-2 rounded-md bg-foreground px-5 py-3 text-sm font-medium text-background transition-transform hover:-translate-y-0.5"
+              className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 font-medium text-white transition-colors hover:bg-accent-soft"
             >
-              Start a conversation
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              Get in touch <ArrowRight className="h-4 w-4" />
             </Link>
             <a
               href="/Osvaldo_Restrepo_Resume.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-foreground/70 px-5 py-3 text-sm font-medium text-foreground transition-colors hover:bg-surface-2"
+              className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-6 py-3 font-medium text-foreground transition-colors hover:bg-surface-2"
             >
-              <FileDown className="h-4 w-4" />
-              Download CV
+              <FileDown className="h-4 w-4" /> Download CV
             </a>
           </div>
-        </div>
-      </section>
 
-      {/* ================= Abstract + Figure 1 ================= */}
-      <section className="mx-auto mt-20 grid max-w-6xl gap-12 lg:grid-cols-[1.05fr_1fr]">
-        <div>
-          <p className="smallcaps text-center text-lg font-semibold text-foreground lg:text-left">Abstract</p>
-          <p className="mt-4 font-serif text-[1.18rem] leading-[1.75] text-foreground/90 [hyphens:auto] lg:text-justify">
-            Most AI fails quietly, in the gap between an impressive demo and an ordinary Tuesday. This page
-            describes an engineer who works in that gap. Over ten years I have built LLM systems for hospitals,
-            phone agents for small businesses, and an AI platform behind seventeen products. Alongside that I am
-            doing doctoral research on clinical decision support. The method is consistent. Measure before
-            claiming. Encode domain structure before reaching for embeddings. Calibrate confidence so that wrong
-            answers sound wrong. Treat prompts, schemas, and permissions as contracts. We find that the
-            unglamorous last ten percent — evals, latency, failure language, audit trails — is where trust is
-            earned. Everything else is a demo.
-          </p>
-          <p className="mt-5 font-serif text-[0.98rem] text-muted">
-            <span className="font-semibold text-foreground">Keywords:</span> large language models · AI agents ·
-            retrieval-augmented generation · voice AI · clinical AI · evaluation · calibration
-          </p>
-          <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 font-mono text-sm">
-            <Link href="/projects" className="text-foreground underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
-              → selected systems
-            </Link>
-            <Link href="/blog" className="text-foreground underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
-              → {allPosts.length} essays
-            </Link>
-            <Link href="/about" className="text-foreground underline decoration-accent/40 underline-offset-4 hover:decoration-accent">
-              → full biography
-            </Link>
-          </div>
-        </div>
-        <AttentionFigure />
-      </section>
-
-      {/* ================= §1 Contributions ================= */}
-      <section className="mx-auto mt-24 max-w-6xl">
-        <SectionHead n="1" title="Contributions" />
-        <p className="mb-8 max-w-3xl font-serif text-lg leading-relaxed text-muted">
-          This work makes the following contributions, each shipped to production rather than left in a
-          notebook:
-        </p>
-        <ol className="grid gap-x-10 gap-y-7 md:grid-cols-2">
-          {contributions.map((c, i) => (
-            <li key={c.title} className="grid grid-cols-[2.2rem_1fr] gap-2">
-              <span className="pt-1 font-mono text-sm text-accent">C{i + 1}.</span>
-              <div>
-                <h3 className="text-xl text-foreground">{c.title}</h3>
-                <p className="mt-1 font-serif text-[1.05rem] leading-relaxed text-muted">{c.body}</p>
-                <p className="mt-2 font-mono text-[0.7rem] text-muted/90">{c.tech.join(" · ")}</p>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      {/* ================= §2 Results ================= */}
-      <section className="mx-auto mt-24 max-w-6xl">
-        <SectionHead n="2" title="Results" />
-        <div className="overflow-hidden rounded-lg border border-line">
-          <p className="border-b border-line bg-surface-2 px-4 py-2 font-serif text-sm text-muted">
-            <span className="font-semibold text-foreground">Table 1.</span> Aggregate outcomes, 2015 – present.
-          </p>
-          <dl className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
-            {results.map((r) => (
-              <div key={r.label} className="bg-surface px-5 py-6">
-                <dt className="sr-only">{r.label}</dt>
-                <dd className="font-serif text-4xl text-foreground sm:text-5xl">{r.value}</dd>
-                <dd className="mt-1 font-mono text-[0.72rem] uppercase tracking-[0.1em] text-muted">{r.label}</dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-      </section>
-
-      {/* ================= §3 Systems ================= */}
-      <section className="mx-auto mt-24 max-w-6xl">
-        <SectionHead
-          n="3"
-          title="Selected systems"
-          aside={
-            <Link href="/projects" className="hidden items-center gap-1 font-mono text-sm text-accent hover:underline sm:inline-flex">
-              all systems <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          }
-        />
-        <p className="mb-3 font-serif text-sm text-muted">
-          <span className="font-semibold text-foreground">Table 2.</span> Systems designed and shipped, with
-          the headline result for each.
-        </p>
-        <div className="border-y-2 border-foreground">
-          <div className="hidden grid-cols-[1.1fr_1fr_2.4fr_auto] gap-6 border-b border-foreground/60 py-2 font-mono text-[0.7rem] uppercase tracking-[0.12em] text-muted md:grid">
-            <span>System</span>
-            <span>Domain</span>
-            <span>Summary</span>
-            <span className="text-right">Result</span>
-          </div>
-          {systems.map((s) => {
-            const href = s.external ?? `/projects/${s.slug}`;
-            const ext = Boolean(s.external);
-            return (
+          <div className="mt-6 flex gap-1">
+            {[
+              { href: "https://linkedin.com/in/osvaldorestrepo", icon: Linkedin, label: "LinkedIn" },
+              { href: "https://github.com/bugfreewaldo", icon: Github, label: "GitHub" },
+              { href: "mailto:me@osvaldorestrepo.dev", icon: Mail, label: "Email" },
+            ].map((s) => (
               <a
-                key={s.slug}
-                href={href}
-                target={ext ? "_blank" : undefined}
-                rel={ext ? "noopener noreferrer" : undefined}
-                className="group grid gap-1 border-b border-line py-4 transition-colors last:border-b-0 hover:bg-surface-2/70 md:grid-cols-[1.1fr_1fr_2.4fr_auto] md:items-baseline md:gap-6 md:px-2"
+                key={s.label}
+                href={s.href}
+                target={s.href.startsWith("mailto") ? undefined : "_blank"}
+                rel={s.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
+                aria-label={s.label}
+                className="rounded-lg p-2.5 text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
               >
-                <span className="flex items-center gap-1 font-serif text-xl text-foreground group-hover:text-accent">
-                  {s.title}
-                  {ext && <ArrowUpRight className="h-4 w-4 opacity-50" />}
-                </span>
-                <span className="font-mono text-xs text-muted">{s.domain}</span>
-                <span className="font-serif text-[1.02rem] text-muted">{s.summary}</span>
-                <span className="font-mono text-sm text-foreground md:text-right">{s.result}</span>
+                <s.icon className="h-5 w-5" />
               </a>
-            );
-          })}
+            ))}
+          </div>
+        </div>
+
+        <div className="order-1 mx-auto h-48 w-48 overflow-hidden rounded-full border-4 border-surface shadow-xl sm:h-64 sm:w-64 md:order-2 md:h-72 md:w-72">
+          <Image
+            src="/images/waldoprofilepic.png"
+            alt="Osvaldo Restrepo"
+            width={288}
+            height={288}
+            priority
+            className="h-full w-full object-cover"
+          />
         </div>
       </section>
 
-      {/* ================= §4 Writing as references ================= */}
-      <section className="mx-auto mt-24 max-w-6xl">
-        <SectionHead
-          n="4"
-          title="Recent writing"
-          aside={
-            <Link href="/blog" className="hidden items-center gap-1 font-mono text-sm text-accent hover:underline sm:inline-flex">
-              all essays <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          }
-        />
-        <ol className="space-y-5">
-          {posts.map((p, i) => (
-            <li key={p.slug} className="grid grid-cols-[2.4rem_1fr] gap-2">
-              <span className="pt-0.5 font-mono text-sm text-muted">[{i + 1}]</span>
-              <div>
-                <p className="font-serif text-[1.08rem] leading-relaxed text-foreground/90">
-                  Restrepo, O. ({new Date(p.frontmatter.date).getUTCFullYear()}).{" "}
-                  <Link href={p.url} className="text-foreground underline decoration-line underline-offset-4 hover:text-accent hover:decoration-accent">
-                    {p.frontmatter.title}
-                  </Link>
-                  . <em>osvaldorestrepo.dev</em>, {p.frontmatter.category}.
-                </p>
-                <p className="mt-1 font-mono text-[0.7rem] text-muted">
-                  {formatDate(p.frontmatter.date)} · {p.readingTimeMinutes} min read
-                </p>
-              </div>
-            </li>
+      {/* Quick facts */}
+      <section className="mx-auto mt-16 max-w-5xl">
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
+          {facts.map((f) => (
+            <div key={f.label} className="bg-surface px-5 py-6 text-center">
+              <div className="font-serif text-3xl text-foreground sm:text-4xl">{f.value}</div>
+              <div className="mt-1 text-sm text-muted">{f.label}</div>
+            </div>
           ))}
-        </ol>
+        </div>
       </section>
 
-      {/* ================= §5 Press ================= */}
-      <section className="mx-auto mt-24 max-w-6xl">
-        <SectionHead n="5" title="In the press" />
+      {/* What I do */}
+      <section className="mx-auto mt-24 max-w-5xl">
+        <h2 className="text-3xl text-foreground sm:text-4xl">What I can do for your team</h2>
+        <div className="mt-8 grid gap-5 sm:grid-cols-2">
+          {services.map((s) => (
+            <div key={s.title} className="rounded-xl border border-line bg-surface p-6">
+              <s.icon className="h-6 w-6 text-accent" />
+              <h3 className="mt-4 text-xl text-foreground">{s.title}</h3>
+              <p className="mt-2 leading-relaxed text-muted">{s.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Selected work */}
+      <section className="mx-auto mt-24 max-w-5xl">
+        <div className="flex items-end justify-between gap-4">
+          <h2 className="text-3xl text-foreground sm:text-4xl">Selected work</h2>
+          <Link href="/projects" className="hidden items-center gap-1 text-sm font-medium text-accent hover:underline sm:inline-flex">
+            All projects <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {work.map((w) => (
+            <a
+              key={w.title}
+              href={w.href}
+              target={w.external ? "_blank" : undefined}
+              rel={w.external ? "noopener noreferrer" : undefined}
+              className="group flex flex-col rounded-xl border border-line bg-surface p-6 transition-all hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-lg"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="text-xl text-foreground group-hover:text-accent">{w.title}</h3>
+                {w.external && <ArrowUpRight className="h-4 w-4 text-muted" />}
+              </div>
+              <p className="mt-2 flex-1 leading-relaxed text-muted">{w.what}</p>
+              <span className="mt-4 self-start rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent">
+                {w.result}
+              </span>
+            </a>
+          ))}
+        </div>
+        <Link href="/projects" className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline sm:hidden">
+          All projects <ArrowRight className="h-4 w-4" />
+        </Link>
+      </section>
+
+      {/* Press */}
+      <section className="mx-auto mt-24 max-w-5xl">
         <a
           href="https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story"
           target="_blank"
           rel="noopener noreferrer"
-          className="group grid gap-5 rounded-lg border border-line bg-surface p-5 transition-colors hover:border-accent/50 sm:grid-cols-[auto_1fr] sm:p-6"
+          className="group flex items-center gap-5 rounded-xl border border-line bg-surface p-6 transition-colors hover:border-accent/50"
         >
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-md bg-white p-2 ring-1 ring-line">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-2 ring-1 ring-line">
             <Image src="/images/usanews-logo.jpg" alt="USA News" width={56} height={56} className="h-full w-full object-contain" />
           </div>
           <div>
-            <p className="font-mono text-xs uppercase tracking-[0.12em] text-muted">USA News · Feature</p>
-            <h3 className="mt-1 text-2xl text-foreground group-hover:text-accent">
+            <p className="text-sm text-muted">Featured in USA News</p>
+            <p className="mt-1 font-serif text-xl text-foreground group-hover:text-accent">
               How the MILA AI Platform Began with One Family&apos;s Story
-            </h3>
-            <p className="mt-2 font-serif text-[1.05rem] text-muted">
-              The story behind building an AI assistant for NICU families — turning a personal experience into
-              technology that helps parents through one of the hardest times of their lives.
             </p>
           </div>
         </a>
       </section>
 
-      {/* ================= Acknowledgements / CTA ================= */}
-      <section className="mx-auto mt-24 max-w-3xl text-center">
-        <p className="smallcaps text-lg font-semibold text-foreground">Acknowledgements &amp; next steps</p>
-        <p className="mt-4 font-serif text-xl leading-relaxed text-muted">
-          Thanks to the nurses, founders, students, and engineers whose problems shaped this work. If you have
-          one worth solving, I&apos;m <span className="text-available">currently available</span> — and I reply
-          to every message.
+      {/* Writing */}
+      <section className="mx-auto mt-24 max-w-5xl">
+        <div className="flex items-end justify-between gap-4">
+          <h2 className="text-3xl text-foreground sm:text-4xl">Latest writing</h2>
+          <Link href="/blog" className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
+            All posts <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <div className="mt-6 divide-y divide-line border-y border-line">
+          {posts.map((p) => (
+            <Link key={p.slug} href={p.url} className="group block py-5">
+              <p className="text-sm text-muted">
+                {new Date(p.frontmatter.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}{" "}
+                · {p.readingTimeMinutes} min read
+              </p>
+              <p className="mt-1 font-serif text-xl text-foreground group-hover:text-accent">{p.frontmatter.title}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="mx-auto mt-24 max-w-5xl rounded-2xl bg-foreground px-6 py-12 text-center text-background sm:px-12">
+        <p className="inline-flex items-center gap-2 text-sm font-medium text-available">
+          <span className="h-2 w-2 rounded-full bg-available" /> {availability.headline}
+        </p>
+        <h2 className="mt-3 text-3xl sm:text-4xl">Let&apos;s talk about your team</h2>
+        <p className="mx-auto mt-3 max-w-xl opacity-80">
+          Open to senior AI engineering roles, research collaborations, and consulting. I reply to every message.
         </p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           <Link
             href="/contact"
-            className="inline-flex items-center gap-2 rounded-md bg-accent px-6 py-3 text-sm font-medium text-white transition-transform hover:-translate-y-0.5"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 font-medium text-white transition-colors hover:bg-accent-soft"
           >
             Get in touch <ArrowRight className="h-4 w-4" />
           </Link>
-          <Link
-            href="/case-studies"
-            className="inline-flex items-center gap-2 rounded-md border border-foreground/70 px-6 py-3 text-sm font-medium text-foreground hover:bg-surface-2"
+          <a
+            href="/Osvaldo_Restrepo_Resume.pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border border-background/30 px-6 py-3 font-medium transition-colors hover:bg-background/10"
           >
-            Read the case studies
-          </Link>
+            <FileDown className="h-4 w-4" /> Download CV
+          </a>
         </div>
       </section>
     </main>

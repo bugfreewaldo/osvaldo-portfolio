@@ -9,13 +9,12 @@ import ThemeToggle from "./ThemeToggle";
 import AvailabilityPill from "@/components/AvailabilityPill";
 
 const navLinks = [
-  { href: "/", label: "Abstract", n: "0" },
-  { href: "/projects", label: "Systems", n: "1" },
-  { href: "/blog", label: "Writing", n: "2" },
-  { href: "/about", label: "About", n: "3" },
-  { href: "/uses", label: "Methods", n: "4" },
-  { href: "/testimonials", label: "Reviews", n: "5" },
-  { href: "/contact", label: "Contact", n: "6" },
+  { href: "/", label: "Home" },
+  { href: "/projects", label: "Projects" },
+  { href: "/about", label: "About" },
+  { href: "/testimonials", label: "Testimonials" },
+  { href: "/blog", label: "Blog" },
+  { href: "/contact", label: "Contact" },
 ];
 
 export default function Header() {
@@ -35,9 +34,6 @@ export default function Header() {
           <span className="whitespace-nowrap font-serif text-xl font-medium tracking-tight text-foreground sm:text-[1.35rem]">
             Osvaldo Restrepo
           </span>
-          <span className="hidden whitespace-nowrap font-mono text-[0.68rem] uppercase tracking-[0.16em] text-muted 2xl:inline">
-            AI · PhD research
-          </span>
         </Link>
 
         {/* Desktop navigation */}
@@ -46,16 +42,15 @@ export default function Header() {
             <Link
               key={link.href}
               href={link.href}
-              className={`relative whitespace-nowrap px-2 py-2 text-[0.84rem] transition-colors lg:px-2.5 ${
+              className={`relative whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors ${
                 isActive(link.href) ? "text-foreground" : "text-muted hover:text-foreground"
               }`}
             >
-              <span className="mr-0.5 hidden font-mono text-[0.62rem] text-accent align-super lg:inline">§{link.n}</span>
               {link.label}
               {isActive(link.href) && (
                 <motion.span
                   layoutId="activeRule"
-                  className="absolute inset-x-2 -bottom-[1px] h-[2px] bg-accent lg:inset-x-2.5"
+                  className="absolute inset-x-3 -bottom-[1px] h-[2px] bg-accent"
                   transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
                 />
               )}
@@ -65,16 +60,16 @@ export default function Header() {
 
         {/* Desktop actions */}
         <div className="hidden items-center gap-2 md:flex">
-          <AvailabilityPill className="hidden xl:inline-flex" />
+          <AvailabilityPill className="hidden lg:inline-flex" />
           <ThemeToggle />
           <a
             href="/Osvaldo_Restrepo_Resume.pdf"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md border border-foreground/80 px-3 py-1.5 font-mono text-xs font-medium text-foreground transition-colors hover:bg-foreground hover:text-background"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-soft"
           >
-            <FileDown className="h-3.5 w-3.5" />
-            CV.pdf
+            <FileDown className="h-4 w-4" />
+            CV
           </a>
         </div>
 
@@ -95,11 +90,13 @@ export default function Header() {
 
       {/* Journal-style double rule + mobile availability strip */}
       <div className="mx-auto max-w-6xl px-4">
-        <div className="rule-double" />
+        <div className="border-b border-line" />
       </div>
-      <div className="mx-auto flex max-w-6xl justify-center px-4 py-1.5 md:hidden">
-        <AvailabilityPill />
-      </div>
+      {pathname !== "/" && (
+        <div className="mx-auto flex max-w-6xl justify-center px-4 py-1.5 lg:hidden">
+          <AvailabilityPill />
+        </div>
+      )}
 
       {/* Mobile menu */}
       <AnimatePresence>
@@ -118,11 +115,10 @@ export default function Header() {
                   key={link.href}
                   href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-baseline gap-3 rounded-md px-3 py-3 font-serif text-lg transition-colors ${
+                  className={`block rounded-lg px-3 py-3 text-base font-medium transition-colors ${
                     isActive(link.href) ? "bg-surface-2 text-foreground" : "text-muted hover:bg-surface-2"
                   }`}
                 >
-                  <span className="font-mono text-xs text-accent">§{link.n}</span>
                   {link.label}
                 </Link>
               ))}
@@ -130,10 +126,10 @@ export default function Header() {
                 href="/Osvaldo_Restrepo_Resume.pdf"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 flex items-center justify-center gap-2 rounded-md bg-foreground px-4 py-3 font-mono text-sm text-background"
+                className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 font-medium text-white"
               >
                 <FileDown className="h-4 w-4" />
-                Download CV.pdf
+                Download CV
               </a>
             </div>
           </motion.div>

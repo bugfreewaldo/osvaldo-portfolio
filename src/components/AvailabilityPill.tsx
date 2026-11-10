@@ -11,7 +11,7 @@ export default function AvailabilityPill({
   return (
     <Link
       href="/contact"
-      className={`group inline-flex whitespace-nowrap items-center gap-2 rounded-full border border-available/30 bg-available/10 px-3 py-1 font-mono text-[0.72rem] font-medium text-available transition-colors hover:bg-available/15 ${className}`}
+      className={`group inline-flex whitespace-nowrap items-center gap-2 rounded-full border border-available/30 bg-available/10 px-3 py-1 text-xs font-medium text-available transition-colors hover:bg-available/15 ${className}`}
     >
       <span className="relative flex h-2 w-2" aria-hidden>
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-available opacity-60" />

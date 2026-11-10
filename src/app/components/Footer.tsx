@@ -14,11 +14,11 @@ export default function Footer() {
   return (
     <footer className="mt-24 px-4 pb-10">
       <div className="mx-auto max-w-6xl">
-        <div className="rule-double" />
+        <div className="border-t border-line" />
         <div className="grid gap-10 pt-10 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
-            <p className="font-serif text-2xl text-foreground">Correspondence</p>
-            <p className="mt-3 max-w-md font-serif text-[1.05rem] leading-relaxed text-muted">
+            <p className="font-serif text-2xl text-foreground">Get in touch</p>
+            <p className="mt-3 max-w-md leading-relaxed text-muted">
               {availability.detail}
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -33,15 +33,16 @@ export default function Footer() {
           </div>
 
           <div>
-            <p className="smallcaps text-sm text-muted">Index</p>
-            <ul className="mt-3 space-y-1.5 font-serif text-[1.02rem]">
+            <p className="text-sm font-medium text-muted">Pages</p>
+            <ul className="mt-3 space-y-1.5 text-[0.95rem]">
               {[
-                ["/projects", "Systems"],
+                ["/projects", "Projects"],
                 ["/case-studies", "Case studies"],
-                ["/blog", "Writing"],
+                ["/blog", "Blog"],
                 ["/about", "About"],
                 ["/now", "Now"],
-                ["/uses", "Methods & tools"],
+                ["/uses", "Uses"],
+                ["/testimonials", "Testimonials"],
                 ["/process", "Process"],
                 ["/es/blog", "En español"],
               ].map(([href, label]) => (
@@ -55,7 +56,7 @@ export default function Footer() {
           </div>
 
           <div>
-            <p className="smallcaps text-sm text-muted">Elsewhere</p>
+            <p className="text-sm font-medium text-muted">Elsewhere</p>
             <div className="mt-3 flex gap-1">
               {socials.map((s) => (
                 <a
@@ -79,9 +80,9 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-10 flex flex-col justify-between gap-2 border-t border-line pt-5 font-mono text-[0.7rem] text-muted sm:flex-row">
+        <div className="mt-10 flex flex-col justify-between gap-2 border-t border-line pt-5 text-xs text-muted sm:flex-row">
           <p>© {new Date().getFullYear()} Osvaldo Restrepo · Panama City, Panama</p>
-          <p>Typeset in Newsreader &amp; Inter. Built with AI, obviously.</p>
+          <p>Built with AI, obviously.</p>
         </div>
       </div>
     </footer>
