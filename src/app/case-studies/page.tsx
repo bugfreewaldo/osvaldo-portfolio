@@ -50,7 +50,7 @@ const caseStudies = [
     client: "Shining Image of Texas (Small Business)",
     duration: "3 months",
     category: "Voice AI",
-    gradient: "from-[#FF6A3D] to-cyan-500",
+    gradient: "from-accent to-cyan-500",
     problem:
       "A window cleaning business was losing 30-40% of calls to voicemail — callers during jobs, after hours, and weekends just called the next company. Every missed call was $200-500 in lost revenue.",
     approach: [
@@ -147,7 +147,7 @@ export default function CaseStudiesPage() {
                   <ul className="space-y-2">
                     {cs.approach.map((step, i) => (
                       <li key={i} className="flex items-start gap-3 text-slate-600 dark:text-slate-400">
-                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-bold flex items-center justify-center mt-0.5">
+                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 dark:bg-accent/15 text-accent dark:text-accent-soft text-sm font-bold flex items-center justify-center mt-0.5">
                           {i + 1}
                         </span>
                         {step}
@@ -167,7 +167,7 @@ export default function CaseStudiesPage() {
                         key={r.label}
                         className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 text-center"
                       >
-                        <r.icon className="w-5 h-5 text-[#FF6A3D] mx-auto mb-2" />
+                        <r.icon className="w-5 h-5 text-accent mx-auto mb-2" />
                         <div className="text-2xl font-bold text-slate-900 dark:text-white">
                           {r.metric}
                         </div>
@@ -209,7 +209,7 @@ export default function CaseStudiesPage() {
                 {/* Link to project */}
                 <Link
                   href={`/projects/${cs.slug}`}
-                  className="inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] font-medium hover:underline text-sm"
+                  className="inline-flex items-center gap-2 text-accent dark:text-accent-soft font-medium hover:underline text-sm"
                 >
                   View full project details
                   <ArrowRight className="w-4 h-4" />
@@ -230,7 +230,7 @@ export default function CaseStudiesPage() {
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
             >
               Get in Touch
               <ArrowRight className="w-4 h-4" />

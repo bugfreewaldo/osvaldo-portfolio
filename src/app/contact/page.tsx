@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { availability } from "@/lib/availability";
 import Script from "next/script";
 import { motion } from "framer-motion";
 import { Mail, Send, User, MessageSquare, Sparkles, CheckCircle, ArrowRight, Github, Linkedin, Instagram } from "lucide-react";
@@ -17,9 +18,6 @@ declare global {
 function GridBackground() {
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-      <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
     </div>
   );
 }
@@ -31,7 +29,7 @@ const contactMethods = [
     label: "Email",
     value: "me@osvaldorestrepo.dev",
     href: "mailto:me@osvaldorestrepo.dev",
-    gradient: "from-[#FF6A3D] to-[#FF8A4C]",
+    gradient: "from-accent to-accent-soft",
   },
   {
     icon: Linkedin,
@@ -146,7 +144,7 @@ export default function ContactPage() {
 
             <motion.button
               onClick={() => setStatus("idle")}
-              className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
+              className="mt-8 inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
             >
@@ -175,10 +173,10 @@ export default function ContactPage() {
             transition={{ duration: 0.6 }}
             className="flex items-center gap-3 mb-4"
           >
-            <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-accent to-accent-soft">
               <Mail className="w-5 h-5 text-white" />
             </div>
-            <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">
+            <span className="text-sm font-medium text-accent dark:text-accent-soft">
               Get in Touch
             </span>
           </motion.div>
@@ -190,7 +188,7 @@ export default function ContactPage() {
             transition={{ duration: 0.6, delay: 0.1 }}
           >
             <span className="text-slate-900 dark:text-white">Let&apos;s </span>
-            <span className="bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-accent via-accent-soft to-accent-2 bg-clip-text text-transparent">
               Connect
             </span>
           </motion.h1>
@@ -221,14 +219,14 @@ export default function ContactPage() {
                 href={method.href}
                 target={method.href.startsWith("mailto") ? undefined : "_blank"}
                 rel={method.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
-                className="group flex items-center gap-4 p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all duration-300"
+                className="group flex items-center gap-4 p-4 rounded-xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-accent/50 transition-all duration-300"
               >
                 <div className={`p-2.5 rounded-xl bg-gradient-to-br ${method.gradient}`}>
                   <method.icon className="w-5 h-5 text-white" />
                 </div>
                 <div>
                   <p className="text-sm text-slate-500 dark:text-slate-400">{method.label}</p>
-                  <p className="font-medium text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
+                  <p className="font-medium text-slate-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-soft transition-colors">
                     {method.value}
                   </p>
                 </div>
@@ -236,19 +234,27 @@ export default function ContactPage() {
             ))}
 
             {/* Availability Badge */}
-            <div className="mt-6 p-4 rounded-xl bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/20">
+            <div className="mt-6 p-4 rounded-lg bg-available/[0.07] border border-available/30">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-available opacity-60"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-available"></span>
                 </span>
-                <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
-                  Available only upon request
+                <span className="text-sm font-medium text-available">
+                  {availability.headline}
                 </span>
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Currently busy with ongoing projects. Reach out for availability.
+                {availability.detail}
               </p>
+              <ul className="mt-3 space-y-1 text-sm text-slate-700 dark:text-slate-300">
+                {availability.looking.map((item) => (
+                  <li key={item} className="flex gap-2">
+                    <span className="text-available">→</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
 
@@ -278,7 +284,7 @@ export default function ContactPage() {
                     name="name"
                     required
                     placeholder="Jane Doe"
-                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF6A3D] focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -295,7 +301,7 @@ export default function ContactPage() {
                     name="email"
                     required
                     placeholder="you@example.com"
-                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF6A3D] focus:border-transparent transition-all"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
                   />
                 </div>
 
@@ -312,7 +318,7 @@ export default function ContactPage() {
                     required
                     rows={5}
                     placeholder="Tell me about your project, idea, or just say hi..."
-                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FF6A3D] focus:border-transparent transition-all resize-none"
+                    className="w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all resize-none"
                   />
                 </div>
 
@@ -329,7 +335,7 @@ export default function ContactPage() {
                 <motion.button
                   type="submit"
                   disabled={status === "sending"}
-                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#FF6A3D]/25"
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg shadow-accent/25"
                   whileHover={{ scale: status === "sending" ? 1 : 1.01 }}
                   whileTap={{ scale: status === "sending" ? 1 : 0.99 }}
                 >

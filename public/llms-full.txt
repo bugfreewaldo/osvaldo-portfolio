@@ -21,7 +21,7 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 - Based in: Panama City, Panama
 - Timezone: EST (UTC-5)
 - Work style: Remote-first, timezone-flexible
-- Availability: Upon request
+- Availability: Available now (since November 2026) — open to senior/staff AI engineering roles, applied AI research collaborations, and LLM / agent / voice-AI consulting
 - Countries served: USA, Canada, UK, Germany, France, Spain, Netherlands, across Europe, Panama, Colombia, Mexico, Costa Rica, Brazil, Argentina, Chile, across Latin America, and globally
 
 ## Technical Skills (Detailed)

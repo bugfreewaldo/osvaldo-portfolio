@@ -60,9 +60,9 @@ export default function TableOfContents() {
           >
             <a
               href={`#${heading.id}`}
-              className={`block py-1 transition-colors hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] ${
+              className={`block py-1 transition-colors hover:text-accent dark:hover:text-accent-soft ${
                 activeId === heading.id
-                  ? "text-[#FF6A3D] dark:text-[#FF8A5B] font-medium"
+                  ? "text-accent dark:text-accent-soft font-medium"
                   : "text-slate-600 dark:text-slate-400"
               }`}
               onClick={(e) => {

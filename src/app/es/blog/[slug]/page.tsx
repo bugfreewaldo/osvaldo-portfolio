@@ -174,8 +174,6 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
       <main className="relative min-h-screen">
         {/* Background */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-          <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
         </div>
 
         <article className="relative max-w-4xl mx-auto px-4 py-12">
@@ -183,7 +181,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           <div className="flex items-center justify-between mb-8">
             <Link
               href="/es/blog"
-              className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] transition-colors"
+              className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-accent dark:hover:text-accent-soft transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Volver al Blog
@@ -203,7 +201,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           {/* Header */}
           <header className="mb-8">
             {post.frontmatter.category && (
-              <span className="inline-block px-3 py-1 text-sm font-medium bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] rounded-full mb-4">
+              <span className="inline-block px-3 py-1 text-sm font-medium bg-accent/10 dark:bg-accent/15 text-accent dark:text-accent-soft rounded-full mb-4">
                 {post.frontmatter.category}
               </span>
             )}
@@ -213,8 +211,8 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
 
             {/* TL;DR for AI/quick readers */}
             {post.frontmatter.tldr && (
-              <div className="mt-6 p-4 rounded-xl bg-[#FF6A3D]/8 dark:bg-[#FF6A3D]/12 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
-                <p className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B] mb-1">
+              <div className="mt-6 p-4 rounded-xl bg-accent/8 dark:bg-accent/12 border border-accent/30 dark:border-accent/30">
+                <p className="text-sm font-medium text-accent dark:text-accent-soft mb-1">
                   Resumen
                 </p>
                 <p className="text-slate-700 dark:text-slate-300">
@@ -256,7 +254,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           {/* Two-column layout for larger screens */}
           <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8">
             {/* Main content */}
-            <div className="prose prose-slate dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-[#FF6A3D] dark:prose-a:text-[#FF8A5B] max-w-none">
+            <div className="min-w-0 prose prose-slate dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-accent dark:prose-a:text-accent-soft max-w-none">
               <PostContent source={post.content} />
             </div>
 
@@ -290,9 +288,9 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
                     <Link
                       key={rp!.slug}
                       href={`/es/blog/${rp!.slug}`}
-                      className="group p-5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 transition-all"
+                      className="group p-5 rounded-xl bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-accent/50 transition-all"
                     >
-                      <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors line-clamp-2">
+                      <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-soft transition-colors line-clamp-2">
                         {rp!.frontmatter.title}
                       </h3>
                       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 line-clamp-2">

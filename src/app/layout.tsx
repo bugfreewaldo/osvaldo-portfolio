@@ -1,14 +1,22 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
+import { Newsreader, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import Header from "./components/Header";
+import Footer from "./components/Footer";
 import SiteBackground from "@/components/motion/SiteBackground";
 
-const display = Space_Grotesk({
+const serif = Newsreader({
   subsets: ["latin"],
-  variable: "--font-display",
+  variable: "--font-serif",
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+const body = Inter({
+  subsets: ["latin"],
+  variable: "--font-body",
   display: "swap",
 });
 
@@ -181,7 +189,7 @@ const jsonLd = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${display.variable} ${mono.variable}`}>
+    <html lang="en" className={`${serif.variable} ${body.variable} ${mono.variable}`}>
       <head>
         <script
           dangerouslySetInnerHTML={{
@@ -200,6 +208,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Header />
 
         {children}
+        <Footer />
         <Analytics />
         <SpeedInsights />
       </body>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, MapPin, Briefcase, BookOpen, Code, Mic, Brain } from "lucide-react";
 import Reveal from "@/components/motion/Reveal";
+import AvailabilityPill from "@/components/AvailabilityPill";
 
 export const metadata: Metadata = {
   title: "Now — Osvaldo Restrepo",
@@ -19,19 +20,20 @@ export default function NowPage() {
             What I&apos;m Doing Now
           </h1>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Last updated: April 2026 · <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Panama City, Panama</span>
+            Last updated: November 2026 · <span className="inline-flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Panama City, Panama</span>
           </p>
           <p className="mt-1 text-sm text-slate-400 dark:text-slate-500">
             This is a <a href="https://nownownow.com/about" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600 dark:hover:text-slate-300 transition-colors">now page</a>. It&apos;s like an about page, but for what I&apos;m focused on at this point in my life.
           </p>
+          <div className="mt-4"><AvailabilityPill label="Available for new work — November 2026" /></div>
         </Reveal>
 
         <Reveal staggerMs={80} className="mt-10 space-y-10">
           {/* Work */}
           <section>
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-lg bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15">
-                <Briefcase className="w-5 h-5 text-[#FF6A3D] dark:text-[#FF8A5B]" />
+              <div className="p-2 rounded-lg bg-accent/10 dark:bg-accent/15">
+                <Briefcase className="w-5 h-5 text-accent dark:text-accent-soft" />
               </div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white">Work</h2>
             </div>
@@ -133,7 +135,7 @@ export default function NowPage() {
             </div>
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
               Running <strong className="text-slate-900 dark:text-white">Waldo&apos;s Code Lab</strong> — a free coding school helping teens and kids learn programming step by step. If you know a kid who&apos;s curious about code, send them to{" "}
-              <a href="https://waldoscodelab.com" target="_blank" rel="noopener noreferrer" className="text-[#FF6A3D] dark:text-[#FF8A5B] underline hover:no-underline">
+              <a href="https://waldoscodelab.com" target="_blank" rel="noopener noreferrer" className="text-accent dark:text-accent-soft underline hover:no-underline">
                 waldoscodelab.com
               </a>.
             </p>
@@ -147,7 +149,7 @@ export default function NowPage() {
           </p>
           <Link
             href="/contact"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
           >
             Get in Touch
             <ArrowRight className="w-4 h-4" />

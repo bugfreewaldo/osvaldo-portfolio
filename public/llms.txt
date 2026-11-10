@@ -7,6 +7,7 @@
 - Role: Senior Full Stack AI & Software Engineer
 - Company: TheGreyMatter.ai (AI Engineer)
 - Location: Panama City, Panama (serving clients worldwide)
+- Availability: Available now — open to senior/staff AI engineering roles, applied AI research collaborations, and consulting
 - Languages: English (native/bilingual), Spanish (native/bilingual)
 - Timezone: EST — overlaps with US, Canada, Latin America, and European business hours
 - Website: https://osvaldorestrepo.dev

@@ -54,7 +54,7 @@ const DATA: Record<string, Project> = {
   "ai-voice-agent": {
     title: "Voice Agent",
     subtitle: "Shining Image",
-    gradient: "from-[#FF6A3D] to-cyan-500",
+    gradient: "from-accent to-cyan-500",
     summary:
       "An AI phone agent that answers calls 24/7, books appointments, and knows when to transfer to a human.",
     story:
@@ -167,7 +167,7 @@ const DATA: Record<string, Project> = {
   "snapshot9": {
     title: "Snapshot9.ai",
     subtitle: "Business Transformation Platform",
-    gradient: "from-violet-500 to-[#2DD4BF]",
+    gradient: "from-violet-500 to-accent-2",
     summary:
       "Helps companies visualize and optimize how their organization actually operates.",
     story:
@@ -335,7 +335,7 @@ const DATA: Record<string, Project> = {
   "exitready9": {
     title: "ExitReady9.ai",
     subtitle: "Exit Readiness Platform",
-    gradient: "from-[#FF6A3D] to-violet-500",
+    gradient: "from-accent to-violet-500",
     summary:
       "AI-powered exit readiness platform within TheGreyMatter.ai ecosystem that prepares companies for acquisition or IPO.",
     story:
@@ -447,7 +447,7 @@ const DATA: Record<string, Project> = {
   "orgdesign9": {
     title: "OrgDesign9.ai",
     subtitle: "Organizational Design Platform",
-    gradient: "from-violet-500 to-[#2DD4BF]",
+    gradient: "from-violet-500 to-accent-2",
     summary:
       "AI-powered organizational design platform — workforce structure analysis, structural health benchmarking, scenario modeling with costing, RACI generation, and transition planning.",
     story:
@@ -587,7 +587,7 @@ const DATA: Record<string, Project> = {
   "interview9": {
     title: "Interview9.ai",
     subtitle: "Structured Interview Assessment",
-    gradient: "from-[#FF6A3D] to-blue-500",
+    gradient: "from-accent to-blue-500",
     summary:
       "Structured interview platform — rubric-driven evaluation, bias-aware scoring, and AI-assisted synthesis of candidate feedback across panels.",
     story:
@@ -849,8 +849,6 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
     <main className="relative min-h-screen">
       {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
-        <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
       </div>
 
       <div className="relative max-w-4xl mx-auto px-4 py-12">
@@ -862,7 +860,7 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
         >
           <Link
             href="/projects"
-            className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] transition-colors mb-8"
+            className="inline-flex items-center gap-2 text-sm text-slate-500 hover:text-accent dark:hover:text-accent-soft transition-colors mb-8"
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Projects
@@ -1024,7 +1022,7 @@ export default function ProjectPage({ params }: { params: Promise<{ slug: string
             </p>
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
+              className="inline-flex items-center gap-2 mt-6 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
             >
               Get in Touch
             </Link>
