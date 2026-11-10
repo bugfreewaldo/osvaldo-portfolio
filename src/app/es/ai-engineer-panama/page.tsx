@@ -112,16 +112,19 @@ export default function AIEngineerPanamaES() {
       <main className="min-h-screen">
         {/* Hero */}
         <section className="relative py-20 px-4 overflow-hidden">
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
 
           <div className="relative max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 dark:bg-accent/15 text-accent dark:text-accent-soft text-sm font-medium mb-6">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-6">
               <MapPin className="w-4 h-4" />
               Basado en Ciudad de Panamá, Panamá
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-slate-900 dark:text-white">
               Ingeniero de IA en{" "}
-              <span className="bg-gradient-to-r from-accent via-accent-soft to-accent-2 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent">
                 Panamá
               </span>
             </h1>
@@ -142,7 +145,7 @@ export default function AIEngineerPanamaES() {
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Link
                 href="/contact"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
               >
                 Trabajemos Juntos
                 <ArrowRight className="w-4 h-4" />
@@ -162,7 +165,7 @@ export default function AIEngineerPanamaES() {
           <Reveal staggerMs={60} className="max-w-4xl mx-auto grid grid-cols-2 sm:grid-cols-4 gap-6">
             {stats.map((stat) => (
               <div key={stat.label} className="text-center p-4">
-                <div className="text-3xl font-bold bg-gradient-to-r from-accent to-accent-soft bg-clip-text text-transparent">
+                <div className="text-3xl font-bold bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] bg-clip-text text-transparent">
                   {stat.value}
                 </div>
                 <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">
@@ -191,7 +194,7 @@ export default function AIEngineerPanamaES() {
                   key={service.title}
                   className="p-6 rounded-2xl bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800"
                 >
-                  <div className="inline-flex p-3 rounded-xl bg-gradient-to-br from-accent to-accent-soft mb-4">
+                  <div className="inline-flex p-3 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C] mb-4">
                     <service.icon className="w-6 h-6 text-white" />
                   </div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
@@ -239,7 +242,7 @@ export default function AIEngineerPanamaES() {
                     "Experiencia en cumplimiento HIPAA y GDPR",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
-                      <CheckCircle className="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
+                      <CheckCircle className="w-4 h-4 text-[#FF6A3D] mt-0.5 flex-shrink-0" />
                       {item}
                     </li>
                   ))}
@@ -278,7 +281,7 @@ export default function AIEngineerPanamaES() {
             <div className="mt-6 flex flex-wrap justify-center gap-4">
               <Link
                 href="/es/blog/ai-engineering-panama"
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent/10 dark:bg-accent/15 text-accent dark:text-accent-soft font-medium hover:bg-accent/20 dark:hover:bg-accent/25 transition-colors text-sm"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] font-medium hover:bg-[#FF6A3D]/20 dark:hover:bg-[#FF6A3D]/25 transition-colors text-sm"
               >
                 Ingeniería de IA en Panamá
                 <ArrowRight className="w-4 h-4" />
@@ -307,7 +310,7 @@ export default function AIEngineerPanamaES() {
             <div className="mt-8">
               <Link
                 href="/contact"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium text-lg hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium text-lg hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
               >
                 Contáctame
                 <ArrowRight className="w-5 h-5" />

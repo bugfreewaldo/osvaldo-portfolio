@@ -115,7 +115,7 @@ export default function ResumePage() {
               <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
                 Osvaldo Restrepo
               </h1>
-              <p className="text-lg text-accent dark:text-accent-soft font-medium mt-1">
+              <p className="text-lg text-[#FF6A3D] dark:text-[#FF8A5B] font-medium mt-1">
                 Senior Full Stack AI & Software Engineer
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
@@ -141,7 +141,7 @@ export default function ResumePage() {
               href="/Osvaldo_Restrepo_Resume.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent/10 dark:bg-accent/15 text-accent dark:text-accent-soft text-sm font-medium hover:bg-accent/20 dark:hover:bg-accent/25 transition-colors flex-shrink-0"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium hover:bg-[#FF6A3D]/20 dark:hover:bg-[#FF6A3D]/25 transition-colors flex-shrink-0"
             >
               <Download className="w-4 h-4" />
               Download PDF
@@ -181,13 +181,13 @@ export default function ResumePage() {
             </h2>
             <Reveal staggerMs={80} className="space-y-8">
               {experience.map((exp) => (
-                <div key={exp.company + exp.role} className="relative pl-4 border-l-2 border-accent/30 dark:border-accent/30">
+                <div key={exp.company + exp.role} className="relative pl-4 border-l-2 border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-1">
                     <div>
                       <h3 className="font-semibold text-slate-900 dark:text-white">
                         {exp.role}
                       </h3>
-                      <p className="text-accent dark:text-accent-soft text-sm font-medium">
+                      <p className="text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium">
                         {exp.company}
                       </p>
                     </div>
@@ -262,7 +262,7 @@ export default function ResumePage() {
             <div className="flex flex-wrap justify-center gap-4">
               <Link
                 href="/contact"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-accent to-accent-soft text-white font-medium hover:from-accent-soft hover:to-accent-soft transition-all shadow-lg shadow-accent/25"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
               >
                 Get in Touch
                 <ArrowRight className="w-4 h-4" />

@@ -715,11 +715,11 @@ function ToolCard({ tool }: { tool: Tool }) {
       href={tool.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-accent/50 hover:shadow-lg hover:shadow-accent/5 transition-all duration-300"
+      className="group flex items-start gap-4 p-4 rounded-xl bg-white dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/50 hover:shadow-lg hover:shadow-[#FF6A3D]/5 transition-all duration-300"
     >
       <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center p-2.5 group-hover:bg-slate-200 dark:group-hover:bg-slate-700 transition-colors">
         {tool.useFallback ? (
-          <Database className="w-7 h-7 text-accent" />
+          <Database className="w-7 h-7 text-[#FF6A3D]" />
         ) : (
           <Image
             src={getIconUrl(tool.logo)}
@@ -732,7 +732,7 @@ function ToolCard({ tool }: { tool: Tool }) {
         )}
       </div>
       <div className="flex-1 min-w-0">
-        <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-accent dark:group-hover:text-accent-soft transition-colors">
+        <h3 className="font-semibold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
           {tool.name}
         </h3>
         <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">
@@ -748,6 +748,9 @@ export default function UsesPage() {
     <main className="relative min-h-screen">
       {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
+        <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
       </div>
 
       {/* Header */}
@@ -759,10 +762,10 @@ export default function UsesPage() {
             transition={{ duration: 0.6 }}
           >
             <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 rounded-xl bg-gradient-to-br from-accent to-accent-soft">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C]">
                 <Wrench className="w-5 h-5 text-white" />
               </div>
-              <span className="text-sm font-medium text-accent dark:text-accent-soft">
+              <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">
                 Tech Stack
               </span>
             </div>
@@ -809,12 +812,12 @@ export default function UsesPage() {
       {/* Footer note */}
       <section className="relative px-4 pb-16">
         <Reveal className="max-w-4xl mx-auto">
-          <div className="p-6 rounded-2xl bg-gradient-to-r from-accent/10 to-accent-2/10 border border-accent/20">
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 border border-[#FF6A3D]/20">
             <p className="text-slate-600 dark:text-slate-400 text-center">
               Curious why I picked a particular tool — or what I'd reach for instead?{" "}
               <a
                 href="/contact"
-                className="text-accent dark:text-accent-soft font-medium hover:underline"
+                className="text-[#FF6A3D] dark:text-[#FF8A5B] font-medium hover:underline"
               >
                 Get in touch
               </a>

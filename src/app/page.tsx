@@ -1,289 +1,835 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, ArrowUpRight, FileDown, Github, Linkedin, Mail, MapPin, Brain, Bot, Phone, Layers } from "lucide-react";
-import { getAllPosts } from "@/lib/blog";
-import { availability } from "@/lib/availability";
+import { motion, AnimatePresence, useMotionValue, useTransform, useReducedMotion } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Database, Globe, Shield, BarChart3, Code2, Workflow, Smartphone, Activity, FileText, KeyRound } from "lucide-react";
+import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
+import Reveal from "@/components/motion/Reveal";
 
-const facts = [
-  { value: "10+", label: "Years building software" },
-  { value: "20+", label: "AI products shipped" },
-  { value: "17+", label: "Apps on one AI platform" },
-  { value: "PhD", label: "Research in AI (medicine)" },
+// Rotating text phrases
+const rotatingPhrases = [
+  "I build AI that works in the real world.",
+  "I turn complex ML into production systems.",
+  "I make LLMs actually useful for business.",
+  "I ship agents that solve real problems.",
+  "I build voice AI that sounds human.",
+  "I automate workflows with intelligence.",
 ];
 
-const services = [
+// Rotating text carousel component
+function RotatingText() {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % rotatingPhrases.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="relative h-16 sm:h-8 overflow-hidden">
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={currentIndex}
+          initial={{ y: 20, opacity: 0, filter: "blur(8px)" }}
+          animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+          exit={{ y: -20, opacity: 0, filter: "blur(8px)" }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="absolute inset-0 flex items-center justify-center font-mono bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent"
+        >
+          {rotatingPhrases[currentIndex]}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Animated background with floating gradient orbs and grid
+function GridBackground() {
+  const reduce = useReducedMotion();
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
+      <motion.div
+        className="absolute top-0 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl"
+        animate={reduce ? undefined : { x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={reduce ? undefined : { duration: 15, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"
+        animate={reduce ? undefined : { x: [0, -30, 0], y: [0, 20, 0] }}
+        transition={reduce ? undefined : { duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute top-1/3 right-1/3 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl"
+        animate={reduce ? undefined : { x: [0, 20, 0], y: [0, 30, 0] }}
+        transition={reduce ? undefined : { duration: 12, repeat: Infinity, ease: "easeInOut" }}
+      />
+    </div>
+  );
+}
+
+// Constellation particle network
+const particles = [
+  { id: 0, x: 12, y: 18, size: 3 },
+  { id: 1, x: 88, y: 12, size: 2 },
+  { id: 2, x: 22, y: 72, size: 2.5 },
+  { id: 3, x: 78, y: 78, size: 3 },
+  { id: 4, x: 50, y: 35, size: 2 },
+  { id: 5, x: 8, y: 48, size: 2.5 },
+  { id: 6, x: 92, y: 45, size: 2 },
+  { id: 7, x: 35, y: 90, size: 3 },
+  { id: 8, x: 65, y: 8, size: 2 },
+  { id: 9, x: 45, y: 60, size: 2.5 },
+];
+
+const connections = [
+  [0, 4], [1, 4], [2, 5], [3, 6], [4, 9],
+  [5, 0], [6, 1], [7, 2], [8, 1], [9, 3],
+];
+
+function ParticleNetwork() {
+  const reduce = useReducedMotion();
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* Connecting lines */}
+      <svg className="absolute inset-0 w-full h-full">
+        {connections.map(([a, b], i) => (
+          <motion.line
+            key={`line-${i}`}
+            x1={`${particles[a].x}%`}
+            y1={`${particles[a].y}%`}
+            x2={`${particles[b].x}%`}
+            y2={`${particles[b].y}%`}
+            stroke="currentColor"
+            className="text-[#FF8A5B]/10 dark:text-[#FF8A5B]/[0.07]"
+            strokeWidth="1"
+            initial={reduce ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={reduce ? { duration: 0 } : { duration: 2, delay: 1 + i * 0.15, ease: "easeOut" }}
+          />
+        ))}
+      </svg>
+      {/* Particles */}
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full bg-[#FF8A5B]/30 dark:bg-[#FF6A3D]/20"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+          }}
+          initial={reduce ? { scale: 1, opacity: 0.5 } : { scale: 0, opacity: 0 }}
+          animate={reduce ? { scale: 1, opacity: 0.5 } : { scale: [1, 1.5, 1], opacity: [0.3, 0.7, 0.3] }}
+          transition={reduce ? { duration: 0 } : {
+            scale: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
+            opacity: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Parallax mouse-tracking wrapper for the hero profile
+function ParallaxProfile({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const rotateX = useTransform(mouseY, [-0.5, 0.5], [5, -5]);
+  const rotateY = useTransform(mouseX, [-0.5, 0.5], [-5, 5]);
+
+  useEffect(() => {
+    if (reduce) return; // skip parallax when reduced motion is requested
+    function handleMouse(e: MouseEvent) {
+      if (!ref.current) return;
+      const rect = ref.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      mouseX.set((e.clientX - centerX) / rect.width);
+      mouseY.set((e.clientY - centerY) / rect.height);
+    }
+    window.addEventListener("mousemove", handleMouse);
+    return () => window.removeEventListener("mousemove", handleMouse);
+  }, [mouseX, mouseY, reduce]);
+
+  return (
+    <motion.div
+      ref={ref}
+      style={reduce ? undefined : { rotateX, rotateY, transformPerspective: 800 }}
+      className="will-change-transform"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+// Stagger container variants
+const heroContainer = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+  },
+};
+
+const heroItem = {
+  hidden: { opacity: 0, y: 30, filter: "blur(10px)" },
+  show: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.7, ease: "easeOut" as const },
+  },
+};
+
+const capabilities = [
   {
     icon: Brain,
     title: "LLMs & RAG",
-    body: "Production LLM apps grounded in your own data, with evals so you know they work.",
+    description: "Retrieval-augmented generation, prompt engineering, prompt caching, and eval pipelines for production LLM apps",
+    gradient: "from-purple-500 to-indigo-500",
+    tech: ["Claude", "OpenAI", "LangChain", "Hugging Face", "Cosmos DB", "Prompt Caching"],
   },
   {
-    icon: Bot,
-    title: "AI agents",
-    body: "Agents that use your tools and APIs safely — with limits, audit logs, and human hand-offs.",
+    icon: MessageSquare,
+    title: "AI Agents",
+    description: "Autonomous agents with tool-calling, memory, bounded loops, and human-in-the-loop handoffs",
+    gradient: "from-[#FF6A3D] to-cyan-500",
+    tech: ["Claude", "MCP", "Tool Use", "Function Calling", "Bounded Loops", "Audit Logging"],
   },
   {
-    icon: Phone,
+    icon: Cpu,
     title: "Voice AI",
-    body: "Phone agents that answer, book, and hand off to people without sounding robotic.",
+    description: "End-to-end voice systems — STT, TTS, real-time conversation, phone agents, and IVR replacement",
+    gradient: "from-cyan-500 to-emerald-500",
+    tech: ["Twilio", "Whisper", "ElevenLabs", "WebRTC", "SIP", "Real-time"],
   },
   {
-    icon: Layers,
-    title: "Full-stack & mobile",
-    body: "The whole product around the AI: web apps, APIs, auth, payments, iOS and Android.",
+    icon: Zap,
+    title: "Automation",
+    description: "Intelligent workflow automation connecting AI to CRMs, ERPs, billing, and business operations",
+    gradient: "from-emerald-500 to-yellow-500",
+    tech: ["Stripe", "QuickBooks", "Plaid", "Twilio", "Webhooks", "Cron"],
+  },
+  {
+    icon: Globe,
+    title: "Full-Stack Apps",
+    description: "Production web apps with modern frameworks, real-time features, auth, payments, and deployment",
+    gradient: "from-blue-500 to-indigo-500",
+    tech: ["Next.js", "React", "Vite", "Tailwind", "TypeScript", "Framer Motion"],
+  },
+  {
+    icon: Database,
+    title: "Data & ML Pipelines",
+    description: "ETL pipelines, vector stores, embedding workflows, and event-driven data infrastructure for AI-first products",
+    gradient: "from-teal-500 to-cyan-500",
+    tech: ["Cosmos DB", "PostgreSQL", "Kafka", "Redis", "Python", "Pandas"],
+  },
+  {
+    icon: Shield,
+    title: "AI Safety & Evals",
+    description: "Guardrails, calibration, hallucination detection, and evaluation suites tied to release gates",
+    gradient: "from-rose-500 to-pink-500",
+    tech: ["Langfuse", "Giskard", "Arize", "Confident AI", "OPA", "Calibration"],
+  },
+  {
+    icon: Workflow,
+    title: "API & Integrations",
+    description: "RESTful APIs, webhooks, MCP servers, and microservice architectures that scale",
+    gradient: "from-amber-500 to-orange-500",
+    tech: ["REST", "GraphQL", "MCP", "WebSockets", "OAuth", "JWT"],
+  },
+  {
+    icon: Smartphone,
+    title: "Mobile Apps",
+    description: "Native iOS and Android clients that federate against the same identity and APIs as the web product",
+    gradient: "from-pink-500 to-rose-500",
+    tech: ["Swift", "SwiftUI", "Kotlin", "Gradle KTS", "OIDC", "Push Notifications"],
+  },
+  {
+    icon: Activity,
+    title: "Observability",
+    description: "Vendor-neutral tracing, metrics, and logs across services — so you can debug what actually happened",
+    gradient: "from-fuchsia-500 to-purple-500",
+    tech: ["OpenTelemetry", "Grafana", "Prometheus", "Loki", "Tempo", "App Insights"],
+  },
+  {
+    icon: FileText,
+    title: "Document Generation",
+    description: "Programmatic PDF, PowerPoint, Word, and Excel exports — board packs, reports, and audit trails",
+    gradient: "from-orange-500 to-amber-500",
+    tech: ["pdfkit", "jsPDF", "PptxGenJS", "docx", "xlsx", "mammoth"],
+  },
+  {
+    icon: KeyRound,
+    title: "Identity & Policy",
+    description: "OIDC SSO, JWT federation, role-based access, and policy-as-code for decisions business logic shouldn't own",
+    gradient: "from-violet-500 to-indigo-500",
+    tech: ["Keycloak", "NextAuth", "JWT", "Azure MSAL", "OPA", "RBAC"],
   },
 ];
 
-type Work = { title: string; what: string; result: string; href: string; external?: boolean };
-
-const work: Work[] = [
+const featuredProjects = [
   {
+    slug: "mila-neonatal-llm",
     title: "MILA",
-    what: "AI assistant for NICU nurses and families, built on hospital policies.",
-    result: "Healthcare",
-    href: "/projects/mila-neonatal-llm",
+    subtitle: "Neonatal LLM Assistant",
+    description: "RAG system over hospital policies with role-based access and audit-friendly logging for healthcare compliance.",
+    tags: ["LangChain", "Pinecone", "Healthcare"],
+    metric: "p95 ~820ms",
   },
   {
-    title: "AI Voice Agent",
-    what: "Answers calls, books jobs, and hands off to humans for small businesses.",
-    result: "68% of calls handled",
-    href: "/projects/ai-voice-agent",
+    slug: "ai-voice-agent",
+    title: "Voice Agent",
+    subtitle: "Shining Image",
+    description: "Autonomous phone agent handling inbound calls, booking jobs, and seamlessly handing off to humans.",
+    tags: ["Twilio", "Whisper", "Real-time"],
+    metric: "68% containment",
   },
   {
-    title: "GreyMatter platform",
-    what: "Shared backbone behind 17+ AI apps: identity, files, MCP servers, agents, mobile.",
-    result: "17+ apps",
-    href: "/projects",
+    slug: "stripe-qb-reconcile",
+    title: "Reconciler",
+    subtitle: "Stripe → QuickBooks",
+    description: "Automated financial reconciliation aggregating fees per payout for clean accounting.",
+    tags: ["Stripe", "QuickBooks", "Automation"],
+    metric: "$0 variance",
   },
   {
+    slug: "9vectors",
     title: "9Vectors.ai",
-    what: "AI strategic assessment platform for enterprises. Technical co-founder.",
-    result: "Co-founder",
-    href: "https://9vectors.ai",
-    external: true,
+    subtitle: "Strategic Assessment Platform",
+    description: "AI-powered strategic assessment platform helping enterprises make data-driven decisions.",
+    tags: ["AI Platform", "Enterprise", "Co-Founder"],
+    metric: "$150M+ val",
+    external: "https://9vectors.ai",
   },
   {
-    title: "Fundraise9",
-    what: "Due-diligence portal for private equity, with answers grounded in source documents.",
-    result: "Private equity",
-    href: "/projects/fundraise9",
+    slug: "measurement13",
+    title: "Measurement13.ai",
+    subtitle: "Leadership Assessment",
+    description: "Leadership assessment across 13 core attributes — 360° feedback, 9-Box positioning, and team dynamics analytics for talent reviews and succession planning.",
+    tags: ["Leadership", "360° Feedback", "Talent"],
+    metric: "Enterprise",
+    external: "https://measurement13.ai",
   },
   {
+    slug: "snapshot9",
+    title: "Snapshot9.ai",
+    subtitle: "Business Transformation",
+    description: "Comprehensive business transformation platform that captures, analyzes, and optimizes organizational processes.",
+    tags: ["Enterprise", "Transformation", "AI"],
+    metric: "Platform",
+    external: "https://snapshot9.ai",
+  },
+  {
+    slug: "thegreymatter",
+    title: "TheGreyMatter.ai",
+    subtitle: "Business Intelligence",
+    description: "AI-driven business intelligence platform that turns complex data into clear, actionable insights.",
+    tags: ["BI", "Analytics", "Decision Support"],
+    metric: "Leadership",
+    external: "https://thegreymatter.ai",
+  },
+  {
+    slug: "budgetcopilot",
     title: "BudgetCopilot",
-    what: "Personal AI finance agent that explains your money without touching it.",
-    result: "Consumer app",
-    href: "https://budgetcopilot.app",
-    external: true,
+    subtitle: "AI Financial Agent",
+    description: "Personal AI financial agent helping you manage budgets, track debts, and build wealth.",
+    tags: ["AI Agent", "FinTech", "Personal Finance"],
+    metric: "Consumer",
+    external: "https://budgetcopilot.app",
+  },
+  {
+    slug: "waldoscodelab",
+    title: "Waldo's Code Lab",
+    subtitle: "Free Coding School",
+    description: "Hands-on, free coding school helping teens and kids learn programming step by step.",
+    tags: ["Education", "Free", "Kids & Teens"],
+    metric: "Free",
+    external: "https://waldoscodelab.com",
+  },
+  {
+    slug: "fundraise9",
+    title: "Fundraise9",
+    subtitle: "LP/GP DDQ Portal",
+    description: "ILPA DDQ 2.0 platform for PE fundraising — Claude-backed answers, real-time LP/GP collaboration, anchored to the firm's source documents.",
+    tags: ["TGM Ecosystem", "PE", "Claude AI"],
+    metric: "ILPA DDQ 2.0",
   },
 ];
 
 export default function Home() {
-  const posts = getAllPosts("en").slice(0, 3);
-
+  const reduceHero = useReducedMotion();
   return (
-    <main className="px-4">
+    <main className="relative min-h-screen">
+      <GridBackground />
+      <ParticleNetwork />
+
       {/* Hero */}
-      <section className="mx-auto grid max-w-5xl items-center gap-10 pt-14 sm:pt-20 md:grid-cols-[1fr_auto]">
-        <div className="order-2 md:order-1">
-          <Link
-            href="/contact"
-            className="inline-flex items-center gap-2 rounded-full border border-available/30 bg-available/10 px-3 py-1 text-sm font-medium text-available"
+      <section className="relative min-h-[70vh] flex items-center justify-center px-4 overflow-hidden">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+          {/* Text Content */}
+          <motion.div
+            className="text-center md:text-left order-2 md:order-1"
+            variants={heroContainer}
+            initial="hidden"
+            animate="show"
           >
-            <span className="relative flex h-2 w-2" aria-hidden>
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-available opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-available" />
-            </span>
-            {availability.headline}
+            <motion.div variants={heroItem}>
+              <Link href="/contact" className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400 text-sm font-medium mb-6 hover:bg-green-500/15 transition-colors">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                Available for new work — let&apos;s talk
+              </Link>
+            </motion.div>
+
+            <motion.h1
+              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight"
+              variants={heroItem}
+            >
+              <span className="text-foreground">Hey, I&apos;m </span>
+              <AnimatedHeadline text="Waldo" className="text-accent" />
+            </motion.h1>
+
+            <motion.div
+              className="mt-4 text-lg sm:text-xl"
+              variants={heroItem}
+            >
+              <RotatingText />
+            </motion.div>
+
+            <motion.p
+              className="mt-4 text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl"
+              variants={heroItem}
+            >
+              Full-Stack & Applied AI Engineer specializing in LLMs, autonomous agents,
+              and voice systems.{" "}
+              <Link href="/ai-engineer-panama" className="underline decoration-[#FF6A3D]/30 hover:decoration-[#FF6A3D] transition-colors">
+                Based in Panama
+              </Link>
+              , building globally.
+            </motion.p>
+
+            <motion.div
+              className="mt-8 flex flex-wrap justify-center md:justify-start gap-4"
+              variants={heroItem}
+            >
+              <Link
+                href="/projects"
+                className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25 hover:shadow-xl hover:shadow-[#FF6A3D]/30 hover:-translate-y-0.5"
+              >
+                View Projects
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </motion.div>
+
+            <motion.div
+              className="mt-6 flex justify-center md:justify-start gap-2"
+              variants={heroItem}
+            >
+              {[
+                { href: "https://github.com/bugfreewaldo", icon: Github, label: "GitHub" },
+                { href: "https://linkedin.com/in/osvaldorestrepo", icon: Linkedin, label: "LinkedIn" },
+                { href: "mailto:me@osvaldorestrepo.dev", icon: Mail, label: "Email" },
+                { href: "https://www.instagram.com/waldos.code.lab/", icon: Instagram, label: "Instagram" },
+              ].map((social, i) => (
+                <motion.a
+                  key={social.label}
+                  href={social.href}
+                  target={social.href.startsWith("mailto") ? undefined : "_blank"}
+                  rel={social.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
+                  className="p-2.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  whileHover={{ scale: 1.15, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1 + i * 0.08 }}
+                  aria-label={social.label}
+                >
+                  <social.icon className="w-5 h-5" />
+                </motion.a>
+              ))}
+            </motion.div>
+          </motion.div>
+
+          {/* Profile Picture */}
+          <motion.div
+            className="flex justify-center order-1 md:order-2"
+            initial={{ opacity: 0, scale: 0.6, rotate: -5 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
+          >
+            <ParallaxProfile>
+              <div className="relative">
+                {/* Animated gradient glow behind image */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] rounded-full blur-2xl scale-110"
+                  animate={{ opacity: [0.2, 0.4, 0.2] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                />
+
+                {/* Spinning ring — suppressed under reduced motion */}
+                <motion.div
+                  className="absolute -inset-3 rounded-full border border-dashed border-[#FF6A3D]/20 dark:border-[#FF6A3D]/10"
+                  animate={reduceHero ? undefined : { rotate: 360 }}
+                  transition={reduceHero ? undefined : { duration: 30, repeat: Infinity, ease: "linear" }}
+                />
+
+                {/* Gradient border */}
+                <div className="relative p-1 rounded-full bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF]">
+                  <div className="p-1 rounded-full bg-white dark:bg-slate-950">
+                    <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72">
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#1c1410] to-slate-900 opacity-60">
+                        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
+                        <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-cyan-500/5 rounded-full blur-xl animate-pulse" />
+                      </div>
+                      <Image
+                        src="/images/waldoprofilepic.png"
+                        alt="Waldo - AI Engineer"
+                        width={280}
+                        height={280}
+                        className="relative z-10 rounded-full object-cover w-full h-full"
+                        priority
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Orbital floating tech badges */}
+                <motion.div
+                  className="absolute -top-2 -right-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 0.8, duration: 0.4 },
+                    scale: { delay: 0.8, duration: 0.4, type: "spring" },
+                    y: { delay: 1.2, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Brain className="w-5 h-5 text-[#FF6A3D]" />
+                </motion.div>
+                <motion.div
+                  className="absolute -bottom-2 -left-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.0, duration: 0.4 },
+                    scale: { delay: 1.0, duration: 0.4, type: "spring" },
+                    y: { delay: 1.4, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Cpu className="w-5 h-5 text-cyan-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute top-1/2 -right-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.2, duration: 0.4 },
+                    scale: { delay: 1.2, duration: 0.4, type: "spring" },
+                    y: { delay: 1.6, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Zap className="w-5 h-5 text-yellow-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute top-1/3 -left-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.4, duration: 0.4 },
+                    scale: { delay: 1.4, duration: 0.4, type: "spring" },
+                    y: { delay: 1.8, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <MessageSquare className="w-5 h-5 text-purple-500" />
+                </motion.div>
+              </div>
+            </ParallaxProfile>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Capabilities */}
+      <section className="relative py-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="text-center mb-14"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-4">
+              <Code2 className="w-4 h-4" />
+              Full-Stack AI Engineering
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+              What I Build
+            </h2>
+            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+              End-to-end AI systems that integrate with real operations — from prototype to production, not just demos
+            </p>
+          </motion.div>
+
+          <Reveal staggerMs={70} className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {capabilities.map((cap) => (
+              <div
+                key={cap.title}
+                className="group relative p-6 rounded-2xl bg-surface/60 backdrop-blur-sm border border-line hover:border-[#FF6A3D]/50 transition-all duration-300 overflow-hidden hover:-translate-y-1"
+              >
+                {/* Hover gradient glow */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${cap.gradient} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-300`} />
+
+                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cap.gradient} mb-4 shadow-lg shadow-[#FF6A3D]/10`}>
+                  <cap.icon className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  {cap.title}
+                </h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {cap.description}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {cap.tech.map((t) => (
+                    <span
+                      key={t}
+                      className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Reveal>
+
+          {/* Stats bar */}
+          <Reveal staggerMs={90} className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-6">
+            {[
+              { value: "10+", label: "Years Engineering" },
+              { value: "20+", label: "Production Systems" },
+              { value: "20+", label: "AI Products Shipped" },
+              { value: "10+", label: "Countries Served" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center p-4 rounded-xl bg-surface/40 border border-line">
+                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] bg-clip-text text-transparent">
+                  {stat.value}
+                </div>
+                <div className="mt-1 text-sm text-muted">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </Reveal>
+        </div>
+      </section>
+
+      {/* Featured In / Press */}
+      <section className="relative py-12 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="text-center mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
+              Featured In
+            </h2>
+          </motion.div>
+
+          <motion.a
+            href="https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block max-w-3xl mx-auto p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 dark:from-[#FF6A3D]/14 dark:to-[#2DD4BF]/10 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30 hover:border-[#FF8A5B] dark:hover:border-[#FF6A3D] hover:shadow-xl hover:shadow-[#FF6A3D]/10 transition-all duration-300"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-white p-2 flex items-center justify-center shadow-md ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+                <Image
+                  src="/images/usanews-logo.jpg"
+                  alt="USA News"
+                  width={56}
+                  height={56}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">USA News</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-sm text-slate-500">Feature Article</span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
+                  How the MILA AI Platform Began with One Family&apos;s Story
+                </h3>
+                <p className="mt-2 text-slate-600 dark:text-slate-400">
+                  The story behind building an AI assistant for NICU families, turning personal experience into technology that helps parents navigate one of the most challenging times of their lives.
+                </p>
+                <div className="mt-4 flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium">
+                  Read the full article
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </div>
+          </motion.a>
+        </div>
+      </section>
+
+      {/* Featured Projects */}
+      <section className="relative py-16 px-4 bg-slate-50/50 dark:bg-slate-900/30">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="flex items-center justify-between mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+                Featured Work
+              </h2>
+              <p className="mt-2 text-slate-600 dark:text-slate-400">
+                Production systems, real metrics
+              </p>
+            </div>
+            <Link
+              href="/projects"
+              className="hidden sm:inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline"
+            >
+              View all <ArrowRight className="w-4 h-4" />
+            </Link>
+          </motion.div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {featuredProjects.map((project, i) => {
+              const isExternal = "external" in project && project.external;
+              const CardWrapper = isExternal ? "a" : Link;
+              const cardProps = isExternal
+                ? { href: project.external, target: "_blank", rel: "noopener noreferrer" }
+                : { href: `/projects/${project.slug}` };
+
+              return (
+                <motion.div
+                  key={project.slug}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: (i % 6) * 0.1 }}
+                >
+                  <CardWrapper
+                    {...cardProps}
+                    className="group block h-full p-6 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-[#FF6A3D]/50 hover:shadow-xl hover:shadow-[#FF6A3D]/5 transition-all duration-300"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
+                          {project.title}
+                        </h3>
+                        <p className="text-sm text-slate-500">{project.subtitle}</p>
+                      </div>
+                      <span className="px-2 py-1 text-xs font-mono bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] rounded whitespace-nowrap">
+                        {project.metric}
+                      </span>
+                    </div>
+
+                    <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                      {project.description}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      {project.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    {isExternal && (
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-1 text-xs text-[#FF6A3D] dark:text-[#FF8A5B]">
+                        <ArrowRight className="w-3 h-3" />
+                        Visit site
+                      </div>
+                    )}
+                  </CardWrapper>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          <Link
+            href="/projects"
+            className="sm:hidden mt-8 inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline"
+          >
+            View all projects <ArrowRight className="w-4 h-4" />
           </Link>
+        </div>
+      </section>
 
-          <h1 className="mt-6 text-4xl leading-tight text-foreground sm:text-5xl lg:text-6xl">
-            Hi, I&apos;m Osvaldo. I build AI that works in production.
-          </h1>
-
-          <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted">
-            AI Engineer with 10+ years of software experience and PhD research in AI. I design and ship LLM
-            apps, AI agents, and voice AI — end to end, from first prototype to real users.
+      {/* CTA */}
+      <section className="relative py-16 px-4">
+        <motion.div
+          className="max-w-3xl mx-auto text-center"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+        >
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+            Let&apos;s Build Something
+          </h2>
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
+            I&apos;m available for senior AI engineering roles and consulting. Looking for an AI engineer who ships production systems? Let&apos;s talk.
           </p>
-
-          <p className="mt-4 inline-flex items-center gap-1.5 text-sm text-muted">
-            <MapPin className="h-4 w-4 shrink-0" /> Panama City · Remote, US &amp; LATAM time zones · English &amp; Spanish
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-3">
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 font-medium text-white transition-colors hover:bg-accent-soft"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
             >
-              Get in touch <ArrowRight className="h-4 w-4" />
+              Get in Touch
+              <ArrowRight className="w-4 h-4" />
             </Link>
             <a
               href="/Osvaldo_Restrepo_Resume.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-6 py-3 font-medium text-foreground transition-colors hover:bg-surface-2"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              <FileDown className="h-4 w-4" /> Download CV
+              Download CV
             </a>
           </div>
-
-          <div className="mt-6 flex gap-1">
-            {[
-              { href: "https://linkedin.com/in/osvaldorestrepo", icon: Linkedin, label: "LinkedIn" },
-              { href: "https://github.com/bugfreewaldo", icon: Github, label: "GitHub" },
-              { href: "mailto:me@osvaldorestrepo.dev", icon: Mail, label: "Email" },
-            ].map((s) => (
-              <a
-                key={s.label}
-                href={s.href}
-                target={s.href.startsWith("mailto") ? undefined : "_blank"}
-                rel={s.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
-                aria-label={s.label}
-                className="rounded-lg p-2.5 text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-              >
-                <s.icon className="h-5 w-5" />
-              </a>
-            ))}
-          </div>
-        </div>
-
-        <div className="order-1 mx-auto h-48 w-48 overflow-hidden rounded-full border-4 border-surface shadow-xl sm:h-64 sm:w-64 md:order-2 md:h-72 md:w-72">
-          <Image
-            src="/images/waldoprofilepic.png"
-            alt="Osvaldo Restrepo"
-            width={288}
-            height={288}
-            priority
-            className="h-full w-full object-cover"
-          />
-        </div>
+        </motion.div>
       </section>
 
-      {/* Quick facts */}
-      <section className="mx-auto mt-16 max-w-5xl">
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
-          {facts.map((f) => (
-            <div key={f.label} className="bg-surface px-5 py-6 text-center">
-              <div className="font-serif text-3xl text-foreground sm:text-4xl">{f.value}</div>
-              <div className="mt-1 text-sm text-muted">{f.label}</div>
-            </div>
-          ))}
+      {/* Footer */}
+      <footer className="relative py-8 px-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
+          <p>© {new Date().getFullYear()} Osvaldo Restrepo</p>
+          <p className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] animate-pulse" />
+            Built with AI, obviously. An AI engineer not using AI? That&apos;d be weird.
+          </p>
         </div>
-      </section>
-
-      {/* What I do */}
-      <section className="mx-auto mt-24 max-w-5xl">
-        <h2 className="text-3xl text-foreground sm:text-4xl">What I can do for your team</h2>
-        <div className="mt-8 grid gap-5 sm:grid-cols-2">
-          {services.map((s) => (
-            <div key={s.title} className="rounded-xl border border-line bg-surface p-6">
-              <s.icon className="h-6 w-6 text-accent" />
-              <h3 className="mt-4 text-xl text-foreground">{s.title}</h3>
-              <p className="mt-2 leading-relaxed text-muted">{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Selected work */}
-      <section className="mx-auto mt-24 max-w-5xl">
-        <div className="flex items-end justify-between gap-4">
-          <h2 className="text-3xl text-foreground sm:text-4xl">Selected work</h2>
-          <Link href="/projects" className="hidden items-center gap-1 text-sm font-medium text-accent hover:underline sm:inline-flex">
-            All projects <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-        <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {work.map((w) => (
-            <a
-              key={w.title}
-              href={w.href}
-              target={w.external ? "_blank" : undefined}
-              rel={w.external ? "noopener noreferrer" : undefined}
-              className="group flex flex-col rounded-xl border border-line bg-surface p-6 transition-all hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-lg"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="text-xl text-foreground group-hover:text-accent">{w.title}</h3>
-                {w.external && <ArrowUpRight className="h-4 w-4 text-muted" />}
-              </div>
-              <p className="mt-2 flex-1 leading-relaxed text-muted">{w.what}</p>
-              <span className="mt-4 self-start rounded-md bg-accent/10 px-2 py-1 text-xs font-medium text-accent">
-                {w.result}
-              </span>
-            </a>
-          ))}
-        </div>
-        <Link href="/projects" className="mt-6 inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline sm:hidden">
-          All projects <ArrowRight className="h-4 w-4" />
-        </Link>
-      </section>
-
-      {/* Press */}
-      <section className="mx-auto mt-24 max-w-5xl">
-        <a
-          href="https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="group flex items-center gap-5 rounded-xl border border-line bg-surface p-6 transition-colors hover:border-accent/50"
-        >
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-2 ring-1 ring-line">
-            <Image src="/images/usanews-logo.jpg" alt="USA News" width={56} height={56} className="h-full w-full object-contain" />
-          </div>
-          <div>
-            <p className="text-sm text-muted">Featured in USA News</p>
-            <p className="mt-1 font-serif text-xl text-foreground group-hover:text-accent">
-              How the MILA AI Platform Began with One Family&apos;s Story
-            </p>
-          </div>
-        </a>
-      </section>
-
-      {/* Writing */}
-      <section className="mx-auto mt-24 max-w-5xl">
-        <div className="flex items-end justify-between gap-4">
-          <h2 className="text-3xl text-foreground sm:text-4xl">Latest writing</h2>
-          <Link href="/blog" className="inline-flex items-center gap-1 text-sm font-medium text-accent hover:underline">
-            All posts <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-        <div className="mt-6 divide-y divide-line border-y border-line">
-          {posts.map((p) => (
-            <Link key={p.slug} href={p.url} className="group block py-5">
-              <p className="text-sm text-muted">
-                {new Date(p.frontmatter.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}{" "}
-                · {p.readingTimeMinutes} min read
-              </p>
-              <p className="mt-1 font-serif text-xl text-foreground group-hover:text-accent">{p.frontmatter.title}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="mx-auto mt-24 max-w-5xl rounded-2xl bg-foreground px-6 py-12 text-center text-background sm:px-12">
-        <p className="inline-flex items-center gap-2 text-sm font-medium text-available">
-          <span className="h-2 w-2 rounded-full bg-available" /> {availability.headline}
-        </p>
-        <h2 className="mt-3 text-3xl sm:text-4xl">Let&apos;s talk about your team</h2>
-        <p className="mx-auto mt-3 max-w-xl opacity-80">
-          Open to senior AI engineering roles, research collaborations, and consulting. I reply to every message.
-        </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link
-            href="/contact"
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 font-medium text-white transition-colors hover:bg-accent-soft"
-          >
-            Get in touch <ArrowRight className="h-4 w-4" />
-          </Link>
-          <a
-            href="/Osvaldo_Restrepo_Resume.pdf"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-background/30 px-6 py-3 font-medium transition-colors hover:bg-background/10"
-          >
-            <FileDown className="h-4 w-4" /> Download CV
-          </a>
-        </div>
-      </section>
+      </footer>
     </main>
   );
 }

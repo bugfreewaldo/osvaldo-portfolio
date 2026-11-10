@@ -6,14 +6,14 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, FileDown } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
-import AvailabilityPill from "@/components/AvailabilityPill";
 
 const navLinks = [
   { href: "/", label: "Home" },
   { href: "/projects", label: "Projects" },
-  { href: "/about", label: "About" },
-  { href: "/testimonials", label: "Testimonials" },
   { href: "/blog", label: "Blog" },
+  { href: "/about", label: "About" },
+  { href: "/uses", label: "Uses" },
+  { href: "/testimonials", label: "Testimonials" },
   { href: "/contact", label: "Contact" },
 ];
 
@@ -27,31 +27,36 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-background/85 backdrop-blur-md">
-      <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-        {/* Masthead */}
-        <Link href="/" className="group flex min-w-0 items-baseline gap-2">
-          <span className="whitespace-nowrap font-serif text-xl font-medium tracking-tight text-foreground sm:text-[1.35rem]">
-            Osvaldo Restrepo
+    <header className="sticky top-0 z-50 border-b border-line/70 bg-background/75 backdrop-blur-xl">
+      <nav className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        {/* Logo — terminal wordmark */}
+        <Link href="/" className="flex items-center gap-2 group">
+          <span className="grid place-items-center w-8 h-8 rounded-md border border-accent/40 bg-accent/10 font-mono text-accent text-sm font-bold transition-colors group-hover:bg-accent/20">
+            &gt;_
+          </span>
+          <span className="font-mono font-bold text-lg text-foreground">
+            waldo<span className="text-accent animate-pulse">_</span>
           </span>
         </Link>
 
-        {/* Desktop navigation */}
-        <div className="hidden items-center md:flex">
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center gap-1">
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className={`relative whitespace-nowrap px-3 py-2 text-sm font-medium transition-colors ${
-                isActive(link.href) ? "text-foreground" : "text-muted hover:text-foreground"
+              className={`relative px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                isActive(link.href)
+                  ? "text-accent"
+                  : "text-muted hover:text-foreground hover:bg-surface-2"
               }`}
             >
               {link.label}
               {isActive(link.href) && (
-                <motion.span
-                  layoutId="activeRule"
-                  className="absolute inset-x-3 -bottom-[1px] h-[2px] bg-accent"
-                  transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                <motion.div
+                  layoutId="activeTab"
+                  className="absolute inset-0 bg-accent/10 ring-1 ring-accent/20 rounded-lg -z-10"
+                  transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
                 />
               )}
             </Link>
@@ -59,46 +64,45 @@ export default function Header() {
         </div>
 
         {/* Desktop actions */}
-        <div className="hidden items-center gap-2 md:flex">
-          <AvailabilityPill className="hidden lg:inline-flex" />
+        <div className="hidden md:flex items-center gap-2">
+          <Link
+            href="/contact"
+            className="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium hover:bg-green-500/15 transition-colors"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            Available
+          </Link>
           <ThemeToggle />
           <a
             href="/Osvaldo_Restrepo_Resume.pdf"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-soft"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-soft transition-colors shadow-md shadow-accent/20"
           >
-            <FileDown className="h-4 w-4" />
+            <FileDown className="w-4 h-4" />
             CV
           </a>
         </div>
 
         {/* Mobile actions */}
-        <div className="flex items-center gap-1 md:hidden">
+        <div className="md:hidden flex items-center gap-2">
           <ThemeToggle />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="rounded-md p-2.5 text-muted transition-colors hover:bg-surface-2"
+            className="p-2.5 rounded-lg text-muted hover:bg-surface-2 transition-colors"
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-menu"
           >
-            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
         </div>
       </nav>
 
-      {/* Journal-style double rule + mobile availability strip */}
-      <div className="mx-auto max-w-6xl px-4">
-        <div className="border-b border-line" />
-      </div>
-      {pathname !== "/" && (
-        <div className="mx-auto flex max-w-6xl justify-center px-4 py-1.5 lg:hidden">
-          <AvailabilityPill />
-        </div>
-      )}
-
-      {/* Mobile menu */}
+      {/* Mobile Menu */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
@@ -107,16 +111,18 @@ export default function Header() {
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
             id="mobile-menu"
-            className="overflow-hidden border-b border-line bg-background md:hidden"
+            className="md:hidden overflow-hidden bg-background/95 backdrop-blur-xl border-t border-line/70"
           >
-            <div className="space-y-0.5 px-4 py-4">
+            <div className="px-4 py-4 space-y-1">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`block rounded-lg px-3 py-3 text-base font-medium transition-colors ${
-                    isActive(link.href) ? "bg-surface-2 text-foreground" : "text-muted hover:bg-surface-2"
+                  className={`block px-4 py-3 rounded-xl text-base font-medium transition-colors ${
+                    isActive(link.href)
+                      ? "bg-accent/10 text-accent ring-1 ring-accent/20"
+                      : "text-muted hover:bg-surface-2"
                   }`}
                 >
                   {link.label}
@@ -126,9 +132,9 @@ export default function Header() {
                 href="/Osvaldo_Restrepo_Resume.pdf"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-3 font-medium text-white"
+                className="flex items-center justify-center gap-2 mt-4 px-4 py-3 rounded-xl text-base font-medium bg-accent text-white"
               >
-                <FileDown className="h-4 w-4" />
+                <FileDown className="w-5 h-5" />
                 Download CV
               </a>
             </div>
