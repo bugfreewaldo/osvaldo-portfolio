@@ -107,10 +107,10 @@ export default function ResumePage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <main className="min-h-screen py-12 px-4">
+      <main className="min-h-screen py-12 px-4 print:min-h-0 print:py-0 print:px-0">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
-          <Reveal className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8 pb-8 border-b border-slate-200 dark:border-slate-800">
+          <Reveal className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8 pb-8 print:mb-5 print:pb-4 border-b border-slate-200 dark:border-slate-800">
             <div>
               <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
                 Osvaldo Restrepo
@@ -135,13 +135,14 @@ export default function ResumePage() {
                   <Linkedin className="w-3.5 h-3.5" />
                   osvaldorestrepo
                 </a>
+                <span className="hidden print:flex items-center gap-1">www.osvaldorestrepo.dev</span>
               </div>
             </div>
             <a
               href="/Osvaldo_Restrepo_Resume.pdf"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium hover:bg-[#FF6A3D]/20 dark:hover:bg-[#FF6A3D]/25 transition-colors flex-shrink-0"
+              className="print:hidden inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium hover:bg-[#FF6A3D]/20 dark:hover:bg-[#FF6A3D]/25 transition-colors flex-shrink-0"
             >
               <Download className="w-4 h-4" />
               Download PDF
@@ -151,7 +152,7 @@ export default function ResumePage() {
           {/* Summary */}
           <section className="mb-10">
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. Currently CTO of TheGreyMatter.ai, leading the technology behind its AI ecosystem — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
+              CTO and hands-on AI engineer with 10+ years building production software and 4+ years focused on applied AI. Currently CTO of TheGreyMatter.ai, leading the technology behind its AI ecosystem — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
             </p>
           </section>
 
@@ -162,11 +163,11 @@ export default function ResumePage() {
             </h2>
             <div className="space-y-3">
               {Object.entries(coreSkills).map(([category, items]) => (
-                <div key={category} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <div key={category} className="flex items-baseline gap-x-2">
                   <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 w-32 flex-shrink-0">
                     {category}:
                   </span>
-                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                  <span className="flex-1 text-sm text-slate-600 dark:text-slate-400">
                     {items.join(" · ")}
                   </span>
                 </div>
@@ -181,7 +182,7 @@ export default function ResumePage() {
             </h2>
             <Reveal staggerMs={80} className="space-y-8">
               {experience.map((exp) => (
-                <div key={exp.company + exp.role} className="relative pl-4 border-l-2 border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
+                <div key={exp.company + exp.role} className="break-inside-avoid relative pl-4 border-l-2 border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-1">
                     <div>
                       <h3 className="font-semibold text-slate-900 dark:text-white">
@@ -255,7 +256,7 @@ export default function ResumePage() {
           </section>
 
           {/* CTA */}
-          <Reveal className="pt-8 border-t border-slate-200 dark:border-slate-800 text-center">
+          <Reveal className="print:hidden pt-8 border-t border-slate-200 dark:border-slate-800 text-center">
             <p className="text-slate-600 dark:text-slate-400 mb-4">
               Interested in working together?
             </p>

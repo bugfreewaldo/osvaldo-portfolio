@@ -27,7 +27,7 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-line/70 bg-background/75 backdrop-blur-xl">
+    <header className="print:hidden sticky top-0 z-50 border-b border-line/70 bg-background/75 backdrop-blur-xl">
       <nav className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo — terminal wordmark */}
         <Link href="/" className="flex items-center gap-2 group">

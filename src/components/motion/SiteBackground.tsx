@@ -73,7 +73,7 @@ export default function SiteBackground() {
     <div
       ref={root}
       aria-hidden
-      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+      className="print:hidden pointer-events-none fixed inset-0 -z-10 overflow-hidden"
     >
       {/* grid */}
       <div className="absolute inset-0 bg-[linear-gradient(var(--grid-line)_1px,transparent_1px),linear-gradient(90deg,var(--grid-line)_1px,transparent_1px)] bg-[size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,black_55%,transparent_100%)]" />

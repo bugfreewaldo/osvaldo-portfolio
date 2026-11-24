@@ -485,3 +485,37 @@ html {
     background: rgba(55, 65, 81, 0.5);
   }
 }
+
+
+/* ============================================
+   Print (used for /resume → Osvaldo_Restrepo_Resume.pdf)
+   ============================================ */
+@media print {
+  @page {
+    size: Letter;
+    margin: 12mm 14mm;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 11px;
+  }
+  /* Scroll-reveal animations set inline opacity/transform; always show content on paper. */
+  *,
+  *::before,
+  *::after {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+    animation: none !important;
+    transition: none !important;
+    box-shadow: none !important;
+  }
+  section {
+    margin-bottom: 1.1rem !important;
+  }
+  h2 {
+    break-after: avoid;
+  }
+}
