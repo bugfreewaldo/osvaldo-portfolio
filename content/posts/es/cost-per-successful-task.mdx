@@ -1,0 +1,237 @@
+---
+title: "Costo por Tarea Exitosa: La Única Métrica de Costo de LLM que a Finanzas Realmente le Importa"
+description: "Los tokens por llamada y el costo por request son fáciles de medir y casi inútiles para tomar decisiones. El número que a finanzas y a producto realmente les importa es el costo por tarea exitosa: todo lo que gastaste, incluyendo reintentos, llamadas a herramientas, intentos fallidos y tiempo de revisión humana, dividido entre las tareas que de verdad se completaron correctamente. Por qué un modelo más barato puede costar más por éxito, cómo instrumentarlo con IDs de tarea y señales de resultado, y cómo lo uso para decidir el modelo, el caché y cuándo dejar de automatizar."
+date: 2026-11-11
+published: true
+category: "Producto de IA"
+tags: ["Producto de IA", "Economía Unitaria", "Costo de LLMs", "Observabilidad", "Métricas"]
+author: "Osvaldo Restrepo"
+translationOf: "cost-per-successful-task"
+tldr: "El costo por request mide qué tan barato puedes preguntar. El costo por tarea exitosa mide qué tan barato puedes terminar el trabajo, y es el único que se traduce en dinero. El numerador es todo lo que consumió una tarea: cada llamada al modelo, reintento, fallback, llamada a herramienta, llamada a un juez, y cada minuto que una persona pasó revisando o corrigiendo la salida. El denominador son las tareas completadas correctamente, según una definición que escribes antes de mirar los números. Con esa métrica, un modelo cuatro veces más barato por llamada puede fácilmente ser cuatro veces más caro por éxito, porque los reintentos y la limpieza humana dominan la cuenta. Instrumentarlo requiere una sola idea: un ID de tarea que abarque cada llamada y cada intervención humana, más un evento de resultado registrado cuando sabes si funcionó. Una vez que lo tienes, elegir modelo, cachear y decidir cuándo dejar de automatizar un flujo se vuelven aritmética en lugar de discusiones."
+faqs:
+  - question: "¿Qué es el costo por tarea exitosa en una función con LLM?"
+    answer: "Es el costo total de una unidad de trabajo dividido entre el número de esas unidades que se completaron correctamente. El costo total incluye cada llamada al modelo que hizo la tarea (incluyendo reintentos y fallbacks), llamadas a herramientas y APIs, llamadas de evaluación o de juez, y el tiempo humano dedicado a revisar o corregir la salida, valorado a una tarifa por hora con cargas incluidas. Exitosa significa que la tarea cumplió una definición escrita de correcto, medida con una señal como que el usuario aceptó la salida sin editarla o que pasó una verificación posterior. Es el número que te dice cuánto cuesta realmente un trabajo terminado."
+  - question: "¿Por qué un modelo más barato puede terminar costando más?"
+    answer: "Porque el precio por llamada es solo un término. Un modelo más barato que falla más seguido dispara más reintentos, más fallas de validación, más llamadas de fallback a un modelo más grande y, lo más caro, más revisión y corrección humana. Los minutos humanos casi siempre cuestan mucho más que los tokens, así que incluso una caída modesta en el éxito al primer intento puede borrar un ahorro grande en la factura del modelo. Solo lo ves si tu métrica incluye los reintentos y el tiempo humano, y divide entre éxitos en lugar de requests."
+  - question: "¿Cómo empiezo a medir el costo por tarea exitosa sin un gran proyecto de observabilidad?"
+    answer: "Elige un flujo. Genera un ID de tarea cuando empieza la unidad de trabajo y pásalo a cada llamada al modelo, llamada a herramienta y pantalla de revisión que la toque. Registra una fila por evento de costo con el ID de tarea y su costo en dólares o los segundos de tiempo humano. Registra un evento de resultado cuando sepas si la tarea tuvo éxito. Luego una sola consulta SQL sobre esa tabla te da el costo por éxito por modelo, versión de prompt o tipo de tarea. La primera versión la puedes hacer en un día y refinar la definición de éxito en las semanas siguientes."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "pricing-ai-features-usage-costs", "designing-llm-retry-fallbacks"]
+---
+
+Hace un tiempo cambié el categorizador de transacciones de BudgetCopilot, mi agente de finanzas personales, a un modelo más pequeño y más barato. El modelo grande se sentía exagerado para decidir si un cargo era "supermercado" o "restaurantes", y el dashboard de costos me dio la razón. La línea bajó. Me sentí muy listo durante unas dos semanas.
+
+Después noté algo sobre mis noches. Estaba pasando más de ellas corrigiendo categorías. Un cargo de farmacia archivado como supermercado. Una transferencia a ahorros archivada como gasto. La salida estructurada fallando la validación y reintentando en silencio, a veces dos veces, antes de caer de todos modos en el modelo grande. Nada de eso aparecía en el dashboard del que estaba orgulloso, porque el dashboard medía el costo por request, y cada request individual de verdad era más barato.
+
+Lo que realmente había pasado es que hice cada intento más barato y cada trabajo terminado más caro. Simplemente no estaba midiendo trabajos terminados.
+
+Ese es todo el argumento de este post. Los tokens por llamada y el costo por request son la unidad equivocada. La unidad que a finanzas y a producto realmente les importa es el **costo por tarea exitosa**.
+
+## La Unidad Está Mal
+
+La mayoría del seguimiento de costos de LLMs empieza donde empieza la factura del proveedor: tokens. Tokens por llamada, costo por request, costo por día. Esos números son fáciles de obtener, sirven para detectar inflación (escribí un post entero sobre una [auditoría diaria de prompts de cinco minutos](/es/blog/daily-prompt-audit-llm-cost-control) construida sobre ellos), y responden la pregunta equivocada para casi todas las decisiones que importan.
+
+Nadie en finanzas quiere comprar requests. Nadie en producto entrega requests. Compran y entregan *resultados*: una factura extraída correctamente, un ticket de soporte resuelto, una transacción bien categorizada, un documento resumido lo bastante bien como para que nadie tuviera que releer el original.
+
+```
+lo que cuenta la factura       lo que compra el negocio
+─────────────────────────      ──────────────────────────────
+tokens                         una extracción correcta
+requests                       un ticket resuelto
+costo por llamada              una transacción categorizada
+costo por día                  un resumen que nadie rehízo
+```
+
+Un request es un intento. Una tarea es el trabajo. Una tarea puede tomar un request o nueve. Puede tomar cero minutos humanos o quince. Puede terminar correcta, mal-y-detectada, o mal-y-enviada. El costo por request promedia todo eso hasta hacerlo desaparecer.
+
+<Callout type="info" title="Los requests son intentos, las tareas son trabajos">
+El costo por request te dice qué tan barato puedes preguntar. El costo por tarea exitosa te dice qué tan barato puedes terminar el trabajo. Solo el segundo se traduce en dinero que el negocio reconoce.
+</Callout>
+
+## Qué Va en el Numerador
+
+El numerador es todo lo que consumió la tarea, desde el momento en que empezó la unidad de trabajo hasta que sabes si funcionó. En la práctica, esa lista es más larga de lo que la gente espera:
+
+- **Cada llamada al modelo**, no solo la "principal". Pasos de planificación, extracción, la respuesta final.
+- **Reintentos.** Fallas de validación, timeouts, reintentos por límite de tasa. Si construiste el tipo de escalera de reintentos y fallbacks que describí en [diseñar reintentos y fallbacks para LLMs](/es/blog/designing-llm-retry-fallbacks), cada peldaño cuesta dinero, y los peldaños se suben más seguido de lo que crees.
+- **Fallbacks.** La llamada al modelo grande después de que el pequeño falló. Este es tramposo, porque muchas veces se atribuye al presupuesto del modelo grande en lugar de a la tarea que lo causó.
+- **Llamadas a herramientas y APIs** con un precio real: búsqueda, OCR, enriquecimiento, una consulta pagada.
+- **Llamadas de juez y de guardrails.** Si un LLM califica o filtra la salida en producción, eso es parte del costo de la tarea.
+- **Tiempo humano.** Revisión, corrección, manejo de escalamientos, y el usuario rehaciendo el trabajo por su cuenta. Valorado a una tarifa por hora con cargas incluidas, no en cero.
+
+Ese último punto es el que los equipos dejan fuera, y casi siempre es el más grande. Un minuto de atención de una persona cuesta más que muchísimos tokens. Si tu métrica de costo ignora el tiempo humano, está midiendo con mucha precisión la parte barata del sistema e ignorando por completo la parte cara.
+
+<Callout type="warning" title="Los minutos humanos son los tokens caros">
+Si un revisor pasa tres minutos corrigiendo una salida, esa corrección probablemente costó más que todas las llamadas al modelo que hizo la tarea, juntas. Una métrica de costo que deja fuera el tiempo humano va a recomendar consistentemente la opción que le pasa más trabajo a las personas.
+</Callout>
+
+## Qué Va en el Denominador
+
+El denominador son las tareas completadas correctamente. La parte difícil es "correctamente", y la regla que sigo es simple: **escribe la definición de éxito antes de mirar los números.** Si no, te vas a encontrar, con toda sinceridad, ajustando la definición hasta que gane la opción más barata.
+
+Las buenas señales de éxito son observables y aburridas:
+
+- El usuario **aceptó la salida sin editarla**, o la editó por debajo de algún umbral pequeño.
+- **Pasó una verificación posterior**: el total extraído coincide con las líneas de detalle, la cita existe en el calendario, los montos categorizados cuadran.
+- El usuario **no rehízo la tarea** dentro de cierta ventana: ningún ticket reabierto, ninguna recategorización manual, ninguna segunda solicitud por lo mismo.
+- Una **auditoría humana por muestreo** la marcó como correcta, para los casos donde nada más es observable.
+
+Dos detalles importan más de lo que parece.
+
+Primero, los resultados llegan con retraso. Muchas veces no sabes que una tarea falló hasta que el usuario vuelve a corregirla un día después. Así que la métrica necesita una **ventana de resultado**: solo cuenta tareas lo bastante viejas como para que su resultado haya tenido tiempo de aparecer. Si no, las tareas más recientes siempre se ven perfectas, porque nadie se ha quejado todavía.
+
+Segundo, decide qué es una tarea rescatada por una persona. Mi criterio por defecto: si una persona la arregló y el resultado final fue correcto, cuenta como éxito, y el tiempo de esa persona va en el numerador. El trabajo se hizo; solo costó más. Las tareas que terminaron mal y se enviaron de todos modos cuentan como fallas y, en un análisis serio, cargan con el costo de limpiarlas después.
+
+## Cómo un Modelo "Más Barato" Cuesta Más
+
+Aquí está la lección de BudgetCopilot en números. Son ilustrativos, elegidos para mostrar proporciones, no precios de ningún proveedor real. Imagina 1,000 tareas de extracción, revisores valorados a $45 la hora, y dos modelos:
+
+```
+                                modelo grande    modelo pequeño
+──────────────────────────────  ─────────────    ──────────────
+costo por llamada               $0.012           $0.003
+llamadas promedio por tarea     1.4              2.3   (reintentos,
+                                                        fallbacks)
+gasto en modelo                 $16.80           $6.90
+
+correctas al primer intento     920              740
+detectadas + corregidas         60  (3 min)      200 (4 min)
+mal y enviadas                  20               60
+costo humano                    $135.00          $600.00
+
+costo total                     $151.80          $606.90
+tareas exitosas                 980              940
+──────────────────────────────  ─────────────    ──────────────
+costo por request               $0.012           $0.003   ◄ 4x más barato
+costo por tarea exitosa         $0.155           $0.646   ◄ 4x más caro
+```
+
+Mismo flujo, mismas mil tareas, y el ranking se invierte según la unidad.
+
+Mira lo que pasa si dejas fuera el tiempo humano: el modelo pequeño cuesta $6.90 por 740 éxitos automatizados, menos de un centavo cada uno, y gana cómodamente. Justamente por eso no puedes dejar fuera el tiempo humano. Los "ahorros" no desaparecieron. Se mudaron a la tarde de un revisor, y a las sesenta respuestas equivocadas que nadie detectó.
+
+Esto no es un argumento de que los modelos grandes siempre ganan. Muchas veces el éxito al primer intento del modelo pequeño está lo bastante cerca como para que gane en cualquier unidad, y deberías usarlo. El argumento es que no puedes saber en cuál caso estás a partir del costo por request. Solo lo sabes a partir del costo por éxito.
+
+## Instrumentarlo: Un ID que Sigue al Trabajo
+
+Toda la instrumentación se reduce a una idea: **un ID de tarea que abarca cada llamada y cada intervención humana.** Los requests ya se registran. Lo que falta es el hilo que los conecta con el trabajo al que pertenecían.
+
+En TypeScript sobre Node, uso `AsyncLocalStorage` para que el ID de tarea siga al trabajo sin tener que pasarlo a mano por cada función:
+
+```typescript
+import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
+
+type TaskContext = { taskId: string; taskType: string; variant: string };
+const taskStore = new AsyncLocalStorage<TaskContext>();
+
+type CostEvent =
+  | { kind: "llm_call"; model: string; attempt: number; usd: number }
+  | { kind: "tool_call"; tool: string; usd: number }
+  | { kind: "human_review"; seconds: number }
+  | { kind: "outcome"; status: "success" | "failed"; signal: string };
+
+export async function runTask<T>(
+  taskType: string,
+  variant: string, // p. ej. "small-model/prompt-v7"
+  work: () => Promise<T>
+): Promise<{ taskId: string; result: T }> {
+  const ctx = { taskId: randomUUID(), taskType, variant };
+  await db.insert("tasks", { ...ctx, startedAt: new Date() });
+  const result = await taskStore.run(ctx, work);
+  return { taskId: ctx.taskId, result };
+}
+
+export async function recordCost(event: CostEvent, taskId?: string) {
+  const id = taskId ?? taskStore.getStore()?.taskId;
+  if (!id) throw new Error("evento de costo fuera de una tarea"); // falla con ruido
+  await db.insert("cost_events", { taskId: id, recordedAt: new Date(), ...event });
+}
+```
+
+Cada wrapper de llamada al modelo invoca `recordCost` con el costo en dólares calculado a partir del uso que devuelve el proveedor, incluyendo el número de intento. Cada herramienta con precio hace lo mismo. Los dos eventos que la gente olvida son los dos últimos:
+
+- **Revisión humana.** La pantalla de revisión recibe el ID de tarea en su URL y registra los segundos dedicados cuando el revisor guarda. Esta es la fila más valiosa de la tabla.
+- **Resultado.** Se registra después, muchas veces desde otro proceso: el usuario aceptó sin editar, pasó un job de conciliación, ocurrió una recategorización. Por eso `recordCost` acepta un ID de tarea explícito; para entonces ya estás fuera del contexto original.
+
+Luego una sola consulta convierte el log de eventos en la métrica. Está en sabor Postgres, y la línea importante es la ventana de resultado al final:
+
+```sql
+WITH task_cost AS (
+  SELECT task_id,
+         SUM(usd) FILTER (WHERE kind IN ('llm_call', 'tool_call')) AS machine_usd,
+         SUM(seconds) FILTER (WHERE kind = 'human_review') / 3600.0 * 45 AS human_usd
+  FROM cost_events
+  GROUP BY task_id
+),
+final_outcome AS (
+  SELECT DISTINCT ON (task_id) task_id, status
+  FROM cost_events
+  WHERE kind = 'outcome'
+  ORDER BY task_id, recorded_at DESC
+)
+SELECT t.task_type,
+       t.variant,
+       COUNT(*)                                            AS tasks,
+       COUNT(*) FILTER (WHERE o.status = 'success')        AS successes,
+       ROUND(SUM(COALESCE(c.machine_usd, 0) + COALESCE(c.human_usd, 0))
+             / NULLIF(COUNT(*) FILTER (WHERE o.status = 'success'), 0), 4)
+                                                           AS cost_per_success
+FROM tasks t
+LEFT JOIN task_cost c     ON c.task_id = t.task_id
+LEFT JOIN final_outcome o ON o.task_id = t.task_id
+WHERE t.started_at >= now() - interval '14 days'
+  AND t.started_at <  now() - interval '3 days'  -- ventana de resultado
+GROUP BY t.task_type, t.variant
+ORDER BY cost_per_success DESC;
+```
+
+Las tareas sin evento de resultado cuentan en el costo pero no en los éxitos. Es deliberado. Una tarea cuyo resultado nadie puede confirmar no es un éxito; es una incógnita, y las incógnitas deberían hacer que el número se vea peor, no mejor, hasta que encuentres una señal para ellas.
+
+<Callout type="tip" title="Etiqueta la variante en la tarea, no solo en la llamada">
+Pon el modelo y la versión de prompt en la fila de la tarea. Una tarea que empieza en el modelo pequeño y cae en el grande debería seguir atribuyéndose a la variante del modelo pequeño, porque esa elección es la que causó el fallback.
+</Callout>
+
+## Usarlo: Tres Decisiones que se Vuelven Aritmética
+
+Una vez que existe el costo por éxito, muchas discusiones en las reuniones de planificación se convierten en consultas.
+
+### 1. Elección de modelo
+
+Corre el modelo candidato como una variante sobre una porción del tráfico, igual que desplegarías un cambio de prompt, y compara el costo por éxito, no el costo por request. La pregunta deja de ser "¿el modelo pequeño es suficientemente bueno?", que es cuestión de gusto, y se convierte en "¿el costo por éxito del modelo pequeño le gana al del grande en este tipo de tarea?", que es cuestión de una consulta.
+
+También hace que la respuesta dependa de la tarea, que es la respuesta honesta. En BudgetCopilot, el modelo pequeño gana fácil con los nombres de comercio limpios y repetitivos, y pierde feo con los ambiguos. El costo por éxito por tipo de tarea fue lo que me dijo que enrutara entre los dos en lugar de elegir uno, lo cual es tema para su propio post.
+
+### 2. Caché
+
+El caché normalmente se justifica con el costo por request, y sí lo baja. Pero la pregunta útil es qué le hace al costo por éxito. El caché de prompts que reduce el costo de entrada de un prompt de sistema largo es ganancia pura: mismas salidas, intentos más baratos. El caché de respuestas es distinto. Sirve una respuesta cacheada a una pregunta que solo parece similar, y te ahorraste una llamada y compraste una respuesta equivocada, más lo que le cueste a una persona darse cuenta. Mide el camino cacheado como su propia variante. Si su tasa de éxito se mantiene, quédatelo. Si baja, el caché está pasándole costo a las personas otra vez.
+
+### 3. Cuándo dejar de automatizar
+
+Esta es la que más me sorprendió. A veces el costo por éxito del camino automatizado es más alto que simplemente tener a una persona haciendo la tarea desde el principio, porque la persona termina revisando y corrigiendo tantas salidas que el modelo mayormente agrega un paso.
+
+```
+totalmente manual            automatizado + revisión
+───────────────────          ─────────────────────────────────
+persona hace tarea: 5 min    intentos del modelo:   $0.01
+                             persona revisa:        3 min
+                             persona corrige 40%:   +4 min c/u
+costo por éxito:   $3.75     costo por éxito:       ~$3.46
+
+(ilustrativo, tiempo de revisor a $45/hora)
+```
+
+Cuando ese número se acerca a la línea base manual, y no baja a medida que mejoras el prompt, es una señal para detenerte. Reduce la automatización a la porción donde el éxito es alto, manda el resto directo a una persona, y deja de pagar por un intento cuyo producto principal es trabajo de revisión. Eso no es rendirse con la IA. Es usarla donde la aritmética dice que ayuda.
+
+## Donde Esto se Cruza con el Pricing
+
+Escribí antes sobre [ponerle precio a funciones de IA cuando cada llamada cuesta dinero](/es/blog/pricing-ai-features-usage-costs). Ese post es sobre lo que cobras. Este es sobre lo que realmente gastas para entregar lo que cobraste. Se conectan en un punto: si cobras por resultado, que es lo que en general recomiendo, entonces el costo por tarea exitosa es tu verdadero costo de ventas. Tu margen es el precio de un resultado menos el costo de producir uno con éxito, incluyendo las fallas que pagaste en el camino. Ponerle precio a partir del costo por request hará que tu margen se vea mejor de lo que es, justo hasta que lleguen los números del trimestre.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **deja de medir qué tan barato puedes preguntar, y empieza a medir qué tan barato puedes terminar el trabajo, incluyendo cada reintento y cada minuto humano.**
+
+Dale a cada unidad de trabajo un ID que la siga a todas partes. Escribe qué significa éxito antes de mirar. Pon el tiempo humano en el numerador, porque casi siempre es el término más grande. Después deja que ese número decida el modelo, el caché y dónde se detiene la automatización. Mi categorizador más barato me enseñó que un dashboard de costos que baja puede estar describiendo un sistema que se está volviendo más caro. La solución no fue un mejor modelo. Fue una mejor unidad.
+
+---
+
+*Si tus costos de LLM se ven bien por request pero nadie puede decir cuánto cuesta realmente una tarea terminada, [contáctame](/contact). Actualmente estoy tomando algunos proyectos de consultoría, y montar el seguimiento de costos por tarea para un flujo es un buen lugar, y pequeño, para empezar.*

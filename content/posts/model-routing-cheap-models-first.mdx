@@ -1,0 +1,243 @@
+---
+title: "Model Routing: Not Every Request Deserves Your Biggest Model"
+description: "Most LLM features send every request to the largest model because that is what the prototype used. A cascade does better: classify the request, send easy work to a small fast model, escalate on validation failure or low confidence, and hand off to a human beyond that. Router designs, confidence signals that work and ones that do not, how to evaluate the router itself, and the silent quality drop that will bite you if you skip that step."
+date: 2026-11-23
+published: true
+category: "AI Engineering"
+tags: ["AI Engineering", "Model Routing", "LLM Cost", "LLM Evaluation", "Reliability"]
+author: "Osvaldo Restrepo"
+tldr: "Sending every request to your biggest model is usually a leftover from the prototype, not a decision. A model cascade routes each request to the cheapest model that can do it well: a router (deterministic rules first, a cheap classifier only when the rules run out) picks a starting tier, the answer passes through checks that do not depend on the model's opinion of itself (schema validation, self-consistency across samples, retrieval coverage), failures escalate to a larger model, and anything that still fails goes to a human. Asking the model how confident it is does not work as a gate. The router is a model too, so it needs its own eval set, sliced by segment, because the real failure mode is not a crash. It is a quiet quality drop on the slice of traffic your averages hide."
+faqs:
+  - question: "What is a model cascade?"
+    answer: "A model cascade sends a request to a small, fast model first and only escalates to a larger model when the first answer fails a check, such as schema validation, disagreement between samples, or missing evidence in retrieval. Beyond the largest model, the last tier is a human. The goal is to pay for the big model only on the requests that actually need it, without letting quality drop on the ones that do not."
+  - question: "Can I use the model's own confidence score to decide when to escalate?"
+    answer: "Not by asking it. A model that says it is 90 percent sure is producing text, not a calibrated probability, and the wrong answers tend to come with the same confident tone as the right ones. Use external signals instead: does the output validate against the schema, do several samples agree, did retrieval actually return evidence for the claim. Those are checks the model cannot talk its way past."
+  - question: "How do I know if my router is hurting quality?"
+    answer: "Evaluate the router as its own component. Run your eval set through the full cascade and through the largest model alone, and compare the results per segment, not just in aggregate: by language, by customer type, by document type, by request length. A router that looks fine on the average can be quietly failing a whole category of requests. Also sample escalation decisions in production and watch the share of traffic each tier handles over time."
+relatedPosts: ["cost-per-successful-task", "designing-llm-retry-fallbacks", "benchmarks-lie-politely"]
+---
+
+A few months ago I was reading traces for a document feature at TheGreyMatter, mostly looking for something else, and I noticed what our biggest, most capable model was spending its afternoons on.
+
+It was reading the first page of uploaded files and answering questions like "is this an invoice, a contract, or a report?" and "what is the title of this document?" Over and over. Correctly, every time. With the full reasoning power of the most expensive model we had access to, applied to a task that a reasonably attentive intern could do while eating lunch.
+
+Nobody had decided this. The prototype used the big model because when you are prototyping, you use the best thing available so the model is never the reason a demo fails. Then the prototype became the feature, and the choice stayed. That is how most of the "we use the biggest model for everything" setups I have seen came to exist: not as a decision, but as a default nobody went back to.
+
+This post is about going back to it. Specifically, about model routing: classifying requests and sending each one to the cheapest model that can do it well, escalating when it cannot. It is one of the most effective cost levers in an LLM system, and also one of the easiest ways to make your product quietly worse without noticing. I learned both halves of that sentence on the same project.
+
+## The Shape of a Cascade
+
+The idea is old and simple. Start cheap. Check the answer. Escalate only when the check fails. At the end of the line, there is a person.
+
+```
+                         request
+                            │
+                            ▼
+                  ┌───────────────────┐
+                  │      router       │   rules first,
+                  │  (pick a tier)    │   cheap classifier second
+                  └─────────┬─────────┘
+             easy           │            hard / risky
+        ┌───────────────────┴──────────────────┐
+        ▼                                      ▼
+┌───────────────┐   check fails       ┌───────────────┐
+│  small model  │ ──────────────────▶ │  large model  │
+│  fast, cheap  │                     │  slow, costly │
+└───────┬───────┘                     └───────┬───────┘
+        │ checks pass                         │ check fails
+        ▼                                     ▼
+     answer                           ┌───────────────┐
+                                      │     human     │
+                                      │  review queue │
+                                      └───────────────┘
+
+checks = schema validation · self-consistency · retrieval coverage
+```
+
+Three things make or break this diagram, and none of them is the choice of models:
+
+1. **The router**: how you decide where a request starts.
+2. **The checks**: how you decide an answer is not good enough.
+3. **The evaluation of the whole thing**: how you know the cascade is as good as just using the big model, where it matters.
+
+Cost is the reason you build it. Those three are the reason it works or does not.
+
+## 1. Rules First, Then a Cheap Classifier
+
+The first instinct is to build a smart router: a model that reads each request and predicts its difficulty. I tried that first. It was the wrong first step.
+
+Most routing decisions in a real product are not subtle. They are visible in the request's metadata before any model touches it:
+
+- **Task type.** "Classify this document" and "draft a reply to this legal notice" are different jobs, and your code already knows which one it is calling.
+- **Input size.** A one-paragraph email and a forty-page contract are not the same request.
+- **Risk.** Anything touching money, health, permissions, or a customer-facing commitment starts at the top tier, no matter how easy it looks.
+- **Who is asking.** Some tenants have contracts that specify the model. That is a rule, not a prediction.
+
+Rules like these handle the bulk of traffic, they are free, they are deterministic, and they are easy to explain in a code review. Only the requests the rules cannot place need a classifier, and that classifier can be small: a little model, or even a plain logistic regression over features, trained on labeled examples of "the small model handled this fine" versus "it did not."
+
+```typescript
+type Tier = "small" | "large" | "human";
+
+type Request = {
+  task: "classify" | "extract" | "summarize" | "draft" | "answer";
+  inputTokens: number;
+  riskTags: string[];          // e.g. "financial", "clinical", "legal"
+  tenantPolicy?: Tier;
+  text: string;
+};
+
+const ALWAYS_LARGE = new Set(["financial", "clinical", "legal"]);
+
+export async function route(req: Request): Promise<{ tier: Tier; reason: string }> {
+  // 1. Hard rules: contractual and risk-based. Never overridden.
+  if (req.tenantPolicy) return { tier: req.tenantPolicy, reason: "tenant-policy" };
+  if (req.riskTags.some((t) => ALWAYS_LARGE.has(t))) {
+    return { tier: "large", reason: "risk-tag" };
+  }
+
+  // 2. Cheap structural rules.
+  if (req.task === "classify" && req.inputTokens < 4_000) {
+    return { tier: "small", reason: "short-classification" };
+  }
+  if (req.task === "draft" || req.inputTokens > 30_000) {
+    return { tier: "large", reason: "draft-or-long-input" };
+  }
+
+  // 3. Only now ask the classifier, and lean toward large when unsure.
+  const pEasy = await difficultyClassifier.predict(req.text);
+  return pEasy > 0.8
+    ? { tier: "small", reason: `classifier:${pEasy.toFixed(2)}` }
+    : { tier: "large", reason: `classifier:${pEasy.toFixed(2)}` };
+}
+```
+
+Two details I care about here. Every routing decision returns a `reason`, and that reason goes into the trace, because "why did this request go to the small model?" is a question you will ask during an incident. And the classifier threshold is asymmetric on purpose: when the classifier is unsure, the request goes up, not down. Misrouting a hard request to a small model costs quality. Misrouting an easy request to a large model costs a little money. Those are not the same kind of mistake.
+
+<Callout type="tip" title="Rules are a router you can read">
+Start with rules even if you plan to add a classifier. They cover most traffic, they show up clearly in a diff, and they give you labeled data for free: every request the rules route, and every escalation that follows, is a training example for the classifier you might build later.
+</Callout>
+
+## 2. Confidence Signals That Actually Work
+
+The router picks where a request starts. The checks decide whether it stays there. This is where most cascades I have seen go wrong, because they use the one signal that feels obvious and does not work.
+
+### The one that does not: asking the model
+
+The tempting move is to ask the small model to rate its own confidence. "Answer the question, then give a confidence score from 0 to 1." Escalate if it is below some threshold.
+
+I tried this, and the scores looked reasonable. They were mostly high, occasionally lower, and the lower ones did tend to be harder requests. But the wrong answers were not reliably the low-scored ones. Plenty of the small model's mistakes came with a confident, well-formatted, high score, because the score is just more generated text, produced by the same process that produced the mistake. A model that does not know it is wrong will not tell you it is wrong.
+
+The useful kind of uncertainty is the kind you can check from outside the model. That is exactly what a cascade needs.
+
+### The ones that do
+
+**Schema validation.** If the task has a structured output, validate it strictly. Missing required fields, wrong enum values, a date that does not parse, an amount that is not a number: any of those is an unambiguous escalation signal. It is the cheapest check there is, and in my experience it catches a surprising share of small-model failures, because small models tend to fail by drifting from the format before they fail on the content.
+
+**Self-consistency.** Sample the small model a few times (or at a non-zero temperature) and compare the answers. If three samples agree on "invoice," that is a real signal. If they say "invoice," "receipt," and "purchase order," the model is guessing, and it should not be the one deciding. This costs a few extra small-model calls, which is usually still much cheaper than one large-model call.
+
+**Retrieval coverage.** For anything grounded in documents, check that the answer is actually supported by what retrieval returned. Did the cited passage exist? Does the extracted value appear in the source text? If the small model produced an answer that the evidence does not contain, escalate. This one catches confident fabrication, which is exactly the failure that self-rated confidence misses.
+
+```
+signal                     cost        catches                    misses
+────────────────────────   ─────────   ────────────────────────   ──────────────────────
+self-rated confidence      ~free       some hard requests         confident mistakes
+schema validation          ~free       format drift, missing      correct shape,
+                                       fields, bad types          wrong content
+self-consistency (n=3)     3x small    guessing, ambiguity        consistent mistakes
+retrieval coverage         a lookup    fabrication, unsupported   wrong but supported
+                                       claims                     answers
+```
+
+None of these is perfect, which is why they stack. A request escalates if any check fails. The last column of that table is the honest part: there is always a class of error that every cheap check misses, and that is why the cascade needs an evaluation, not just checks.
+
+<Callout type="warning" title="Self-reported confidence is not a gate">
+A model's stated confidence is part of its output, not a measurement of it. It can be a useful feature for a classifier you train and calibrate yourself, but on its own it should never be the thing that decides whether a request escalates. Gate on checks the model cannot talk its way past.
+</Callout>
+
+## 3. Escalation Is a Retry With a Different Model
+
+Mechanically, an escalation is a lot like a retry, and it has the same pitfalls. I covered the general rules in [designing LLM retry and fallback logic](/blog/designing-llm-retry-fallbacks), and they apply directly here: bounded attempts, a clear reason recorded for each one, and no silent loops.
+
+A few cascade-specific rules on top of that:
+
+- **Do not pass the small model's failed answer to the large model as a hint.** It is tempting to say "here is a draft, improve it." In my experience, that anchors the large model on the small model's mistake. Escalate with the original request.
+- **Escalate once per tier.** Small to large, large to human. Never small to small again with a different prompt, hoping it works this time. That is a retry loop pretending to be a cascade.
+- **The human tier is a real queue, not an error message.** If the large model also fails its checks, the request goes to a review queue with the inputs, both answers, and the failed checks attached. Someone looks at it. For anything high-stakes, that is the correct final state, not a failure.
+
+The human tier also has a side benefit: everything that reaches it is, by definition, a hard example. That queue is the best source of new eval cases you will ever have.
+
+## 4. Evaluate the Router, Not Just the Models
+
+Here is the part I learned the hard way.
+
+After I set up rules and checks for the document feature, I ran our eval set through the cascade and through the big model alone. The cascade scored essentially the same as the big model. Most of the traffic was now going to the small model. Everything looked like a free win. We shipped it.
+
+A couple of weeks later, someone noticed that document titles for Spanish-language files had gotten noticeably worse. Not broken. Just worse: truncated, sometimes the first heading instead of the real title, occasionally a translation nobody asked for. The small model was fine at the English documents and weaker at the Spanish ones, and the checks did not catch it, because a wrong title is still a valid string that passes the schema and appears in the source text.
+
+The eval set had not caught it either, and the reason is the whole lesson: the eval set was mostly English, and I was looking at the aggregate score. A drop on a small slice disappeared into the average. I have written about this pattern in [benchmarks lie politely](/blog/benchmarks-lie-politely): a single number tells you how a system does on the distribution you tested, not on the distribution that matters to the user in front of you.
+
+So the router got its own evaluation, and the rules for it are now non-negotiable for me:
+
+```typescript
+type CaseResult = {
+  id: string;
+  segment: string;          // e.g. "lang:es", "doctype:contract", "len:long"
+  baselinePassed: boolean;  // large model alone
+  cascadePassed: boolean;   // full cascade
+  tierUsed: "small" | "large" | "human";
+};
+
+export function routerReport(results: CaseResult[], maxDrop = 0.02) {
+  const bySegment = groupBy(results, (r) => r.segment);
+  const failures: string[] = [];
+
+  for (const [segment, cases] of Object.entries(bySegment)) {
+    const base = rate(cases, (c) => c.baselinePassed);
+    const cascade = rate(cases, (c) => c.cascadePassed);
+    const smallShare = rate(cases, (c) => c.tierUsed === "small");
+    console.log(`${segment}: base ${base} cascade ${cascade} small-share ${smallShare}`);
+    if (base - cascade > maxDrop) failures.push(segment);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Router regresses segments: ${failures.join(", ")}`);
+  }
+}
+```
+
+The comparison that matters is not "is the cascade good?" It is "is the cascade as good as the largest model, **in every segment I care about**?" Per language. Per document type. Per tenant size. Per input length. Any segment where the cascade drops meaningfully below the baseline is a routing bug, even if the overall number is flat.
+
+And the eval set has to have enough cases in each segment for that comparison to mean anything. That was the real fix: not a smarter classifier, but more Spanish documents in the eval set, and a rule that Spanish title extraction started at the large tier until the small model could prove itself on that slice.
+
+<Callout type="danger" title="The failure mode is silent">
+A broken router does not throw errors. Requests still get answers, the answers are still well-formed, and your dashboards stay green. What changes is quality on some slice of traffic your averages hide. If you only evaluate the cascade in aggregate, you will find out from users, probably the ones who were already underserved.
+</Callout>
+
+## 5. Watch It in Production
+
+Evals catch what you thought to test. Production tells you what you did not. A cascade needs a few signals on a dashboard, sliced the same way as the eval:
+
+- **Tier share over time.** What fraction of traffic each tier handles. A sudden shift toward the small model usually means a rule changed or the input mix changed. A shift toward the large model usually means a small-model or prompt update made checks fail more often. Either deserves a look.
+- **Escalation rate by reason.** Schema failures, consistency disagreements, and retrieval misses tell you different things about the small model.
+- **Sampled spot checks.** A small random sample of requests that the small model answered and that passed all checks, reviewed against the large model's answer. This is the only way to see the errors that every check misses.
+- **Cost per successful task, not cost per call.** The point of the cascade is spending less per good outcome. If escalations and human reviews pile up, a cheaper first call can make the whole task more expensive. I wrote about measuring this properly in [cost per successful task](/blog/cost-per-successful-task).
+
+And when a model changes, either tier, re-run the router evaluation. A new small model changes which requests it can handle. A new large model changes the baseline you are comparing against. The router is tuned to a specific pair of models, and it goes stale when either one moves.
+
+## What I'd Do From Day One
+
+If I were starting a new LLM feature tomorrow, I would still prototype with the big model. That part was right: you want to know the task is possible before you optimize it.
+
+But I would write down, at the prototype stage, that this is a default and not a decision. And before the feature scaled, I would build the cascade in this order: rules first, then strict schema validation, then retrieval coverage, then self-consistency where it is worth the extra calls, then a classifier only if the rules leave a lot on the table. And before any of it shipped, a router evaluation sliced by every segment I could think of, with enough cases in each to mean something.
+
+The models are the easy part. Any reasonable small model can classify a document. The hard part is knowing which documents it cannot classify, and noticing when that set changes.
+
+## The Throughline
+
+If I had to compress this into one sentence: **route every request to the cheapest model that can do it well, escalate on checks the model cannot fake, and evaluate the router by segment, because its failures are quiet.**
+
+Rules before classifiers. External checks before self-reported confidence. A human at the end of the line. And never trust an average to tell you that nobody got a worse answer.
+
+---
+
+*If your LLM bill is mostly your biggest model doing small jobs and you want to set up a cascade without quietly making the product worse, [reach out](/contact). I am taking on a few consulting and full-time conversations right now, and this is exactly the kind of problem I like.*

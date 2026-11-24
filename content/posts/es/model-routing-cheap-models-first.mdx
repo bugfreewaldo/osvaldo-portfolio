@@ -1,0 +1,244 @@
+---
+title: "Enrutamiento de Modelos: No Toda Solicitud Merece Tu Modelo Más Grande"
+description: "La mayoría de las funciones con LLMs mandan cada solicitud al modelo más grande porque eso es lo que usaba el prototipo. Una cascada funciona mejor: clasifica la solicitud, manda el trabajo fácil a un modelo pequeño y rápido, escala cuando falla la validación o la confianza es baja, y pasa a un humano más allá de eso. Diseños de enrutador, señales de confianza que funcionan y las que no, cómo evaluar el enrutador en sí, y la caída silenciosa de calidad que te va a morder si te saltas ese paso."
+date: 2026-11-23
+published: true
+category: "Ingeniería de IA"
+tags: ["Ingeniería de IA", "Enrutamiento de Modelos", "Costo de LLMs", "Evaluación de LLMs", "Confiabilidad"]
+author: "Osvaldo Restrepo"
+translationOf: "model-routing-cheap-models-first"
+tldr: "Mandar cada solicitud a tu modelo más grande suele ser un resto del prototipo, no una decisión. Una cascada de modelos enruta cada solicitud al modelo más barato que la puede hacer bien: un enrutador (reglas deterministas primero, un clasificador barato solo cuando se acaban las reglas) elige un nivel inicial, la respuesta pasa por verificaciones que no dependen de la opinión del modelo sobre sí mismo (validación de esquema, autoconsistencia entre muestras, cobertura de recuperación), las fallas escalan a un modelo más grande, y lo que todavía falla va a un humano. Preguntarle al modelo qué tan seguro está no funciona como compuerta. El enrutador también es un modelo, así que necesita su propio conjunto de evaluación, segmentado, porque el verdadero modo de falla no es un crash. Es una caída silenciosa de calidad en la porción del tráfico que tus promedios esconden."
+faqs:
+  - question: "¿Qué es una cascada de modelos?"
+    answer: "Una cascada de modelos manda una solicitud primero a un modelo pequeño y rápido, y solo escala a un modelo más grande cuando la primera respuesta falla una verificación, como la validación de esquema, el desacuerdo entre muestras o la falta de evidencia en la recuperación. Después del modelo más grande, el último nivel es un humano. La meta es pagar por el modelo grande solo en las solicitudes que de verdad lo necesitan, sin dejar que la calidad caiga en las que no."
+  - question: "¿Puedo usar la puntuación de confianza del propio modelo para decidir cuándo escalar?"
+    answer: "No preguntándole. Un modelo que dice estar 90 por ciento seguro está produciendo texto, no una probabilidad calibrada, y las respuestas equivocadas suelen venir con el mismo tono seguro que las correctas. Usa señales externas: ¿la salida valida contra el esquema?, ¿coinciden varias muestras?, ¿la recuperación realmente devolvió evidencia para la afirmación? Esas son verificaciones que el modelo no puede convencer con palabras."
+  - question: "¿Cómo sé si mi enrutador está empeorando la calidad?"
+    answer: "Evalúa el enrutador como un componente propio. Corre tu conjunto de evaluación por la cascada completa y por el modelo más grande solo, y compara los resultados por segmento, no solo en agregado: por idioma, por tipo de cliente, por tipo de documento, por longitud de la solicitud. Un enrutador que se ve bien en el promedio puede estar fallando en silencio en toda una categoría de solicitudes. Además, muestrea decisiones de escalamiento en producción y observa qué porción del tráfico maneja cada nivel a lo largo del tiempo."
+relatedPosts: ["cost-per-successful-task", "designing-llm-retry-fallbacks", "benchmarks-lie-politely"]
+---
+
+Hace unos meses estaba leyendo trazas de una función de documentos en TheGreyMatter, buscando otra cosa en realidad, y noté en qué pasaba las tardes nuestro modelo más grande y más capaz.
+
+Estaba leyendo la primera página de archivos subidos y respondiendo preguntas como "¿esto es una factura, un contrato o un reporte?" y "¿cuál es el título de este documento?" Una y otra vez. Correctamente, siempre. Con todo el poder de razonamiento del modelo más caro al que teníamos acceso, aplicado a una tarea que un pasante razonablemente atento podría hacer mientras almuerza.
+
+Nadie había decidido esto. El prototipo usaba el modelo grande porque cuando estás prototipando, usas lo mejor disponible para que el modelo nunca sea la razón por la que falla una demo. Después el prototipo se convirtió en la función, y la elección se quedó. Así nacieron la mayoría de las configuraciones de "usamos el modelo más grande para todo" que he visto: no como una decisión, sino como un valor por defecto al que nadie volvió.
+
+Este post trata de volver a él. Específicamente, del enrutamiento de modelos: clasificar las solicitudes y mandar cada una al modelo más barato que la puede hacer bien, escalando cuando no puede. Es una de las palancas de costo más efectivas en un sistema con LLMs, y también una de las formas más fáciles de empeorar tu producto en silencio sin darte cuenta. Aprendí las dos mitades de esa oración en el mismo proyecto.
+
+## La Forma de una Cascada
+
+La idea es vieja y simple. Empieza barato. Verifica la respuesta. Escala solo cuando la verificación falla. Al final de la línea, hay una persona.
+
+```
+                       solicitud
+                            │
+                            ▼
+                  ┌───────────────────┐
+                  │    enrutador      │   reglas primero,
+                  │  (elige un nivel) │   clasificador barato después
+                  └─────────┬─────────┘
+            fácil           │           difícil / riesgosa
+        ┌───────────────────┴──────────────────┐
+        ▼                                      ▼
+┌───────────────┐  falla verificación ┌───────────────┐
+│ modelo chico  │ ──────────────────▶ │ modelo grande │
+│ rápido, barato│                     │ lento, costoso│
+└───────┬───────┘                     └───────┬───────┘
+        │ pasa verificaciones                 │ falla verificación
+        ▼                                     ▼
+    respuesta                         ┌───────────────┐
+                                      │    humano     │
+                                      │ cola revisión │
+                                      └───────────────┘
+
+verificaciones = validación de esquema · autoconsistencia · cobertura de recuperación
+```
+
+Tres cosas hacen o rompen este diagrama, y ninguna es la elección de modelos:
+
+1. **El enrutador**: cómo decides dónde empieza una solicitud.
+2. **Las verificaciones**: cómo decides que una respuesta no es suficientemente buena.
+3. **La evaluación del conjunto**: cómo sabes que la cascada es tan buena como usar solo el modelo grande, donde importa.
+
+El costo es la razón por la que la construyes. Esas tres son la razón por la que funciona o no.
+
+## 1. Reglas Primero, Después un Clasificador Barato
+
+El primer instinto es construir un enrutador inteligente: un modelo que lee cada solicitud y predice su dificultad. Eso fue lo primero que intenté. Fue el primer paso equivocado.
+
+La mayoría de las decisiones de enrutamiento en un producto real no son sutiles. Se ven en los metadatos de la solicitud antes de que cualquier modelo la toque:
+
+- **Tipo de tarea.** "Clasifica este documento" y "redacta una respuesta a este aviso legal" son trabajos distintos, y tu código ya sabe cuál está llamando.
+- **Tamaño de la entrada.** Un correo de un párrafo y un contrato de cuarenta páginas no son la misma solicitud.
+- **Riesgo.** Cualquier cosa que toque dinero, salud, permisos o un compromiso visible para el cliente empieza en el nivel más alto, sin importar qué tan fácil parezca.
+- **Quién pregunta.** Algunos tenants tienen contratos que especifican el modelo. Eso es una regla, no una predicción.
+
+Reglas como estas manejan el grueso del tráfico, son gratis, son deterministas y son fáciles de explicar en una revisión de código. Solo las solicitudes que las reglas no pueden ubicar necesitan un clasificador, y ese clasificador puede ser pequeño: un modelito, o incluso una regresión logística simple sobre features, entrenada con ejemplos etiquetados de "el modelo pequeño manejó esto bien" contra "no lo manejó."
+
+```typescript
+type Tier = "small" | "large" | "human";
+
+type Request = {
+  task: "classify" | "extract" | "summarize" | "draft" | "answer";
+  inputTokens: number;
+  riskTags: string[];          // p. ej. "financial", "clinical", "legal"
+  tenantPolicy?: Tier;
+  text: string;
+};
+
+const ALWAYS_LARGE = new Set(["financial", "clinical", "legal"]);
+
+export async function route(req: Request): Promise<{ tier: Tier; reason: string }> {
+  // 1. Reglas duras: contractuales y por riesgo. Nunca se anulan.
+  if (req.tenantPolicy) return { tier: req.tenantPolicy, reason: "tenant-policy" };
+  if (req.riskTags.some((t) => ALWAYS_LARGE.has(t))) {
+    return { tier: "large", reason: "risk-tag" };
+  }
+
+  // 2. Reglas estructurales baratas.
+  if (req.task === "classify" && req.inputTokens < 4_000) {
+    return { tier: "small", reason: "short-classification" };
+  }
+  if (req.task === "draft" || req.inputTokens > 30_000) {
+    return { tier: "large", reason: "draft-or-long-input" };
+  }
+
+  // 3. Solo ahora pregúntale al clasificador, e inclínate a large si hay duda.
+  const pEasy = await difficultyClassifier.predict(req.text);
+  return pEasy > 0.8
+    ? { tier: "small", reason: `classifier:${pEasy.toFixed(2)}` }
+    : { tier: "large", reason: `classifier:${pEasy.toFixed(2)}` };
+}
+```
+
+Dos detalles que me importan aquí. Cada decisión de enrutamiento devuelve un `reason`, y esa razón va a la traza, porque "¿por qué esta solicitud fue al modelo pequeño?" es una pregunta que vas a hacer durante un incidente. Y el umbral del clasificador es asimétrico a propósito: cuando el clasificador duda, la solicitud sube, no baja. Mandar por error una solicitud difícil a un modelo pequeño cuesta calidad. Mandar por error una solicitud fácil a un modelo grande cuesta un poco de dinero. No son el mismo tipo de error.
+
+<Callout type="tip" title="Las reglas son un enrutador que puedes leer">
+Empieza con reglas aunque planees agregar un clasificador. Cubren la mayor parte del tráfico, se ven claramente en un diff y te dan datos etiquetados gratis: cada solicitud que las reglas enrutan, y cada escalamiento que le sigue, es un ejemplo de entrenamiento para el clasificador que quizás construyas después.
+</Callout>
+
+## 2. Señales de Confianza Que Sí Funcionan
+
+El enrutador elige dónde empieza una solicitud. Las verificaciones deciden si se queda ahí. Aquí es donde se equivocan la mayoría de las cascadas que he visto, porque usan la única señal que parece obvia y no funciona.
+
+### La que no funciona: preguntarle al modelo
+
+La tentación es pedirle al modelo pequeño que califique su propia confianza. "Responde la pregunta, y luego da una puntuación de confianza de 0 a 1." Escalar si está por debajo de cierto umbral.
+
+Lo intenté, y las puntuaciones se veían razonables. Eran mayormente altas, a veces más bajas, y las más bajas sí tendían a ser solicitudes más difíciles. Pero las respuestas equivocadas no eran confiablemente las de puntuación baja. Muchos de los errores del modelo pequeño venían con una puntuación alta, segura y bien formateada, porque la puntuación es solo más texto generado, producido por el mismo proceso que produjo el error. Un modelo que no sabe que está equivocado no te va a decir que está equivocado.
+
+El tipo útil de incertidumbre es el que puedes verificar desde fuera del modelo. Eso es exactamente lo que necesita una cascada.
+
+### Las que sí funcionan
+
+**Validación de esquema.** Si la tarea tiene una salida estructurada, valídala estrictamente. Campos requeridos faltantes, valores de enum incorrectos, una fecha que no se puede parsear, un monto que no es un número: cualquiera de esos es una señal de escalamiento inequívoca. Es la verificación más barata que existe, y en mi experiencia atrapa una porción sorprendente de las fallas del modelo pequeño, porque los modelos pequeños tienden a fallar desviándose del formato antes de fallar en el contenido.
+
+**Autoconsistencia.** Muestrea el modelo pequeño unas cuantas veces (o con temperatura distinta de cero) y compara las respuestas. Si tres muestras coinciden en "factura," esa es una señal real. Si dicen "factura," "recibo" y "orden de compra," el modelo está adivinando, y no debería ser quien decide. Esto cuesta unas cuantas llamadas extra al modelo pequeño, lo que usualmente sigue siendo mucho más barato que una llamada al modelo grande.
+
+**Cobertura de recuperación.** Para cualquier cosa basada en documentos, verifica que la respuesta realmente esté respaldada por lo que devolvió la recuperación. ¿Existía el pasaje citado? ¿Aparece el valor extraído en el texto fuente? Si el modelo pequeño produjo una respuesta que la evidencia no contiene, escala. Esta atrapa la fabricación segura, que es exactamente la falla que la confianza autoevaluada no ve.
+
+```
+señal                      costo        atrapa                     no ve
+────────────────────────   ──────────   ────────────────────────   ──────────────────────
+confianza autoevaluada     ~gratis      algunas difíciles          errores seguros
+validación de esquema      ~gratis      desvío de formato, campos  forma correcta,
+                                        faltantes, tipos malos     contenido equivocado
+autoconsistencia (n=3)     3x chico     adivinanzas, ambigüedad    errores consistentes
+cobertura de recuperación  una consulta fabricación, afirmaciones  respuestas equivocadas
+                                        sin respaldo               pero respaldadas
+```
+
+Ninguna es perfecta, por eso se apilan. Una solicitud escala si cualquier verificación falla. La última columna de esa tabla es la parte honesta: siempre hay una clase de error que todas las verificaciones baratas pasan por alto, y por eso la cascada necesita una evaluación, no solo verificaciones.
+
+<Callout type="warning" title="La confianza autorreportada no es una compuerta">
+La confianza declarada de un modelo es parte de su salida, no una medición de ella. Puede ser una feature útil para un clasificador que tú entrenes y calibres, pero por sí sola nunca debería ser lo que decide si una solicitud escala. Usa como compuerta verificaciones que el modelo no pueda convencer con palabras.
+</Callout>
+
+## 3. Escalar Es un Reintento Con Otro Modelo
+
+Mecánicamente, un escalamiento se parece mucho a un reintento, y tiene las mismas trampas. Cubrí las reglas generales en [diseñar lógica de reintentos y fallbacks para LLMs](/es/blog/designing-llm-retry-fallbacks), y aplican directamente aquí: intentos acotados, una razón clara registrada para cada uno y nada de loops silenciosos.
+
+Algunas reglas específicas de cascadas encima de eso:
+
+- **No le pases la respuesta fallida del modelo pequeño al modelo grande como pista.** Es tentador decir "aquí hay un borrador, mejóralo." En mi experiencia, eso ancla al modelo grande en el error del modelo pequeño. Escala con la solicitud original.
+- **Escala una vez por nivel.** De chico a grande, de grande a humano. Nunca de chico a chico otra vez con un prompt distinto, esperando que esta vez funcione. Eso es un loop de reintentos disfrazado de cascada.
+- **El nivel humano es una cola real, no un mensaje de error.** Si el modelo grande también falla sus verificaciones, la solicitud va a una cola de revisión con las entradas, ambas respuestas y las verificaciones fallidas adjuntas. Alguien la mira. Para cualquier cosa de alto riesgo, ese es el estado final correcto, no una falla.
+
+El nivel humano tiene además un beneficio extra: todo lo que llega ahí es, por definición, un ejemplo difícil. Esa cola es la mejor fuente de casos de evaluación nuevos que vas a tener.
+
+## 4. Evalúa el Enrutador, No Solo los Modelos
+
+Esta es la parte que aprendí por las malas.
+
+Después de montar las reglas y las verificaciones para la función de documentos, corrí nuestro conjunto de evaluación por la cascada y por el modelo grande solo. La cascada sacó prácticamente lo mismo que el modelo grande. La mayor parte del tráfico ahora iba al modelo pequeño. Todo parecía una ganancia gratis. Lo enviamos.
+
+Un par de semanas después, alguien notó que los títulos de los documentos en español habían empeorado de forma notable. No estaban rotos. Solo peores: truncados, a veces el primer encabezado en vez del título real, de vez en cuando una traducción que nadie pidió. El modelo pequeño iba bien con los documentos en inglés y más flojo con los de español, y las verificaciones no lo atraparon, porque un título equivocado sigue siendo un string válido que pasa el esquema y aparece en el texto fuente.
+
+El conjunto de evaluación tampoco lo había atrapado, y la razón es toda la lección: el conjunto era mayormente en inglés, y yo estaba mirando la puntuación agregada. Una caída en una porción pequeña desapareció en el promedio. Escribí sobre este patrón en [los benchmarks mienten con educación](/es/blog/benchmarks-lie-politely): un solo número te dice cómo le va a un sistema en la distribución que probaste, no en la distribución que le importa al usuario que tienes enfrente.
+
+Así que el enrutador recibió su propia evaluación, y las reglas para ella ahora no son negociables para mí:
+
+```typescript
+type CaseResult = {
+  id: string;
+  segment: string;          // p. ej. "lang:es", "doctype:contract", "len:long"
+  baselinePassed: boolean;  // modelo grande solo
+  cascadePassed: boolean;   // cascada completa
+  tierUsed: "small" | "large" | "human";
+};
+
+export function routerReport(results: CaseResult[], maxDrop = 0.02) {
+  const bySegment = groupBy(results, (r) => r.segment);
+  const failures: string[] = [];
+
+  for (const [segment, cases] of Object.entries(bySegment)) {
+    const base = rate(cases, (c) => c.baselinePassed);
+    const cascade = rate(cases, (c) => c.cascadePassed);
+    const smallShare = rate(cases, (c) => c.tierUsed === "small");
+    console.log(`${segment}: base ${base} cascada ${cascade} porción-chico ${smallShare}`);
+    if (base - cascade > maxDrop) failures.push(segment);
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`El enrutador empeora segmentos: ${failures.join(", ")}`);
+  }
+}
+```
+
+La comparación que importa no es "¿la cascada es buena?" Es "¿la cascada es tan buena como el modelo más grande, **en cada segmento que me importa**?" Por idioma. Por tipo de documento. Por tamaño de tenant. Por longitud de entrada. Cualquier segmento donde la cascada cae de forma significativa por debajo de la línea base es un bug de enrutamiento, aunque el número general esté plano.
+
+Y el conjunto de evaluación tiene que tener suficientes casos en cada segmento para que esa comparación signifique algo. Esa fue la verdadera solución: no un clasificador más inteligente, sino más documentos en español en el conjunto de evaluación, y una regla de que la extracción de títulos en español empezara en el nivel grande hasta que el modelo pequeño pudiera demostrar que podía con esa porción.
+
+<Callout type="danger" title="El modo de falla es silencioso">
+Un enrutador roto no lanza errores. Las solicitudes siguen recibiendo respuestas, las respuestas siguen bien formadas y tus dashboards siguen en verde. Lo que cambia es la calidad en alguna porción del tráfico que tus promedios esconden. Si solo evalúas la cascada en agregado, te vas a enterar por los usuarios, probablemente los que ya estaban peor atendidos.
+</Callout>
+
+## 5. Obsérvalo en Producción
+
+Las evaluaciones atrapan lo que se te ocurrió probar. Producción te dice lo que no. Una cascada necesita unas cuantas señales en un dashboard, segmentadas igual que la evaluación:
+
+- **Porción por nivel a lo largo del tiempo.** Qué fracción del tráfico maneja cada nivel. Un cambio repentino hacia el modelo pequeño usualmente significa que cambió una regla o cambió la mezcla de entradas. Un cambio hacia el modelo grande usualmente significa que una actualización del modelo pequeño o del prompt hizo que las verificaciones fallen más seguido. Cualquiera de los dos merece una mirada.
+- **Tasa de escalamiento por razón.** Fallas de esquema, desacuerdos de consistencia y faltas de recuperación te dicen cosas distintas sobre el modelo pequeño.
+- **Revisiones puntuales por muestreo.** Una pequeña muestra aleatoria de solicitudes que respondió el modelo pequeño y que pasaron todas las verificaciones, revisadas contra la respuesta del modelo grande. Es la única forma de ver los errores que todas las verificaciones pasan por alto.
+- **Costo por tarea exitosa, no costo por llamada.** El punto de la cascada es gastar menos por cada buen resultado. Si los escalamientos y las revisiones humanas se acumulan, una primera llamada más barata puede hacer más cara la tarea completa. Escribí sobre cómo medir esto bien en [costo por tarea exitosa](/es/blog/cost-per-successful-task).
+
+Y cuando un modelo cambia, en cualquier nivel, vuelve a correr la evaluación del enrutador. Un modelo pequeño nuevo cambia qué solicitudes puede manejar. Un modelo grande nuevo cambia la línea base contra la que comparas. El enrutador está ajustado a un par específico de modelos, y se vuelve obsoleto cuando cualquiera de los dos se mueve.
+
+## Lo Que Haría Desde el Primer Día
+
+Si mañana empezara una función nueva con LLMs, igual prototiparía con el modelo grande. Esa parte estaba bien: quieres saber que la tarea es posible antes de optimizarla.
+
+Pero dejaría escrito, en la etapa de prototipo, que esto es un valor por defecto y no una decisión. Y antes de que la función escalara, construiría la cascada en este orden: reglas primero, luego validación estricta de esquema, luego cobertura de recuperación, luego autoconsistencia donde valga las llamadas extra, y luego un clasificador solo si las reglas dejan mucho sobre la mesa. Y antes de enviar cualquier parte, una evaluación del enrutador segmentada por cada dimensión que se me ocurriera, con suficientes casos en cada una para que signifique algo.
+
+Los modelos son la parte fácil. Cualquier modelo pequeño razonable puede clasificar un documento. Lo difícil es saber qué documentos no puede clasificar, y notar cuándo cambia ese conjunto.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **enruta cada solicitud al modelo más barato que la pueda hacer bien, escala con verificaciones que el modelo no pueda falsear, y evalúa el enrutador por segmento, porque sus fallas son silenciosas.**
+
+Reglas antes que clasificadores. Verificaciones externas antes que confianza autorreportada. Un humano al final de la línea. Y nunca confíes en que un promedio te diga que nadie recibió una respuesta peor.
+
+---
+
+*Si tu factura de LLMs es mayormente tu modelo más grande haciendo trabajos pequeños y quieres montar una cascada sin empeorar el producto en silencio, [contáctame](/contact). Ahora mismo estoy abierto a algunas conversaciones de consultoría y de tiempo completo, y este es exactamente el tipo de problema que me gusta.*

@@ -1,0 +1,229 @@
+---
+title: "Contratar a un Ingeniero de IA: Deja de Evaluar Trivia, Evalúa Criterio"
+description: "La mayoría de las entrevistas para ingenieros de IA evalúan lo que no es: acertijos tipo leetcode o trivia de 'explica cómo funciona un transformer'. Lo que de verdad predice el éxito es el criterio: definir el éxito antes de construir, depurar una mala salida de forma sistemática, razonar sobre costo y latencia, saber cuándo no usar un LLM, diseñar para la falla y el traspaso a humanos, y explicarlo todo a personas no técnicas. Un ejercicio práctico, más señales verdes y señales rojas, para gerentes de contratación, fundadores y candidatos."
+date: 2026-11-17
+published: true
+category: "Carrera"
+tags: ["Contratación", "Ingeniería de IA", "Entrevistas", "Evaluación de LLMs", "Carrera"]
+author: "Osvaldo Restrepo"
+translationOf: "hiring-an-ai-engineer-what-to-test"
+tldr: "Las entrevistas para ingenieros de IA suelen evaluar lo que es fácil de evaluar: acertijos de algoritmos, o preguntas de libro sobre atención y embeddings. Ninguna de las dos predice si alguien puede enviar una función con LLM que funcione un martes en la tarde con usuarios reales. Habiendo sido el único ingeniero de IA en la sala y también habiendo estado del otro lado de la mesa, busco seis cosas: ¿define el éxito antes de construir?, ¿puede depurar una mala salida de forma sistemática en lugar de reescribir el prompt hasta que se vea bien?, ¿puede razonar sobre costo y latencia?, ¿sabe cuándo no usar un modelo?, ¿diseña para la falla y el traspaso a una persona?, y ¿puede explicar los trade-offs a alguien no técnico? La mejor forma de ver las seis a la vez es un ejercicio pequeño y realista: dale al candidato una función con LLM inestable y un conjunto de evaluación diminuto, y observa cómo la mejora. Su proceso te dice más que cualquier respuesta de trivia."
+faqs:
+  - question: "¿Las entrevistas para ingenieros de IA deberían incluir algo de código?"
+    answer: "Sí, pero código realista. Un ingeniero de IA sigue escribiendo software de producción: handlers de API, tuberías de datos, reintentos, pruebas. Lo que elimino es la ronda de algoritmos tipo acertijo, porque mide la preparación para acertijos. Un ejercicio corto donde el candidato lee un código pequeño existente, agrega una evaluación y cambia código real te dice mucho más sobre si puede hacer el trabajo."
+  - question: "¿Es mejor un ejercicio para la casa o una sesión de pairing en vivo?"
+    answer: "Cualquiera funciona si es corto y acotado. Un ejercicio para la casa limitado a dos o tres horas le da espacio para pensar a los candidatos más callados, y la conversación posterior sobre sus decisiones es donde está la mayor parte de la señal. Una sesión de pairing de noventa minutos muestra cómo razona en voz alta y cómo reacciona a información nueva. Lo que importa es que el ejercicio se parezca al trabajo: una función con fallas, un conjunto de evaluación pequeño y espacio para el criterio."
+  - question: "¿Cómo evalúo a un candidato a ingeniero de IA si yo no soy técnico?"
+    answer: "Pídele que te explique una función de IA que haya hecho como si fueras el cliente: qué hacía, cómo supo que funcionaba, en qué se equivocaba y qué pasó cuando falló. Los candidatos fuertes responden en términos concretos, mencionan cómo midieron la calidad y hablan de las fallas sin ponerse a la defensiva. Si la explicación está llena de nombres de modelos y palabras de moda pero no menciona cómo se midió el éxito ni qué pasó cuando se rompió, esa es una señal sin importar tu formación técnica."
+relatedPosts: ["eval-set-is-the-spec", "when-the-answer-is-a-sql-query", "only-ai-engineer-in-the-room"]
+---
+
+Hace un tiempo estuve en una entrevista para un rol de IA y me pidieron explicar, de memoria, cómo funciona la atención multi-cabeza. Di una respuesta decente. Dibujé las matrices de query, key y value en una pizarra compartida. El entrevistador asintió. Luego me tocó un acertijo de programación dinámica, lo resolví despacio, y se nos acabó el tiempo.
+
+Nadie me preguntó qué haría si la función que construí empezaba a dar respuestas equivocadas con total seguridad a los clientes. Nadie me preguntó cómo sabría si un cambio de prompt mejoraba o empeoraba las cosas. Nadie me preguntó qué haría si la factura mensual del modelo se duplicaba.
+
+Esas son las preguntas que llenaban mis semanas de verdad. He pasado mucho tiempo siendo el único ingeniero de IA en la sala, y más recientemente he estado del otro lado de la mesa, ayudando a equipos a decidir a quién contratar para trabajo de IA. El patrón que sigo viendo es que evaluamos lo que es fácil de evaluar, no lo que predice el éxito.
+
+Este post es para gerentes de contratación y fundadores que necesitan un ingeniero de IA y no están seguros de qué buscar. También es para candidatos: si sabes qué debería evaluar una buena entrevista, puedes mostrarlo aunque nadie lo pregunte.
+
+## Lo Que Evalúan la Mayoría de las Entrevistas, y Lo Que Es el Trabajo de Verdad
+
+Aquí está la brecha, tan clara como puedo dibujarla:
+
+```
+lo que suelen evaluar las entrevistas   lo que el trabajo realmente necesita
+─────────────────────────────────────   ─────────────────────────────────────
+acertijos de algoritmos                 leer y cambiar código real
+trivia de "explica la atención"         decidir si una salida es suficiente
+nombrar los modelos más nuevos          elegir modelo por costo y latencia
+un demo que funciona una vez            una función que funciona a diario
+"¿cómo usarías IA para X?"              "¿deberíamos usar IA para X?"
+hablar con otros ingenieros             explicar trade-offs a un fundador
+```
+
+La trivia no es inútil; entender las tripas del modelo ayuda a depurarlo. Pero saber cómo funciona la atención es como saber cómo funciona un motor: útil, y no es lo mismo que manejar en el tráfico.
+
+El trabajo es sobre todo criterio bajo incertidumbre. El modelo no es determinista, los requisitos son difusos, los usuarios hacen cosas inesperadas, y cada decisión tiene un costo y una latencia asociados. Seis preguntas llegan a ese criterio mejor que cualquier otra cosa que haya probado.
+
+## 1. ¿Define el Éxito Antes de Construir?
+
+La señal más fuerte que conozco: cuando describes una función, ¿el candidato pregunta cómo sabrás que funciona?
+
+Una respuesta débil a "construye una función que resuma tickets de soporte" va directo al prompt. Una respuesta fuerte empieza por algo así: "¿Qué hace que un resumen sea bueno para quien lo lee? ¿Puedo ver veinte tickets reales y cómo se ve un buen resumen para cada uno? ¿Qué es lo peor que un resumen podría equivocar?"
+
+Eso es pensar en evaluaciones, y es la habilidad central. He escrito que [el conjunto de evaluación es la especificación](/es/blog/eval-set-is-the-spec): para una función con LLM, un conjunto de entradas reales con su comportamiento esperado define qué significa correcto con más precisión que cualquier documento de producto. Un ingeniero que construye eso primero puede mejorar la función de forma sistemática. Un ingeniero que se lo salta solo puede cambiar cosas y cruzar los dedos.
+
+Buena pregunta para indagar: *"Cambias el prompt y la salida se ve mejor en los tres ejemplos que probaste. ¿Lo envías?"* Quieres escuchar alguna versión de "no hasta correrlo contra un conjunto más amplio y revisar qué empeoró."
+
+<Callout type="tip" title="La mejor pregunta es la que te hacen a ti">
+En los primeros cinco minutos de un candidato fuerte frente a un problema, al menos una pregunta es sobre medición: cómo se ve lo bueno, cuál es la peor falla, qué ejemplos ya tienes. Si nunca pregunta, va a construir la función a puro feeling, y te vas a enterar de la calidad por tus clientes.
+</Callout>
+
+## 2. ¿Puede Depurar una Mala Salida de Forma Sistemática?
+
+Todo ingeniero de IA va a vivir este momento: la función produce una mala respuesta, y alguien reenvía una captura de pantalla con tres signos de interrogación.
+
+Hay dos tipos de reacción. La primera es abrir el prompt y empezar a reescribirlo hasta que el caso de la captura se vea bien. Eso a menudo arregla un caso y rompe otros dos que nadie está mirando.
+
+La segunda es tratar la mala salida como cualquier otro bug y acotarla:
+
+```
+se reporta una mala salida
+      │
+      ├─▶ reproducir: ¿misma entrada, misma versión de prompt, mismo modelo?
+      │
+      ├─▶ inspeccionar lo que el modelo realmente vio
+      │     ¿contexto recuperado correcto?  ¿resultados de herramientas correctos?
+      │     ¿entrada truncada?  ¿se pasaron datos equivocados?
+      │
+      ├─▶ clasificar la falla
+      │     recuperación / instrucciones / formato / límite del modelo / datos malos
+      │
+      ├─▶ agregar el caso al conjunto de evaluación
+      │
+      └─▶ arreglar en la capa correcta, volver a correr todo el conjunto
+```
+
+El paso que la mayoría se salta es "inspeccionar lo que el modelo realmente vio." En mi experiencia, una buena parte de las malas respuestas no son culpa del modelo para nada. La recuperación trajo el documento equivocado. Una fecha se serializó en un formato raro. Un campo estaba vacío. El modelo hizo un trabajo razonable con basura de entrada.
+
+Así que una buena jugada en la entrevista es mostrarle al candidato una mala salida, junto con una traza de lo que entró, y preguntarle qué revisaría primero. La respuesta que empieza por la traza es la que quieres.
+
+## 3. ¿Puede Razonar Sobre Costo y Latencia?
+
+Un demo no tiene factura. Producción sí.
+
+Quiero a alguien que pregunte de forma natural con qué frecuencia corre una función, qué tan grandes son las entradas y qué tan rápido necesita la respuesta el usuario. No alguien que recite precios de memoria, porque cambian constantemente, sino alguien que conoce la forma de los trade-offs:
+
+- Los modelos más grandes suelen ser más lentos y más caros. ¿Necesitas uno para cada request, o solo para los difíciles?
+- El contexto largo cuesta dinero y tiempo en cada llamada. ¿Puedes recuperar menos, o cachear las partes que se repiten?
+- El streaming cambia qué tan rápido algo *se siente*, aunque el tiempo total sea el mismo.
+- Una política de reintentos puede duplicar tu gasto sin que lo notes si las fallas son comunes.
+
+Buena pregunta para indagar: *"Esta función funciona, pero el costo mensual es el triple de lo que esperaba finanzas. Explícame qué mirarías."* Un candidato fuerte pide datos antes de proponer arreglos: qué llamadas son caras, cuáles son frecuentes, qué fracción realmente tiene éxito. Uno débil dice "cambia a un modelo más barato" y se queda ahí.
+
+## 4. ¿Sabe Cuándo No Usar un LLM?
+
+Esta está subestimada, y es la que más dinero les ahorra a las empresas.
+
+Una cantidad sorprendente de "funciones de IA" propuestas son en realidad una consulta a la base de datos, una regla o una expresión regular disfrazadas. Escribí un post completo sobre esto, [cuando la respuesta es una consulta SQL](/es/blog/when-the-answer-is-a-sql-query), porque sale constantemente. Un buen ingeniero de IA es la persona en la sala más dispuesta a decir "no necesitamos un modelo para esta parte."
+
+Buena pregunta para indagar: *"Los usuarios quieren hacer preguntas como '¿cuántos pedidos enviamos la semana pasada?' ¿Cómo lo construirías?"* Un candidato que salta directo a mandarle toda la tabla de pedidos a un modelo es una preocupación. Un candidato que sugiere dejar que el modelo traduzca la pregunta a una consulta estructurada y que código ordinario haga el conteo está mostrando exactamente el criterio que quieres.
+
+<Callout type="warning" title="Entusiasmo no es lo mismo que criterio">
+Ten cuidado con el candidato que quiere usar un LLM para todo lo que mencionas. En una entrevista se siente como pasión. En producción se ve como una versión más lenta, más cara y menos predecible de funciones que podrían haber sido código ordinario.
+</Callout>
+
+## 5. ¿Diseña para la Falla y el Traspaso?
+
+Los modelos se van a equivocar. La pregunta es qué hace el producto cuando pasa.
+
+En el trabajo que más me importa, como un asistente para la UCIN construido alrededor de revisión con humano en el ciclo, esto no es un caso borde. Es el diseño. El modelo redacta, una persona decide. El modelo dice "no estoy seguro" en lugar de adivinar. Cuando la confianza es baja o hay mucho en juego, el sistema le pasa el caso a una persona de forma limpia, con contexto, en lugar de forzar una respuesta.
+
+Los candidatos fuertes sacan esto sin que se lo pidas. Cuando describen una función, escuchas cosas como:
+
+- "Si la salida del modelo no coincide con el esquema, reintentamos una vez, y luego pasamos a..."
+- "Cualquier cosa que involucre dinero o decisiones médicas va a una persona para confirmar."
+- "El usuario siempre puede ver de dónde salió la respuesta y corregirla."
+- "Si el proveedor se cae, la función se degrada a la versión sin IA, no rompe la página."
+
+Buena pregunta para indagar: *"Tu función le da una respuesta equivocada a un cliente importante. ¿Qué debió haber en el diseño para que se atrapara, o para que el daño fuera pequeño?"* Estás escuchando por barandas, alternativas y revisión humana, no por "usar un mejor modelo."
+
+## 6. ¿Puede Explicárselo a Alguien No Técnico?
+
+En la mayoría de las empresas, sobre todo las pequeñas, el ingeniero de IA es el traductor. Fundadores, ventas, soporte y clientes van a preguntar alguna versión de "¿la IA puede hacer esto?" y "¿por qué hizo eso?"
+
+Escribí sobre [ser el único ingeniero de IA en la sala](/es/blog/only-ai-engineer-in-the-room), y la parte más difícil nunca fue el trabajo técnico. Fue explicar, con honestidad, qué podía y qué no podía hacer un modelo, sin sobrevenderlo ni asustar a todos. "Va a acertar la mayoría de las veces, así es como atrapamos las veces que no, y esto es lo que cuesta" es una oración que un buen ingeniero de IA puede decirle con comodidad a un CEO.
+
+Buena pregunta para indagar: *"Explícame, como si yo fuera un cliente, por qué el asistente a veces da una respuesta distinta a la misma pregunta."* Quieres lenguaje sencillo, un ejemplo concreto y nada de actitud defensiva.
+
+## El Ejercicio: Arregla una Función Inestable
+
+Seis rondas de entrevista separadas para seis habilidades es demasiado. La buena noticia es que un solo ejercicio realista muestra casi todas a la vez.
+
+Este es el formato que me gusta. Dale al candidato un repositorio pequeño con una función de LLM que funciona a veces. Por ejemplo, una función que extrae campos estructurados de correos de clientes: el número de pedido, el tipo de solicitud y si es urgente. Incluye un conjunto de evaluación diminuto, quizás diez o quince casos, con algunos que fallan actualmente.
+
+```python
+# feature.py — punto de partida con fallas a propósito
+def classify_email(email: str) -> dict:
+    prompt = f"Read this email and tell me the order number, request type, and urgency.\n\n{email}"
+    response = call_model(prompt)          # texto libre, sin esquema
+    return parse_loosely(response)         # regex sobre prosa, frágil
+```
+
+```python
+# evals/cases.py — un conjunto de evaluación diminuto, algunos casos fallan hoy
+CASES = [
+    {"id": "basic-refund", "email": "Order 48213, I want a refund.",
+     "expect": {"order_id": "48213", "type": "refund", "urgent": False}},
+    {"id": "no-order-number", "email": "Where is my package??",
+     "expect": {"order_id": None, "type": "shipping", "urgent": False}},
+    {"id": "urgent-wrong-item", "email": "Got the wrong medication in order 7720, need it today.",
+     "expect": {"order_id": "7720", "type": "wrong_item", "urgent": True}},
+    {"id": "two-numbers", "email": "Re: order 1004 (replaced by 1019), still nothing.",
+     "expect": {"order_id": "1019", "type": "shipping", "urgent": False}},
+]
+```
+
+Las instrucciones son cortas:
+
+1. Corre las evaluaciones y dinos qué falla y por qué.
+2. Mejora la función. Puedes cambiar lo que quieras.
+3. Agrega al menos tres casos de evaluación que creas que faltan.
+4. Escribe una nota corta para un product manager no técnico: qué cambiaste, qué sigue fallando y qué harías después.
+
+Limítalo a dos o tres horas si es para la casa, o córrelo como una sesión de pairing de noventa minutos. Luego dedica la conversación de seguimiento a sus decisiones, no a si todo pasa.
+
+Esto es lo que revela cada parte del ejercicio:
+
+```
+paso del ejercicio                  habilidad que revela
+─────────────────────────────       ─────────────────────────────────
+correr evals, explicar fallas       depurar de forma sistemática
+cambiar el código                   salidas estructuradas, alternativas,
+                                    parseo determinista donde se pueda
+agregar casos faltantes             definir el éxito, pensar adversarialmente
+la ambigüedad de "urgente"          diseñar para la falla y revisión humana
+la nota para el PM                  explicar a personas no técnicas
+la conversación de seguimiento      razonar sobre costo, latencia y trade-offs
+```
+
+Las mejores entregas que he visto comparten algunos rasgos. Mueven la salida a un esquema en lugar de parsear prosa. Extraen el número de pedido con código simple cuando obviamente está ahí, y usan el modelo solo para las partes difusas. Agregan casos para entradas desordenadas, como dos números de pedido, otro idioma, o un correo enojado sin detalles. Y la nota al PM es honesta sobre lo que sigue fallando.
+
+Las entregas más débiles hacen pasar todas las evaluaciones ajustando el prompt a la redacción exacta de los casos de prueba, y no agregan casos nuevos. Esa es la versión de entrevista de enseñar para el examen, y es exactamente lo que le va a pasar después a tus evaluaciones de producción.
+
+<Callout type="info" title="Califica el proceso, no la tasa de aprobación">
+Un candidato que logra doce de quince pasando y explica con claridad las tres fallas restantes suele ser más fuerte que uno que logra quince de quince sobreajustando. Pregúntale qué se rompería primero en producción. La respuesta te dice si entiende su propio trabajo.
+</Callout>
+
+## Señales Verdes y Señales Rojas
+
+Una referencia rápida para la reunión de evaluación después de la entrevista:
+
+```
+señales verdes                             señales rojas
+─────────────────────────────────          ─────────────────────────────────
+pregunta cómo se medirá el éxito           va directo a la redacción del prompt
+mira primero entradas y trazas             reescribe el prompt hasta que se vea ok
+dice "no necesitamos un modelo aquí"       quiere un LLM para cada sub-paso
+menciona costo y latencia sin que pidas    nunca menciona el costo
+diseña alternativas y traspaso a humanos   "un mejor modelo lo arreglará"
+habla de fallas que envió a producción     solo describe demos exitosos
+explica trade-offs en lenguaje sencillo    se esconde detrás de jerga y modelos
+agrega casos para entradas desordenadas    pasa las pruebas sobreajustando
+```
+
+## Si Tú Eres el Candidato
+
+Si estás entrevistando para roles de IA y la entrevista es puro trivia y acertijos, igual puedes mostrar criterio. Cuando te toque una pregunta de diseño, empieza preguntando cómo se va a medir el éxito. Cuando hables de trabajo pasado, habla de cómo lo evaluaste y qué salió mal. Cuando alguien te pregunte cómo usarías IA para algo, está bien decir que una parte debería ser código ordinario, y explicar por qué.
+
+Y prepara una historia honesta de falla: un cambio de prompt que rompió algo, una sorpresa de costo, una función en la que los usuarios no confiaban. Todos los que han enviado funciones de IA reales tienen una. Recorre qué notaste, qué hiciste y qué cambiaste después. Esa historia cae mejor con entrevistadores atentos que cualquier derivación en la pizarra.
+
+## El Hilo
+
+Si tuviera que comprimir esto en una oración: **contrata al ingeniero de IA que pregunta cómo sabrás que funciona, no al que puede recitar cómo funciona el modelo.**
+
+Conocer las tripas del modelo es un plus. El criterio es el trabajo: definir el éxito, depurar con calma, respetar el costo, decirle que no al modelo cuando el código es mejor, diseñar para las veces que se equivoca, y explicarlo todo a las personas que tienen que vivir con ello. Un ejercicio pequeño y realista muestra ese criterio en un par de horas. Una ronda de acertijos nunca lo hará.
+
+---
+
+*Si estás contratando para trabajo de IA y quieres una segunda opinión sobre tu proceso de entrevistas o tu ejercicio, [contáctame](/contact). Además, ahora mismo estoy abierto a nuevos roles y consultoría, así que si tu equipo necesita a alguien que pregunte primero por el conjunto de evaluación, con gusto conversamos.*

@@ -1,0 +1,236 @@
+---
+title: "Cost per Successful Task: The Only LLM Cost Metric Finance Actually Cares About"
+description: "Tokens per call and cost per request are easy to measure and almost useless for decisions. The number finance and product actually care about is cost per successful task: everything you spent, including retries, tool calls, failed attempts, and human review time, divided by the tasks that were actually completed correctly. Why a cheaper model can cost more per success, how to instrument it with task IDs and outcome signals, and how I use it to decide model choice, caching, and when to stop automating."
+date: 2026-11-11
+published: true
+category: "AI Product"
+tags: ["AI Product", "Unit Economics", "LLM Cost", "Observability", "Metrics"]
+author: "Osvaldo Restrepo"
+tldr: "Cost per request measures how cheaply you can ask. Cost per successful task measures how cheaply you can get the job done, and that is the only one that maps to money. The numerator is everything a task consumed: every model call, retry, fallback, tool call, judge call, and every minute a human spent reviewing or fixing the output. The denominator is tasks completed correctly, by a definition you write down before you look at the numbers. With that metric, a model that is four times cheaper per call can easily be four times more expensive per success, because retries and human cleanup dominate the bill. Instrumenting it takes one idea: a task ID that spans every call and every human touch, plus an outcome event recorded when you know whether it worked. Once you have it, model choice, caching, and the decision to stop automating a workflow become arithmetic instead of arguments."
+faqs:
+  - question: "What is cost per successful task for an LLM feature?"
+    answer: "It is the total cost of a unit of work divided by the number of those units that were completed correctly. Total cost includes every model call the task made (including retries and fallbacks), tool and API calls, evaluation or judge calls, and the human time spent reviewing or fixing the output, priced at a loaded hourly rate. Successful means the task met a written definition of correct, measured by a signal like the user accepting the output without edits or a downstream check passing. It is the number that tells you what one finished job actually costs."
+  - question: "Why can a cheaper model end up costing more?"
+    answer: "Because the price per call is only one term. A cheaper model that fails more often triggers more retries, more validation failures, more fallback calls to a bigger model, and, most expensively, more human review and correction. Human minutes usually cost far more than tokens, so even a modest drop in first-pass success can wipe out a large saving on the model bill. You only see this if your metric includes the retries and the human time and divides by successes rather than requests."
+  - question: "How do I start measuring cost per successful task without a big observability project?"
+    answer: "Pick one workflow. Generate a task ID when the unit of work starts and pass it to every model call, tool call, and review screen that touches it. Log one row per cost event with the task ID and its dollar cost or seconds of human time. Record an outcome event when you know whether the task succeeded. Then a single SQL query over that table gives you cost per success by model, prompt version, or task type. You can do the first version in a day and refine the success definition over the following weeks."
+relatedPosts: ["daily-prompt-audit-llm-cost-control", "pricing-ai-features-usage-costs", "designing-llm-retry-fallbacks"]
+---
+
+A while ago I switched the transaction categorizer in BudgetCopilot, my personal finance agent, to a smaller, cheaper model. The bigger model felt like overkill for deciding whether a charge was "groceries" or "dining out," and the cost dashboard agreed with me. The line went down. I felt clever for about two weeks.
+
+Then I noticed something about my evenings. I was spending more of them fixing categories. A pharmacy charge filed under groceries. A transfer to savings filed as an expense. The structured output failing validation and quietly retrying, sometimes twice, before falling back to the bigger model anyway. None of that showed up on the dashboard I was proud of, because the dashboard measured cost per request, and every individual request really was cheaper.
+
+What had actually happened is that I had made each attempt cheaper and each finished job more expensive. I just was not measuring finished jobs.
+
+That is the whole argument of this post. Tokens per call and cost per request are the wrong unit. The unit that finance and product actually care about is **cost per successful task**.
+
+## The Unit Is Wrong
+
+Most LLM cost tracking starts where the provider's invoice starts: tokens. Tokens per call, cost per request, cost per day. Those numbers are easy to get, they are useful for catching bloat (I wrote a whole post about a [daily five-minute prompt audit](/blog/daily-prompt-audit-llm-cost-control) built on them), and they answer the wrong question for almost every decision that matters.
+
+Nobody in finance wants to buy requests. Nobody in product ships requests. They buy and ship *outcomes*: an invoice extracted correctly, a support ticket resolved, a transaction categorized right, a document summarized well enough that nobody had to reread the original.
+
+```
+what the invoice counts        what the business buys
+─────────────────────────      ──────────────────────────
+tokens                         a correct extraction
+requests                       a resolved ticket
+cost per call                  a categorized transaction
+cost per day                   a summary nobody had to redo
+```
+
+A request is an attempt. A task is the job. One task can take one request or nine. It can take zero human minutes or fifteen. It can end correct, wrong-and-caught, or wrong-and-shipped. Cost per request averages all of that away.
+
+<Callout type="info" title="Requests are attempts, tasks are jobs">
+Cost per request tells you how cheaply you can ask. Cost per successful task tells you how cheaply you can get the job done. Only the second one maps to money the business recognizes.
+</Callout>
+
+## What Goes in the Numerator
+
+The numerator is everything the task consumed, from the moment the unit of work started until you know whether it worked. In practice, that list is longer than people expect:
+
+- **Every model call**, not just the "main" one. Planning steps, extraction, the final answer.
+- **Retries.** Validation failures, timeouts, rate-limit retries. If you built the kind of retry and fallback ladder I described in [designing LLM retry fallbacks](/blog/designing-llm-retry-fallbacks), every rung costs money, and the rungs get climbed more often than you think.
+- **Fallbacks.** The call to the bigger model after the small one failed. This one is sneaky, because it often gets attributed to the bigger model's budget instead of the task that caused it.
+- **Tool and API calls** with a real price: search, OCR, enrichment, a paid lookup.
+- **Judge and guardrail calls.** If an LLM grades or screens the output in production, that is part of the task's cost.
+- **Human time.** Review, correction, escalation handling, and the user redoing the work themselves. Priced at a loaded hourly rate, not zero.
+
+That last item is the one teams leave out, and it is almost always the biggest. A minute of a person's attention costs more than a lot of tokens. If your cost metric ignores human time, it is measuring the cheap part of the system very precisely and ignoring the expensive part completely.
+
+<Callout type="warning" title="Human minutes are the expensive tokens">
+If a reviewer spends three minutes fixing an output, that correction probably cost more than every model call the task made, combined. A cost metric that leaves human time out will consistently recommend the option that pushes more work onto people.
+</Callout>
+
+## What Goes in the Denominator
+
+The denominator is tasks completed correctly. The hard part is "correctly," and the rule I follow is simple: **write down the success definition before you look at the numbers.** Otherwise you will find yourself, very sincerely, adjusting the definition until the cheaper option wins.
+
+Good success signals are observable and boring:
+
+- The user **accepted the output without editing it**, or edited it below some small threshold.
+- A **downstream check passed**: the extracted total matches the line items, the booking exists in the calendar, the categorized amounts reconcile.
+- The user **did not redo the task** within some window: no reopened ticket, no manual recategorization, no second request for the same thing.
+- A **sampled human audit** marked it correct, for the cases where nothing else is observable.
+
+Two details matter more than they seem.
+
+First, outcomes are delayed. You often do not know a task failed until the user comes back to fix it a day later. So the metric needs an **outcome window**: only count tasks old enough that their outcome has had time to show up. Otherwise the freshest tasks always look perfect, because nobody has complained yet.
+
+Second, decide what a human-rescued task is. My default: if a human fixed it and the final result was correct, it counts as a success, and the human's time goes in the numerator. The job got done; it just cost more. Tasks that ended wrong and shipped anyway count as failures, and in a serious analysis, they carry the cost of cleaning them up later.
+
+## How a "Cheaper" Model Costs More
+
+Here is the BudgetCopilot lesson in numbers. These are illustrative, chosen to show proportions, not prices from any real provider. Imagine 1,000 extraction tasks, reviewers priced at $45 an hour, and two models:
+
+```
+                                large model      small model
+──────────────────────────────  ─────────────    ─────────────
+cost per call                   $0.012           $0.003
+avg calls per task              1.4              2.3   (retries,
+                                                        fallbacks)
+model spend                     $16.80           $6.90
+
+correct on first pass           920              740
+caught + fixed by a human       60  (3 min)      200 (4 min)
+wrong and shipped               20               60
+human cost                      $135.00          $600.00
+
+total cost                      $151.80          $606.90
+successful tasks                980              940
+──────────────────────────────  ─────────────    ─────────────
+cost per request                $0.012           $0.003   ◄ 4x cheaper
+cost per successful task        $0.155           $0.646   ◄ 4x more expensive
+```
+
+Same workflow, same thousand tasks, and the ranking flips depending on the unit.
+
+Look at what happens if you leave human time out: the small model costs $6.90 for 740 automated successes, under a cent each, and wins comfortably. That is exactly why you cannot leave human time out. The "savings" did not disappear. They moved onto a reviewer's afternoon, and onto the sixty wrong answers that nobody caught.
+
+This is not an argument that bigger models always win. Plenty of times the small model's first-pass success is close enough that it wins on every unit, and you should use it. The argument is that you cannot tell which case you are in from the cost per request. You can only tell from the cost per success.
+
+## Instrumenting It: One ID That Follows the Job
+
+The entire instrumentation comes down to one idea: **a task ID that spans every call and every human touch.** Requests are already logged. What is missing is the thread tying them to the job they belonged to.
+
+In TypeScript on Node, I use `AsyncLocalStorage` so the task ID follows the work without being passed through every function by hand:
+
+```typescript
+import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
+
+type TaskContext = { taskId: string; taskType: string; variant: string };
+const taskStore = new AsyncLocalStorage<TaskContext>();
+
+type CostEvent =
+  | { kind: "llm_call"; model: string; attempt: number; usd: number }
+  | { kind: "tool_call"; tool: string; usd: number }
+  | { kind: "human_review"; seconds: number }
+  | { kind: "outcome"; status: "success" | "failed"; signal: string };
+
+export async function runTask<T>(
+  taskType: string,
+  variant: string, // e.g. "small-model/prompt-v7"
+  work: () => Promise<T>
+): Promise<{ taskId: string; result: T }> {
+  const ctx = { taskId: randomUUID(), taskType, variant };
+  await db.insert("tasks", { ...ctx, startedAt: new Date() });
+  const result = await taskStore.run(ctx, work);
+  return { taskId: ctx.taskId, result };
+}
+
+export async function recordCost(event: CostEvent, taskId?: string) {
+  const id = taskId ?? taskStore.getStore()?.taskId;
+  if (!id) throw new Error("cost event outside a task"); // fail loudly
+  await db.insert("cost_events", { taskId: id, recordedAt: new Date(), ...event });
+}
+```
+
+Every model call wrapper calls `recordCost` with the dollar cost computed from the usage the provider returns, including the attempt number. Every tool with a price does the same. The two events people forget are the last two:
+
+- **Human review.** The review screen gets the task ID in its URL and records seconds spent when the reviewer saves. This is the most valuable row in the table.
+- **Outcome.** Recorded later, often by a different process: the user accepted without edits, a reconciliation job passed, a recategorization happened. That is why `recordCost` accepts an explicit task ID; by then you are outside the original context.
+
+Then one query turns the event log into the metric. This is Postgres-flavored, and the important line is the outcome window at the bottom:
+
+```sql
+WITH task_cost AS (
+  SELECT task_id,
+         SUM(usd) FILTER (WHERE kind IN ('llm_call', 'tool_call')) AS machine_usd,
+         SUM(seconds) FILTER (WHERE kind = 'human_review') / 3600.0 * 45 AS human_usd
+  FROM cost_events
+  GROUP BY task_id
+),
+final_outcome AS (
+  SELECT DISTINCT ON (task_id) task_id, status
+  FROM cost_events
+  WHERE kind = 'outcome'
+  ORDER BY task_id, recorded_at DESC
+)
+SELECT t.task_type,
+       t.variant,
+       COUNT(*)                                            AS tasks,
+       COUNT(*) FILTER (WHERE o.status = 'success')        AS successes,
+       ROUND(SUM(COALESCE(c.machine_usd, 0) + COALESCE(c.human_usd, 0))
+             / NULLIF(COUNT(*) FILTER (WHERE o.status = 'success'), 0), 4)
+                                                           AS cost_per_success
+FROM tasks t
+LEFT JOIN task_cost c     ON c.task_id = t.task_id
+LEFT JOIN final_outcome o ON o.task_id = t.task_id
+WHERE t.started_at >= now() - interval '14 days'
+  AND t.started_at <  now() - interval '3 days'  -- outcome window
+GROUP BY t.task_type, t.variant
+ORDER BY cost_per_success DESC;
+```
+
+Tasks with no outcome event count in the cost but not in the successes. That is deliberate. A task whose result nobody can confirm is not a success; it is an unknown, and unknowns should make the number look worse, not better, until you find a signal for them.
+
+<Callout type="tip" title="Tag the variant on the task, not just the call">
+Put the model and prompt version on the task row. A task that starts on the small model and falls back to the large one should still be attributed to the small-model variant, because that choice is what caused the fallback.
+</Callout>
+
+## Using It: Three Decisions That Become Arithmetic
+
+Once cost per success exists, a lot of arguments in planning meetings turn into lookups.
+
+### 1. Model choice
+
+Run the candidate model as a variant on a slice of traffic, the same way you would roll out a prompt change, and compare cost per success, not cost per request. The question stops being "is the small model good enough?", which is a matter of taste, and becomes "does the small model's cost per success beat the large one's on this task type?", which is a matter of a query.
+
+It also makes the answer task-specific, which is the honest answer. In BudgetCopilot, the small model wins easily on the clean, repetitive merchant names and loses badly on the ambiguous ones. Cost per success by task type is what told me to route between them rather than pick one, which is a topic for its own post.
+
+### 2. Caching
+
+Caching is usually justified by cost per request, and it does lower that. But the useful question is what it does to cost per success. Prompt caching that cuts input cost on a long system prompt is pure win: same outputs, cheaper attempts. Response caching is different. Serve a cached answer to a question that only looks similar, and you have saved a call and bought a wrong answer, plus whatever it costs a human to notice. Measure the cached path as its own variant. If its success rate holds, keep it. If it drops, the cache is shifting cost onto people again.
+
+### 3. When to stop automating
+
+This is the one that surprised me most. Sometimes the cost per success of the automated path is higher than just having a person do the task from the start, because the human ends up reviewing and fixing so many outputs that the model is mostly adding a step.
+
+```
+fully manual                 automated + review
+───────────────────          ─────────────────────────────────
+human does task:   5 min     model attempts:        $0.01
+                             human reviews:         3 min
+                             human fixes 40%:       +4 min each
+cost per success:  $3.75     cost per success:      ~$3.46
+
+(illustrative, reviewer time at $45/hour)
+```
+
+When that number comes close to the manual baseline, and is not falling as you improve the prompt, it is a signal to stop. Narrow the automation to the slice where success is high, send the rest straight to a person, and stop paying for an attempt whose main output is review work. That is not giving up on AI. It is using it where the arithmetic says it helps.
+
+## Where This Meets Pricing
+
+I wrote earlier about [pricing AI features when every call costs money](/blog/pricing-ai-features-usage-costs). That post is about what you charge. This one is about what you actually spend to deliver what you charged for. They connect in one place: if you price per outcome, which I generally recommend, then cost per successful task is your real cost of goods sold. Your margin is the price of an outcome minus the cost of producing one successfully, including the failures you paid for along the way. Pricing from cost per request will make your margin look better than it is, right up until the quarterly numbers arrive.
+
+## The Throughline
+
+If I had to compress this into one sentence: **stop measuring how cheaply you can ask, and start measuring how cheaply you can get the job done, including every retry and every human minute.**
+
+Give each unit of work an ID that follows it everywhere. Write down what success means before you look. Put human time in the numerator, because it is usually the biggest term. Then let that number decide the model, the cache, and where automation stops. My cheaper categorizer taught me that a falling cost dashboard can describe a system that is getting more expensive. The fix was not a better model. It was a better unit.
+
+---
+
+*If your LLM costs look fine per request but nobody can say what a finished task actually costs, [reach out](/contact). I am currently taking on a few consulting engagements, and setting up task-level cost tracking for one workflow is a good, small place to start.*

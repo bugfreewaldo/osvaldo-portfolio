@@ -1,0 +1,228 @@
+---
+title: "Hiring an AI Engineer: Stop Testing Trivia, Test Judgment"
+description: "Most AI engineer interviews test the wrong things: leetcode puzzles or 'explain how a transformer works' trivia. What actually predicts success is judgment: defining success before building, debugging a bad output systematically, reasoning about cost and latency, knowing when not to use an LLM, designing for failure and human handoff, and explaining it all to non-technical people. A practical exercise, plus green flags and red flags, for hiring managers, founders, and candidates."
+date: 2026-11-17
+published: true
+category: "Career"
+tags: ["Hiring", "AI Engineering", "Interviews", "LLM Evaluation", "Career"]
+author: "Osvaldo Restrepo"
+tldr: "AI engineer interviews usually test what is easy to test: algorithm puzzles, or textbook questions about attention and embeddings. Neither predicts whether someone can ship an LLM feature that works on a Tuesday afternoon with real users. Having been the only AI engineer in the room and also on the other side of the table, I look for six things instead: do they define success before building, can they debug a bad output systematically instead of rewording the prompt until it looks fine, can they reason about cost and latency, do they know when not to use a model, do they design for failure and handoff to a human, and can they explain the trade-offs to someone non-technical. The best way to see all six at once is a small, realistic exercise: give the candidate a flaky LLM feature and a tiny eval set, and watch how they make it better. Their process tells you more than any trivia answer."
+faqs:
+  - question: "Should AI engineer interviews include any coding at all?"
+    answer: "Yes, but realistic coding. An AI engineer still writes production software: API handlers, data plumbing, retries, tests. What I drop is the puzzle-style algorithm round, because it measures preparation for puzzles. A short exercise where the candidate reads an existing small codebase, adds an eval, and changes some real code tells you far more about whether they can do the job."
+  - question: "Is a take-home or a live pairing session better for this?"
+    answer: "Either works if it is short and scoped. A take-home capped at two or three hours gives quieter candidates room to think, and the follow-up conversation about their choices is where most of the signal is. A ninety-minute pairing session shows how they reason out loud and react to new information. What matters is that the exercise looks like the job: a flawed feature, a small eval set, and room for judgment."
+  - question: "How do I evaluate an AI engineer candidate if I am not technical myself?"
+    answer: "Ask them to explain a past AI feature to you as if you were the customer: what it did, how they knew it worked, what it got wrong, and what happened when it failed. Strong candidates answer in concrete terms, mention how they measured quality, and talk about failure without being defensive. If the explanation is full of model names and buzzwords but has no mention of how success was measured or what happened when it broke, that is a signal regardless of your technical background."
+relatedPosts: ["eval-set-is-the-spec", "when-the-answer-is-a-sql-query", "only-ai-engineer-in-the-room"]
+---
+
+Some time ago I sat in an interview for an AI role and was asked to explain, from memory, how multi-head attention works. I gave a decent answer. I drew the query, key, and value matrices on a shared whiteboard. The interviewer nodded. Then I got a dynamic programming puzzle, solved it slowly, and we ran out of time.
+
+Nobody asked me what I would do if the feature I built started giving confident wrong answers to customers. Nobody asked how I would know whether a prompt change made things better or worse. Nobody asked what I would do if the monthly model bill doubled.
+
+Those are the questions that filled my actual weeks. I have spent a lot of time as the only AI engineer in the room, and more recently I have been on the other side of the table, helping teams figure out who to hire for AI work. The pattern I keep seeing is that we test what is easy to test, not what predicts success.
+
+This post is for hiring managers and founders who need an AI engineer and are not sure what to look for. It is also for candidates: if you know what a good interview should test, you can show it even when nobody asks.
+
+## What Most Interviews Test, and What the Job Actually Is
+
+Here is the gap, as plainly as I can draw it:
+
+```
+what interviews often test           what the job actually needs
+─────────────────────────────        ─────────────────────────────────
+algorithm puzzles                    reading and changing real code
+"explain attention" trivia           deciding if an output is good enough
+naming the latest models             picking a model for cost and latency
+building a demo that works once      building a feature that works daily
+"how would you use AI for X?"        "should we use AI for X at all?"
+talking to other engineers           explaining trade-offs to a founder
+```
+
+Trivia is not useless; understanding the internals helps with debugging. But knowing how attention works is like knowing how an engine works: helpful, and not the same as driving in traffic.
+
+The job is mostly judgment under uncertainty. The model is non-deterministic, the requirements are fuzzy, users do unexpected things, and every decision has a cost and latency attached. Six questions get at that judgment better than anything else I have tried.
+
+## 1. Do They Define Success Before Building?
+
+The single strongest signal I know: when you describe a feature, does the candidate ask how you will know it works?
+
+A weak answer to "build a feature that summarizes support tickets" goes straight to the prompt. A strong answer starts somewhere like this: "What makes a summary good for the person reading it? Can I see twenty real tickets and what a good summary looks like for each? What is the worst thing a summary could get wrong?"
+
+That is eval thinking, and it is the core skill. I have written that [the eval set is the spec](/blog/eval-set-is-the-spec): for an LLM feature, a set of real inputs with expected behavior defines what correct means more precisely than any product doc. An engineer who builds that first can improve the feature systematically. An engineer who skips it can only change things and hope.
+
+Good probing question: *"You change the prompt and the output looks better on the three examples you tried. Do you ship it?"* You want to hear some version of "not until I have run it against a broader set and checked what got worse."
+
+<Callout type="tip" title="The best question is the one they ask you">
+In a strong candidate's first five minutes on a problem, at least one question is about measurement: what good looks like, what the worst failure is, which examples you already have. If they never ask, they will build the feature on vibes, and you will find out about quality from your customers.
+</Callout>
+
+## 2. Can They Debug a Bad Output Systematically?
+
+Every AI engineer will face this moment: the feature produces a bad answer, and someone forwards a screenshot with three question marks.
+
+There are two kinds of responses. The first is to open the prompt and start rewording it until the screenshot case looks right. That often fixes one case and breaks two others nobody is looking at.
+
+The second is to treat the bad output like any other bug and narrow it down:
+
+```
+bad output reported
+      │
+      ├─▶ reproduce: same input, same prompt version, same model?
+      │
+      ├─▶ inspect what the model actually saw
+      │     retrieved context correct?  tool results correct?
+      │     input truncated?  wrong data passed in?
+      │
+      ├─▶ classify the failure
+      │     retrieval / instructions / formatting / model limit / bad data
+      │
+      ├─▶ add the case to the eval set
+      │
+      └─▶ fix at the right layer, rerun the whole set
+```
+
+The step most people skip is "inspect what the model actually saw." In my experience a large share of bad answers are not the model's fault at all. The retrieval returned the wrong document. A date got serialized in a weird format. A field was empty. The model did a reasonable job with garbage input.
+
+So a good interview move is to show the candidate a bad output, along with a trace of what went into it, and ask what they would check first. The answer that starts with the trace is the answer you want.
+
+## 3. Can They Reason About Cost and Latency?
+
+A demo does not have a bill. Production does.
+
+I want someone who naturally asks how often a feature runs, how big the inputs are, and how fast the user needs an answer. Not someone who quotes prices from memory, since those change constantly, but someone who knows the shape of the trade-offs:
+
+- Bigger models are usually slower and more expensive. Do you need one for every request, or only for the hard ones?
+- Long context costs money and time on every call. Can you retrieve less, or cache the parts that repeat?
+- Streaming changes how fast something *feels*, even when total time is the same.
+- A retry policy can quietly double your spend if failures are common.
+
+Good probing question: *"This feature works, but the monthly cost is three times what finance expected. Walk me through what you would look at."* A strong candidate asks for data before proposing fixes: which calls are expensive, which are frequent, what fraction actually succeed. A weak one says "switch to a cheaper model" and stops there.
+
+## 4. Do They Know When Not to Use an LLM?
+
+This one is underrated, and it is the one that saves companies the most money.
+
+A surprising number of proposed "AI features" are really a database query, a rule, or a regular expression wearing a costume. I wrote a whole post on this, [when the answer is a SQL query](/blog/when-the-answer-is-a-sql-query), because it comes up constantly. A good AI engineer is the person in the room most willing to say "we do not need a model for this part."
+
+Good probing question: *"Users want to ask questions like 'how many orders did we ship last week?' How would you build that?"* A candidate who jumps straight to sending the whole order table to a model is a concern. A candidate who suggests letting the model translate the question into a structured query and letting ordinary code do the counting is showing exactly the judgment you want.
+
+<Callout type="warning" title="Enthusiasm is not the same as judgment">
+Be careful with the candidate who wants to use an LLM for everything you mention. It feels like passion in an interview. In production it looks like a slower, more expensive, less predictable version of features that could have been ordinary code.
+</Callout>
+
+## 5. Do They Design for Failure and Handoff?
+
+Models will be wrong. The question is what the product does when they are.
+
+In the work I care most about, like a NICU assistant built around human-in-the-loop review, this is not an edge case. It is the design. The model drafts, a person decides. The model says "I am not sure" instead of guessing. When confidence is low or the stakes are high, the system hands off to a human cleanly, with context, instead of pushing through.
+
+Strong candidates bring this up without being prompted. When they describe a feature, you hear things like:
+
+- "If the model output does not match the schema, we retry once, then fall back to..."
+- "Anything involving money or medical decisions goes to a person to confirm."
+- "The user can always see where the answer came from and correct it."
+- "If the provider is down, the feature degrades to the non-AI version, it does not break the page."
+
+Good probing question: *"Your feature gives a wrong answer to an important customer. What should have happened in the design so that it was caught, or so the damage was small?"* You are listening for guardrails, fallbacks, and human review, not for "use a better model."
+
+## 6. Can They Explain It to Someone Non-Technical?
+
+In most companies, especially smaller ones, the AI engineer is the translator. Founders, sales, support, and customers will all ask some version of "can AI do this?" and "why did it do that?"
+
+I wrote about [being the only AI engineer in the room](/blog/only-ai-engineer-in-the-room), and the hardest part was never the technical work. It was explaining, honestly, what a model could and could not do, without either overselling it or scaring everyone away. "It will be right most of the time, here is how we catch the times it is not, and here is what it costs" is a sentence a good AI engineer can say comfortably to a CEO.
+
+Good probing question: *"Explain to me, as if I were a customer, why the assistant sometimes gives a different answer to the same question."* You want plain language, a concrete example, and no defensiveness.
+
+## The Exercise: Fix a Flaky Feature
+
+Six separate interview rounds for six skills is too much. The good news is that one realistic exercise shows almost all of them at once.
+
+Here is the format I like. Give the candidate a small repository with an LLM feature that works sometimes. For example, a function that extracts structured fields from customer emails: the order number, the request type, and whether it is urgent. Include a tiny eval set, maybe ten or fifteen cases, with a few that currently fail.
+
+```python
+# feature.py — intentionally flawed starting point
+def classify_email(email: str) -> dict:
+    prompt = f"Read this email and tell me the order number, request type, and urgency.\n\n{email}"
+    response = call_model(prompt)          # free text, no schema
+    return parse_loosely(response)         # regex over prose, fragile
+```
+
+```python
+# evals/cases.py — a tiny eval set, a few cases currently fail
+CASES = [
+    {"id": "basic-refund", "email": "Order 48213, I want a refund.",
+     "expect": {"order_id": "48213", "type": "refund", "urgent": False}},
+    {"id": "no-order-number", "email": "Where is my package??",
+     "expect": {"order_id": None, "type": "shipping", "urgent": False}},
+    {"id": "urgent-wrong-item", "email": "Got the wrong medication in order 7720, need it today.",
+     "expect": {"order_id": "7720", "type": "wrong_item", "urgent": True}},
+    {"id": "two-numbers", "email": "Re: order 1004 (replaced by 1019), still nothing.",
+     "expect": {"order_id": "1019", "type": "shipping", "urgent": False}},
+]
+```
+
+The instructions are short:
+
+1. Run the evals and tell us what is failing and why.
+2. Improve the feature. You can change anything.
+3. Add at least three eval cases you think are missing.
+4. Write a short note for a non-technical product manager: what you changed, what still fails, and what you would do next.
+
+Cap it at two or three hours for a take-home, or run it as a ninety-minute pairing session. Then spend the follow-up conversation on their choices, not on whether everything passes.
+
+Here is what each part of the exercise reveals:
+
+```
+exercise step                       skill it reveals
+─────────────────────────────       ─────────────────────────────────
+run evals, explain failures         debugging systematically
+change the code                     structured outputs, fallbacks,
+                                    deterministic parsing where possible
+add missing cases                   defining success, adversarial thinking
+"urgent" ambiguity                  designing for failure and human review
+the note to the PM                  explaining to non-technical people
+the follow-up conversation          cost, latency, and trade-off reasoning
+```
+
+The best submissions I have seen share a few traits. They move the output to a schema instead of parsing prose. They pull the order number out with plain code when it is obviously there, and use the model only for the fuzzy parts. They add cases for messy inputs, like two order numbers, a different language, or an angry email with no details. And the note to the PM is honest about what still fails.
+
+The weakest submissions make every eval pass by tuning the prompt to the exact wording of the test cases, and add no new cases. That is the interview version of teaching to the test, and it is exactly what will happen to your production evals later.
+
+<Callout type="info" title="Grade the process, not the pass rate">
+A candidate who gets twelve of fifteen passing and clearly explains the three remaining failures is often stronger than one who gets fifteen of fifteen by overfitting. Ask them what would break first in production. The answer tells you whether they understand their own work.
+</Callout>
+
+## Green Flags and Red Flags
+
+A quick reference for the interview debrief:
+
+```
+green flags                              red flags
+─────────────────────────────────        ─────────────────────────────────
+asks how success will be measured        goes straight to prompt wording
+looks at inputs and traces first         rewords the prompt until it looks ok
+says "we don't need a model for this"    wants an LLM for every sub-step
+mentions cost and latency unprompted     never mentions cost at all
+designs fallbacks and human handoff      "a better model will fix it"
+talks about failures they shipped        only describes successful demos
+explains trade-offs in plain language    hides behind jargon and model names
+adds eval cases for messy inputs         makes tests pass by overfitting
+```
+
+## If You Are the Candidate
+
+If you are interviewing for AI roles and the interview is all trivia and puzzles, you can still show judgment. When you get a design question, start by asking how success will be measured. When you talk about past work, talk about how you evaluated it and what went wrong. When someone asks how you would use AI for something, it is fine to say part of it should be ordinary code, and explain why.
+
+And prepare one honest failure story: a prompt change that broke something, a cost surprise, a feature users did not trust. Everyone who has shipped real AI features has one. Walk through what you noticed, what you did, and what you changed afterward. That story lands better with thoughtful interviewers than any whiteboard derivation.
+
+## The Throughline
+
+If I had to compress this into one sentence: **hire the AI engineer who asks how you will know it works, not the one who can recite how the model works.**
+
+Knowledge of the internals is nice to have. Judgment is the job: defining success, debugging calmly, respecting cost, saying no to the model when code is better, designing for the times it is wrong, and explaining all of it to the people who have to live with it. A small, realistic exercise shows that judgment in a couple of hours. A puzzle round never will.
+
+---
+
+*If you are hiring for AI work and want a second opinion on your interview loop or exercise, [reach out](/contact). I am also open to new roles and consulting right now, so if your team needs someone who asks about the eval set first, I would be glad to talk.*
