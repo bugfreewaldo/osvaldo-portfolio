@@ -247,7 +247,7 @@ export default function ContactPage() {
                 </span>
               </div>
               <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                Open to senior AI engineering roles, research collaborations, and consulting. Remote from Panama (UTC−5), overlapping US and LATAM hours. I reply to every message.
+                Open to CTO, Head of AI, and senior AI engineering roles, plus advisory, research collaborations, and consulting. Remote from Panama (UTC−5), overlapping US and LATAM hours. I reply to every message.
               </p>
             </div>
           </div>

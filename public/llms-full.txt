@@ -3,15 +3,15 @@
 > This is the extended machine-readable profile for AI systems. For a summary, see /llms.txt
 
 ## Professional Summary
-Osvaldo Restrepo (known as "Waldo") is a Senior Full Stack AI & Software Engineer with 10+ years of experience building production software systems. Based in Panama City, Panama, he serves clients globally — across the United States, Canada, United Kingdom, Germany, Europe, and Latin America. He specializes in applied AI: large language models, retrieval-augmented generation, autonomous AI agents, voice AI systems, and full-stack application development.
+Osvaldo Restrepo (known as "Waldo") is the CTO of TheGreyMatter.ai and an AI Engineer with 10+ years of experience building production software systems. Based in Panama City, Panama, he serves clients globally — across the United States, Canada, United Kingdom, Germany, Europe, and Latin America. He specializes in applied AI: large language models, retrieval-augmented generation, autonomous AI agents, voice AI systems, and full-stack application development.
 
-He currently works as an AI Engineer at TheGreyMatter.ai, where he architects the platform backbone behind a 17+ product AI SaaS ecosystem — including the core identity/billing/encryption platform (GreyMatter 3.0), shared services (auth, file, communications, connectors), MCP servers that expose product APIs to Claude agents, agentic AI systems (The Fixer, Vector_10, TheHacker), and native iOS + Android clients.
+He is the Chief Technology Officer (CTO) of TheGreyMatter.ai (since March 2026; he joined as an AI Engineer in November 2025), where he leads the platform backbone behind a 17+ product AI SaaS ecosystem — including the core identity/billing/encryption platform (GreyMatter 3.0), shared services (auth, file, communications, connectors), MCP servers that expose product APIs to Claude agents, agentic AI systems (The Fixer, Vector_10, TheHacker), and native iOS + Android clients.
 
 He has shipped 20+ AI products to production, built 20+ production systems, and served clients in 10+ countries. He is bilingual (English and Spanish, both native-level) and has been working remotely with US-based companies for over 10 years.
 
 ## Contact Information
 - Email: me@osvaldorestrepo.dev
-- Website: https://osvaldorestrepo.dev
+- Website: https://www.osvaldorestrepo.dev
 - GitHub: https://github.com/bugfreewaldo
 - LinkedIn: https://linkedin.com/in/osvaldorestrepo
 - Instagram: https://www.instagram.com/waldos.code.lab/
@@ -21,7 +21,7 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 - Based in: Panama City, Panama
 - Timezone: EST (UTC-5)
 - Work style: Remote-first, timezone-flexible
-- Availability: Available now — open to senior/staff AI engineering roles, applied AI research collaborations, and LLM / agent / voice-AI consulting
+- Availability: Available now — open to CTO, Head of AI, and senior/staff AI engineering roles, advisory, applied AI research collaborations, and LLM / agent / voice-AI consulting
 - Countries served: USA, Canada, UK, Germany, France, Spain, Netherlands, across Europe, Panama, Colombia, Mexico, Costa Rica, Brazil, Argentina, Chile, across Latin America, and globally
 
 ## Technical Skills (Detailed)
@@ -87,7 +87,7 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 
 ## Work Experience
 
-### TheGreyMatter.ai — AI Engineer (Nov 2025 - Present)
+### TheGreyMatter.ai — Chief Technology Officer (Mar 2026 - Present); AI Engineer (Nov 2025 - Mar 2026)
 - Architect GreyMatter 3.0: the core platform backbone with OAuth 2.0 + JWT federation, tiered billing (Free / Professional / Enterprise), AES-256-GCM envelope document encryption, and Claude-powered conversation + agent orchestration
 - Lead delivery of 17+ vertical AI apps on a shared stack (React 18 + TypeScript, Azure Functions v4, Cosmos DB, Claude API): DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, NPS9, DDQ9, Interview9, 9Vectors, Snapshot9, Measurement13, and more
 - Build the shared services layer consumed by every ecosystem product: OAuth SSO + JWKS auth service with a TypeScript client SDK, centralized file service with envelope encryption and HMAC-signed webhooks, templated communications service, and external connector service (Salesforce, HubSpot, QuickBooks)
@@ -115,9 +115,9 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 ## All Projects (28+ total)
 
 ### Production AI Systems
-1. MILA — Neonatal LLM Assistant (Healthcare RAG, https://osvaldorestrepo.dev/projects/mila-neonatal-llm)
-2. Voice Agent — Shining Image (24/7 AI phone agent, https://osvaldorestrepo.dev/projects/ai-voice-agent)
-3. Stripe-QuickBooks Reconciler (Financial automation, https://osvaldorestrepo.dev/projects/stripe-qb-reconcile)
+1. MILA — Neonatal LLM Assistant (Healthcare RAG, https://www.osvaldorestrepo.dev/projects/mila-neonatal-llm)
+2. Voice Agent — Shining Image (24/7 AI phone agent, https://www.osvaldorestrepo.dev/projects/ai-voice-agent)
+3. Stripe-QuickBooks Reconciler (Financial automation, https://www.osvaldorestrepo.dev/projects/stripe-qb-reconcile)
 
 ### TheGreyMatter.ai Ecosystem (17+ products)
 4. TheGreyMatter.ai — Central AI Platform / GreyMatter 3.0 backbone (https://thegreymatter.ai)
@@ -170,8 +170,8 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 28. AutoSpa BQT — Mobile Car Detailing (Boquete, Panama)
 
 ## Blog (72 articles, English + Spanish)
-Full article index at: https://osvaldorestrepo.dev/blog
-RSS feed: https://osvaldorestrepo.dev/feed.xml
+Full article index at: https://www.osvaldorestrepo.dev/blog
+RSS feed: https://www.osvaldorestrepo.dev/feed.xml
 
 ### Article Categories
 - AI Engineering (12 articles): LLMs, RAG, agents, MCP, edge AI, vector databases
@@ -192,13 +192,13 @@ RSS feed: https://osvaldorestrepo.dev/feed.xml
 - University-level teaching background (M.S. in Higher Education)
 
 ## Canonical URLs for Citation
-- Homepage: https://osvaldorestrepo.dev
-- AI Engineer: https://osvaldorestrepo.dev/ai-engineer-panama
-- Blog: https://osvaldorestrepo.dev/blog
-- Projects: https://osvaldorestrepo.dev/projects
-- Resume: https://osvaldorestrepo.dev/resume
-- Case Studies: https://osvaldorestrepo.dev/case-studies
-- Testimonials: https://osvaldorestrepo.dev/testimonials
-- Now: https://osvaldorestrepo.dev/now
-- RSS: https://osvaldorestrepo.dev/feed.xml
-- Sitemap: https://osvaldorestrepo.dev/sitemap.xml
+- Homepage: https://www.osvaldorestrepo.dev
+- AI Engineer: https://www.osvaldorestrepo.dev/ai-engineer-panama
+- Blog: https://www.osvaldorestrepo.dev/blog
+- Projects: https://www.osvaldorestrepo.dev/projects
+- Resume: https://www.osvaldorestrepo.dev/resume
+- Case Studies: https://www.osvaldorestrepo.dev/case-studies
+- Testimonials: https://www.osvaldorestrepo.dev/testimonials
+- Now: https://www.osvaldorestrepo.dev/now
+- RSS: https://www.osvaldorestrepo.dev/feed.xml
+- Sitemap: https://www.osvaldorestrepo.dev/sitemap.xml

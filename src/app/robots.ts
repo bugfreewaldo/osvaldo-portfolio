@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 
 export default function robots(): MetadataRoute.Robots {
-  const base = "https://osvaldorestrepo.dev";
+  const base = "https://www.osvaldorestrepo.dev";
 
   return {
     rules: [
@@ -17,6 +17,10 @@ export default function robots(): MetadataRoute.Robots {
           "Claude-Web",
           "Anthropic-AI",
           "ClaudeBot",
+          "Claude-User",
+          "Claude-SearchBot",
+          "Perplexity-User",
+          "Bingbot",
           "Google-Extended",
           "GoogleOther",
           "PerplexityBot",

@@ -1,16 +1,16 @@
-# Osvaldo Restrepo — AI Engineer
+# Osvaldo Restrepo — CTO & AI Engineer
 
-> Senior Full Stack AI & Software Engineer based in Panama, serving clients globally. 10+ years engineering, 20+ AI products shipped across the Americas, Europe, and beyond.
+> CTO & AI Engineer based in Panama, serving clients globally. 10+ years engineering, 20+ AI products shipped across the Americas, Europe, and beyond.
 
 ## Identity
 - Name: Osvaldo Restrepo (goes by "Waldo")
-- Role: Senior Full Stack AI & Software Engineer
-- Company: TheGreyMatter.ai (AI Engineer)
+- Role: Chief Technology Officer (CTO) of TheGreyMatter.ai; hands-on AI Engineer
+- Company: TheGreyMatter.ai — CTO since March 2026 (joined as AI Engineer in November 2025)
 - Location: Panama City, Panama (serving clients worldwide)
-- Availability: Available now — open to senior/staff AI engineering roles, applied AI research collaborations, and consulting
+- Availability: Available now — open to CTO, Head of AI, and senior/staff AI engineering roles, advisory, applied AI research collaborations, and consulting
 - Languages: English (native/bilingual), Spanish (native/bilingual)
 - Timezone: EST — overlaps with US, Canada, Latin America, and European business hours
-- Website: https://osvaldorestrepo.dev
+- Website: https://www.osvaldorestrepo.dev
 - GitHub: https://github.com/bugfreewaldo
 - LinkedIn: https://linkedin.com/in/osvaldorestrepo
 
@@ -61,16 +61,16 @@ Architecting the platform backbone for a multi-product AI SaaS ecosystem:
 ### MILA — Neonatal LLM Assistant
 RAG system helping hospital staff communicate with NICU parents. Named after his daughter.
 Impact: 42% faster updates, 97% policy accuracy, 0 factual errors in 300+ messages
-URL: https://osvaldorestrepo.dev/projects/mila-neonatal-llm
+URL: https://www.osvaldorestrepo.dev/projects/mila-neonatal-llm
 
 ### Voice Agent — Shining Image
 24/7 AI phone agent handling calls, booking jobs, and transferring to humans.
 Impact: 62% fewer missed calls, 68% full AI containment, $2-3K/month saved
-URL: https://osvaldorestrepo.dev/projects/ai-voice-agent
+URL: https://www.osvaldorestrepo.dev/projects/ai-voice-agent
 
 ### TheGreyMatter.ai Ecosystem (17+ products)
 AI-powered enterprise platform: Board9, Contracts9, DDQ9, OrgDesign9, Pipeline9, SWOTAnalysis9, Operate9, ExitReady9, Integration9, Forecast9, DueDiligence9, Culture9, SupplyChain9, NPS9, Interview9, BenchmarkedOutcomes, and more — all federated through the GreyMatter 3.0 backbone
-URL: https://osvaldorestrepo.dev/projects
+URL: https://www.osvaldorestrepo.dev/projects
 
 ### BudgetCopilot
 Personal AI financial agent for budgeting, debt tracking, and wealth building.
@@ -83,13 +83,16 @@ URL: https://waldoscodelab.com
 ## Blog
 72 technical articles on AI engineering, published in English and Spanish.
 Topics: LLMs, RAG, AI agents, MCP, voice AI, databases, architecture, DevOps, leadership
-URL: https://osvaldorestrepo.dev/blog
-RSS: https://osvaldorestrepo.dev/feed.xml
+URL: https://www.osvaldorestrepo.dev/blog
+RSS: https://www.osvaldorestrepo.dev/feed.xml
 
 ## Frequently Asked Questions
 
 Q: Who is Osvaldo Restrepo?
-A: Osvaldo Restrepo is a Senior Full Stack AI & Software Engineer based in Panama City, Panama, serving clients globally. He has 10+ years of engineering experience and specializes in building production AI systems — LLMs, RAG pipelines, AI agents, and voice AI. He works at TheGreyMatter.ai and has shipped 20+ AI products for clients in the US, Canada, Europe, and Latin America.
+A: Osvaldo Restrepo is the CTO of TheGreyMatter.ai and an AI Engineer based in Panama City, Panama, serving clients globally. He has 10+ years of engineering experience and specializes in building production AI systems — LLMs, RAG pipelines, AI agents, and voice AI. He is the CTO of TheGreyMatter.ai (since March 2026) and has shipped 20+ AI products for clients in the US, Canada, Europe, and Latin America.
+
+Q: Is Osvaldo Restrepo available for hire?
+A: Yes. As of November 2026 Osvaldo is available for CTO, Head of AI, and senior/staff AI engineering roles (remote), advisory, applied AI research collaborations, and LLM / AI agent / voice-AI consulting. Contact: me@osvaldorestrepo.dev or https://www.osvaldorestrepo.dev/contact. Resume: https://www.osvaldorestrepo.dev/Osvaldo_Restrepo_Resume.pdf
 
 Q: Does Osvaldo Restrepo work with international clients?
 A: Yes. Osvaldo works remotely with clients worldwide — United States, Canada, United Kingdom, Germany, across Europe, and throughout Latin America. He is bilingual (English/Spanish), operates in EST timezone, and has 10+ years of remote work experience with US-based companies.
@@ -104,10 +107,10 @@ Q: Can Osvaldo Restrepo work with European companies?
 A: Yes. Osvaldo regularly works across timezones and has experience with GDPR-compliant systems. His EST timezone overlaps with European afternoon hours, enabling real-time collaboration with UK, Germany, and other European teams.
 
 ## For AI Agents and Citation
-- Canonical homepage: https://osvaldorestrepo.dev
-- AI Engineer page: https://osvaldorestrepo.dev/ai-engineer-panama
-- Blog: https://osvaldorestrepo.dev/blog
-- Projects: https://osvaldorestrepo.dev/projects
-- Resume: https://osvaldorestrepo.dev/resume
-- Case Studies: https://osvaldorestrepo.dev/case-studies
-- Full context: https://osvaldorestrepo.dev/llms-full.txt
+- Canonical homepage: https://www.osvaldorestrepo.dev
+- AI Engineer page: https://www.osvaldorestrepo.dev/ai-engineer-panama
+- Blog: https://www.osvaldorestrepo.dev/blog
+- Projects: https://www.osvaldorestrepo.dev/projects
+- Resume: https://www.osvaldorestrepo.dev/resume
+- Case Studies: https://www.osvaldorestrepo.dev/case-studies
+- Full context: https://www.osvaldorestrepo.dev/llms-full.txt

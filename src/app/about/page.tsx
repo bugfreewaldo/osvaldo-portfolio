@@ -10,8 +10,8 @@ import Reveal from "@/components/motion/Reveal";
 const experience = [
   {
     company: "TheGreyMatter.ai",
-    role: "Artificial Intelligence Engineer",
-    period: "Nov 2025 - Present",
+    role: "Chief Technology Officer (CTO)",
+    period: "Mar 2026 - Present",
     location: "Orlando, FL (Remote)",
     type: "current",
     description: "Architect and build the platform backbone for a multi-product AI SaaS ecosystem — 17+ vertical apps, shared identity and file services, MCP servers, agentic workflows, and native mobile clients, all orchestrated by a central AI brain.",
@@ -24,9 +24,21 @@ const experience = [
       "Ship native mobile clients: iOS (Swift + SwiftUI) and Android (Kotlin) with OAuth federation against the central identity layer",
       "Implement deal- and company-level RBAC, audit logging on every mutation, field-level PII encryption via Azure Key Vault, and event-driven ingestion (file upload → extraction → AI analysis → notifications)",
       "Define the federation and data-ownership model: each ecosystem app owns its Cosmos DB; data sharing happens only through APIs and the shared identity / file layer — never cross-app direct reads",
-      "Collaborate with the CTO and product leadership on architecture, data models, scalability, and the QA harness (Playwright + Vitest) that gates releases across the ecosystem",
+      "Own technology strategy and engineering for the ecosystem: architecture, data models, scalability, security, and the QA harness (Playwright + Vitest) that gates every release",
     ],
     skills: ["Python", "FastAPI", "TypeScript", "Node.js", "React", "Azure", "Cosmos DB", "Redis", "Docker", "Claude", "MCP", "Swift", "Kotlin"],
+  },
+  {
+    company: "TheGreyMatter.ai",
+    role: "Artificial Intelligence Engineer",
+    period: "Nov 2025 - Mar 2026",
+    location: "Orlando, FL (Remote)",
+    description: "Joined to architect GreyMatter 3.0 — the platform backbone behind the AI SaaS ecosystem — before stepping into the CTO role.",
+    highlights: [
+      "Designed the core platform backbone: OAuth 2.0 + JWT federation, shared identity and file services, and Claude-powered agent orchestration",
+      "Collaborated with the CTO and product leadership on architecture, data models, and scalability",
+    ],
+    skills: ["TypeScript", "React", "Azure Functions", "Cosmos DB", "Claude", "MCP"],
   },
   {
     company: "Shining Image Of Texas, Inc.",
@@ -419,7 +431,7 @@ export default function AboutPage() {
             </h1>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
               Full Stack AI Engineer specializing in production LLM systems, autonomous agents, and cloud-native platforms.
-              Currently AI Engineer at TheGreyMatter.ai, where I architect the backbone of a multi-product SaaS ecosystem — 17+ vertical AI apps,
+              Currently CTO of TheGreyMatter.ai (since March 2026), where I lead the technology behind of a multi-product SaaS ecosystem — 17+ vertical AI apps,
               shared identity and file services, MCP servers, agentic workflows, and native mobile clients, all orchestrated by a central AI brain.
               10+ years shipping software, 4+ focused on applied AI, serving clients across the US, Canada, Europe, and Latin America.
             </p>

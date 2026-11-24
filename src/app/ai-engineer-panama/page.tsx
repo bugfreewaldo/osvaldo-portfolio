@@ -38,8 +38,8 @@ const jsonLd = {
   name: "Osvaldo Restrepo — AI Engineering",
   description:
     "AI engineering services from Panama. Production LLMs, RAG systems, AI agents, voice AI, and intelligent automation for businesses in Latin America and globally.",
-  url: "https://osvaldorestrepo.dev/ai-engineer-panama",
-  image: "https://osvaldorestrepo.dev/og.png",
+  url: "https://www.osvaldorestrepo.dev/ai-engineer-panama",
+  image: "https://www.osvaldorestrepo.dev/og.png",
   telephone: "",
   address: {
     "@type": "PostalAddress",
@@ -71,7 +71,7 @@ const jsonLd = {
     { "@type": "Continent", name: "North America" },
   ],
   founder: {
-    "@id": "https://osvaldorestrepo.dev/#person",
+    "@id": "https://www.osvaldorestrepo.dev/#person",
   },
   knowsAbout: [
     "Artificial Intelligence",

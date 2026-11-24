@@ -19,13 +19,13 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://osvaldorestrepo.dev"),
+  metadataBase: new URL("https://www.osvaldorestrepo.dev"),
   title: {
-    default: "Osvaldo Restrepo — Senior Full Stack AI & Software Engineer",
+    default: "Osvaldo Restrepo — CTO & AI Engineer (LLMs, AI Agents, Voice AI)",
     template: "%s — Osvaldo Restrepo",
   },
   description:
-    "Portfolio of Osvaldo (Waldo) Restrepo — Senior Full Stack AI & Software Engineer specializing in LLMs, RAG systems, voice AI agents, and production ML. Building intelligent systems that solve real problems.",
+    "Portfolio of Osvaldo (Waldo) Restrepo — CTO & AI Engineer specializing in LLMs, RAG systems, voice AI agents, and production ML. Building intelligent systems that solve real problems.",
   keywords: [
     "AI Engineer",
     "AI Engineer Panama",
@@ -58,11 +58,11 @@ export const metadata: Metadata = {
     "Freelance AI Engineer",
     "Remote AI Developer",
   ],
-  authors: [{ name: "Osvaldo Restrepo", url: "https://osvaldorestrepo.dev" }],
+  authors: [{ name: "Osvaldo Restrepo", url: "https://www.osvaldorestrepo.dev" }],
   creator: "Osvaldo Restrepo",
   publisher: "Osvaldo Restrepo",
   openGraph: {
-    title: "Osvaldo Restrepo — Senior Full Stack AI & Software Engineer",
+    title: "Osvaldo Restrepo — CTO & AI Engineer",
     description:
       "Building production AI systems: LLMs, RAG, voice agents, and intelligent automation. Real projects with measurable impact.",
     url: "/",
@@ -104,24 +104,24 @@ const jsonLd = {
   "@graph": [
     {
       "@type": "WebSite",
-      "@id": "https://osvaldorestrepo.dev/#website",
-      url: "https://osvaldorestrepo.dev",
+      "@id": "https://www.osvaldorestrepo.dev/#website",
+      url: "https://www.osvaldorestrepo.dev",
       name: "Osvaldo Restrepo",
-      description: "Portfolio and projects of Osvaldo Restrepo, Senior Full Stack AI & Software Engineer",
+      description: "Portfolio and projects of Osvaldo Restrepo, CTO & AI Engineer",
       publisher: {
-        "@id": "https://osvaldorestrepo.dev/#person",
+        "@id": "https://www.osvaldorestrepo.dev/#person",
       },
     },
     {
       "@type": "Person",
-      "@id": "https://osvaldorestrepo.dev/#person",
+      "@id": "https://www.osvaldorestrepo.dev/#person",
       name: "Osvaldo Restrepo",
       alternateName: "Waldo",
-      url: "https://osvaldorestrepo.dev",
-      image: "https://osvaldorestrepo.dev/og.png",
-      jobTitle: "Senior Full Stack AI & Software Engineer",
+      url: "https://www.osvaldorestrepo.dev",
+      image: "https://www.osvaldorestrepo.dev/og.png",
+      jobTitle: "Chief Technology Officer",
       description:
-        "Senior AI engineer and PhD candidate based in Panama, serving clients globally — USA, Canada, UK, Germany, Europe, and Latin America. Builds production AI systems: LLMs, RAG pipelines, AI agents, and voice AI. 10+ years of software engineering, 20+ AI products shipped.",
+        "CTO of TheGreyMatter.ai (since March 2026), AI engineer, and PhD researcher in AI based in Panama. Open to CTO, Head of AI, and senior AI engineering roles, advisory, and consulting. Serving clients globally — USA, Canada, UK, Germany, Europe, and Latin America. Builds production AI systems: LLMs, RAG pipelines, AI agents, and voice AI. 10+ years of software engineering, 20+ AI products shipped.",
       nationality: {
         "@type": "Country",
         name: "Panama",
@@ -144,11 +144,11 @@ const jsonLd = {
       alumniOf: [
         {
           "@type": "CollegeOrUniversity",
-          name: "Harvard University",
+          name: "Universidad Tecnológica de Panamá",
         },
         {
           "@type": "CollegeOrUniversity",
-          name: "Universidad Tecnológica de Panamá",
+          name: "Universidad Latina de Panamá",
         },
         {
           "@type": "CollegeOrUniversity",

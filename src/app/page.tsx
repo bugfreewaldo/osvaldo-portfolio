@@ -410,7 +410,7 @@ export default function Home() {
               className="mt-4 text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl"
               variants={heroItem}
             >
-              Full-Stack & Applied AI Engineer specializing in LLMs, autonomous agents,
+              CTO of TheGreyMatter.ai and hands-on AI engineer specializing in LLMs, autonomous agents,
               and voice systems.{" "}
               <Link href="/ai-engineer-panama" className="underline decoration-[#FF6A3D]/30 hover:decoration-[#FF6A3D] transition-colors">
                 Based in Panama
@@ -798,7 +798,7 @@ export default function Home() {
             Let&apos;s Build Something
           </h2>
           <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
-            I&apos;m available for senior AI engineering roles and consulting. Looking for an AI engineer who ships production systems? Let&apos;s talk.
+            I&apos;m open to CTO, Head of AI, and senior AI engineering roles, plus advisory and consulting. Looking for an AI engineer who ships production systems? Let&apos;s talk.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
             <Link

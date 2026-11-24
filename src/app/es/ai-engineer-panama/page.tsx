@@ -36,8 +36,8 @@ const jsonLd = {
   name: "Osvaldo Restrepo — Ingeniería de IA",
   description:
     "Servicios de ingeniería de inteligencia artificial desde Panamá. LLMs en producción, sistemas RAG, agentes de IA, voz AI y automatización inteligente para empresas en Latinoamérica y globalmente.",
-  url: "https://osvaldorestrepo.dev/es/ai-engineer-panama",
-  image: "https://osvaldorestrepo.dev/og.png",
+  url: "https://www.osvaldorestrepo.dev/es/ai-engineer-panama",
+  image: "https://www.osvaldorestrepo.dev/og.png",
   address: {
     "@type": "PostalAddress",
     addressLocality: "Ciudad de Panamá",
@@ -58,7 +58,7 @@ const jsonLd = {
     { "@type": "Country", name: "Costa Rica" },
     { "@type": "Continent", name: "América Latina" },
   ],
-  founder: { "@id": "https://osvaldorestrepo.dev/#person" },
+  founder: { "@id": "https://www.osvaldorestrepo.dev/#person" },
   priceRange: "$$",
   inLanguage: "es",
 };

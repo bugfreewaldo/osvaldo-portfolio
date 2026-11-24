@@ -2,7 +2,8 @@ import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = "https://osvaldorestrepo.dev";
+  const base = "https://www.osvaldorestrepo.dev";
+  const esSlugs = new Set(getAllPosts("es").map((p) => p.slug));
 
   // Main pages
   const mainPages: MetadataRoute.Sitemap = [
@@ -35,6 +36,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "benchmarkedoutcomes",
     "integration9",
     "exitready9",
+    "board9",
+    "contracts9",
+    "ddq9",
+    "orgdesign9",
+    "pipeline9",
+    "swotanalysis9",
+    "operate9",
+    "culture9",
+    "interview9",
+    "supplychain9",
+    "fundraise9",
+    "nps9",
     "budgetcopilot",
     "waldoscodelab",
     "babybloom",
@@ -56,6 +69,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(post.frontmatter.updated || post.frontmatter.date),
     changeFrequency: "monthly" as const,
     priority: 0.8,
+    ...(esSlugs.has(post.slug)
+      ? {
+          alternates: {
+            languages: {
+              en: `${base}/blog/${post.slug}`,
+              es: `${base}/es/blog/${post.slug}`,
+            },
+          },
+        }
+      : {}),
   }));
 
   // Spanish blog posts

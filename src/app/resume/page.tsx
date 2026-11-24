@@ -6,7 +6,7 @@ import Reveal from "@/components/motion/Reveal";
 export const metadata: Metadata = {
   title: "Resume — Osvaldo Restrepo",
   description:
-    "Resume of Osvaldo Restrepo — Senior Full Stack AI & Software Engineer. 10+ years of experience building production LLMs, RAG systems, AI agents, and voice AI. Based in Panama, working globally.",
+    "Resume of Osvaldo Restrepo — CTO & AI Engineer. 10+ years of experience building production LLMs, RAG systems, AI agents, and voice AI. Based in Panama, working globally.",
   keywords: [
     "Osvaldo Restrepo resume",
     "AI Engineer resume",
@@ -20,16 +20,16 @@ export const metadata: Metadata = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "ProfilePage",
-  mainEntity: { "@id": "https://osvaldorestrepo.dev/#person" },
-  url: "https://osvaldorestrepo.dev/resume",
+  mainEntity: { "@id": "https://www.osvaldorestrepo.dev/#person" },
+  url: "https://www.osvaldorestrepo.dev/resume",
   name: "Resume — Osvaldo Restrepo",
 };
 
 const experience = [
   {
     company: "TheGreyMatter.ai",
-    role: "Artificial Intelligence Engineer",
-    period: "Nov 2025 — Present",
+    role: "Chief Technology Officer (CTO) · previously AI Engineer (Nov 2025 — Mar 2026)",
+    period: "Mar 2026 — Present",
     location: "Orlando, FL (Remote)",
     bullets: [
       "Architect GreyMatter 3.0 — the platform backbone (OAuth 2.0 + JWT federation, tiered billing, AES-256-GCM envelope encryption, Claude-powered agent orchestration) for a 17+ app SaaS ecosystem",
@@ -116,7 +116,7 @@ export default function ResumePage() {
                 Osvaldo Restrepo
               </h1>
               <p className="text-lg text-[#FF6A3D] dark:text-[#FF8A5B] font-medium mt-1">
-                Senior Full Stack AI & Software Engineer
+                CTO & AI Engineer
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
                 <span className="flex items-center gap-1">
@@ -151,7 +151,7 @@ export default function ResumePage() {
           {/* Summary */}
           <section className="mb-10">
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. Currently architecting the backbone of TheGreyMatter.ai — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
+              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. Currently CTO of TheGreyMatter.ai, leading the technology behind — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
             </p>
           </section>
 

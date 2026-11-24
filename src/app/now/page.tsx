@@ -37,7 +37,7 @@ export default function NowPage() {
             </div>
             <div className="space-y-3 text-slate-600 dark:text-slate-400 leading-relaxed">
               <p>
-                AI Engineer at <strong className="text-slate-900 dark:text-white">TheGreyMatter.ai</strong> — architecting <strong className="text-slate-900 dark:text-white">GreyMatter 3.0</strong>, the platform backbone behind 17+ vertical AI apps (DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, and more). Building the shared identity, file, and communications services; MCP servers that expose Snapshot9 / 9Vectors / Measurement13 to Claude; agentic systems (The Fixer, Vector_10, TheHacker); and native iOS + Android clients.
+                CTO of <strong className="text-slate-900 dark:text-white">TheGreyMatter.ai</strong> (since March 2026) — leading <strong className="text-slate-900 dark:text-white">GreyMatter 3.0</strong>, the platform backbone behind 17+ vertical AI apps (DueDiligence9, Forecast9, Contracts9, Culture9, OrgDesign9, Pipeline9, SupplyChain9, Board9, and more). Building the shared identity, file, and communications services; MCP servers that expose Snapshot9 / 9Vectors / Measurement13 to Claude; agentic systems (The Fixer, Vector_10, TheHacker); and native iOS + Android clients.
               </p>
               <p>
                 On the side, I continue maintaining and evolving <strong className="text-slate-900 dark:text-white">MILA</strong>, an AI assistant for NICU families, and <strong className="text-slate-900 dark:text-white">BudgetCopilot</strong>, a personal AI finance agent.

@@ -13,7 +13,7 @@ export default function AuthorCard() {
             Osvaldo Restrepo
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            Senior Full Stack AI & Software Engineer. Building production AI
+            CTO & AI Engineer. Building production AI
             systems that solve real problems.
           </p>
           <div className="flex items-center gap-3 mt-3">

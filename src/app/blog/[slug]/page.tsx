@@ -75,24 +75,24 @@ export default async function BlogPostPage({ params }: PageProps) {
     description: post.frontmatter.description,
     image:
       post.frontmatter.image ||
-      `https://osvaldorestrepo.dev/blog/${slug}/opengraph-image`,
+      `https://www.osvaldorestrepo.dev/blog/${slug}/opengraph-image`,
     datePublished: post.frontmatter.date,
     dateModified: post.frontmatter.updated || post.frontmatter.date,
     inLanguage: "en",
     author: {
       "@type": "Person",
       name: post.frontmatter.author,
-      url: "https://osvaldorestrepo.dev",
-      "@id": "https://osvaldorestrepo.dev/#person",
+      url: "https://www.osvaldorestrepo.dev",
+      "@id": "https://www.osvaldorestrepo.dev/#person",
     },
     publisher: {
       "@type": "Person",
       name: "Osvaldo Restrepo",
-      url: "https://osvaldorestrepo.dev",
+      url: "https://www.osvaldorestrepo.dev",
     },
     mainEntityOfPage: {
       "@type": "WebPage",
-      "@id": `https://osvaldorestrepo.dev/blog/${slug}`,
+      "@id": `https://www.osvaldorestrepo.dev/blog/${slug}`,
     },
     keywords: post.frontmatter.tags?.join(", ") || "",
     wordCount: post.content.split(/\s+/).length,
@@ -101,7 +101,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       ? {
           translationOfWork: {
             "@type": "Article",
-            url: `https://osvaldorestrepo.dev/es/blog/${slug}`,
+            url: `https://www.osvaldorestrepo.dev/es/blog/${slug}`,
             inLanguage: "es",
           },
         }
@@ -116,19 +116,19 @@ export default async function BlogPostPage({ params }: PageProps) {
         "@type": "ListItem",
         position: 1,
         name: "Home",
-        item: "https://osvaldorestrepo.dev",
+        item: "https://www.osvaldorestrepo.dev",
       },
       {
         "@type": "ListItem",
         position: 2,
         name: "Blog",
-        item: "https://osvaldorestrepo.dev/blog",
+        item: "https://www.osvaldorestrepo.dev/blog",
       },
       {
         "@type": "ListItem",
         position: 3,
         name: post.frontmatter.title,
-        item: `https://osvaldorestrepo.dev/blog/${slug}`,
+        item: `https://www.osvaldorestrepo.dev/blog/${slug}`,
       },
     ],
   };

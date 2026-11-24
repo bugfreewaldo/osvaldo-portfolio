@@ -83,7 +83,7 @@ export default function TestimonialsPage() {
     name: "Testimonials — Osvaldo Restrepo",
     description:
       "What clients, colleagues, and collaborators say about working with Osvaldo Restrepo.",
-    url: "https://osvaldorestrepo.dev/testimonials",
+    url: "https://www.osvaldorestrepo.dev/testimonials",
     mainEntity: TESTIMONIALS.map((t) => ({
       "@type": "Review",
       reviewBody: t.quote,
@@ -95,7 +95,7 @@ export default function TestimonialsPage() {
       itemReviewed: {
         "@type": "Person",
         name: "Osvaldo Restrepo",
-        "@id": "https://osvaldorestrepo.dev/#person",
+        "@id": "https://www.osvaldorestrepo.dev/#person",
       },
     })),
   };
