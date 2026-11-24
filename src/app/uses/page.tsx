@@ -814,7 +814,7 @@ export default function UsesPage() {
         <Reveal className="max-w-4xl mx-auto">
           <div className="p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 border border-[#FF6A3D]/20">
             <p className="text-slate-600 dark:text-slate-400 text-center">
-              Curious why I picked a particular tool — or what I'd reach for instead?{" "}
+              Curious why I picked a particular tool — or what I&apos;d reach for instead?{" "}
               <a
                 href="/contact"
                 className="text-[#FF6A3D] dark:text-[#FF8A5B] font-medium hover:underline"
