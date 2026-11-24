@@ -431,7 +431,7 @@ export default function AboutPage() {
             </h1>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl">
               Full Stack AI Engineer specializing in production LLM systems, autonomous agents, and cloud-native platforms.
-              Currently CTO of TheGreyMatter.ai (since March 2026), where I lead the technology behind of a multi-product SaaS ecosystem — 17+ vertical AI apps,
+              Currently CTO of TheGreyMatter.ai (since March 2026), where I lead the technology behind a multi-product SaaS ecosystem — 17+ vertical AI apps,
               shared identity and file services, MCP servers, agentic workflows, and native mobile clients, all orchestrated by a central AI brain.
               10+ years shipping software, 4+ focused on applied AI, serving clients across the US, Canada, Europe, and Latin America.
             </p>

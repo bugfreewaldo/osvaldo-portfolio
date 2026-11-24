@@ -6,7 +6,7 @@ import Reveal from "@/components/motion/Reveal";
 export const metadata: Metadata = {
   title: "Testimonials",
   description:
-    "What clients, colleagues, and collaborators say about working with Osvaldo Restrepo — AI engineer, full-stack developer, and PhD based in Panama.",
+    "What clients, colleagues, and collaborators say about working with Osvaldo Restrepo — CTO, AI engineer, and PhD candidate in AI based in Panama.",
   openGraph: {
     title: "Testimonials — Osvaldo Restrepo",
     description:
@@ -52,7 +52,7 @@ const TESTIMONIALS: Testimonial[] = [
     quote:
       "Osvaldo doesn't just write code — he understands the architecture behind the business problem. He ramped up fast, asked the right questions, and delivered production-grade AI features that our clients actually use. Hard to find that combination.",
     name: "JP Morgenthal",
-    title: "Chief Technology Officer, TheGreyMatter.ai",
+    title: "Former Chief Technology Officer, TheGreyMatter.ai",
     link: "https://www.linkedin.com/in/jpmorgenthal/",
     highlight: "production-grade AI features",
   },

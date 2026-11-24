@@ -124,7 +124,7 @@ const stats = [
   { value: "10+", label: "Years Engineering" },
   { value: "20+", label: "AI Products Shipped" },
   { value: "10+", label: "Countries Served" },
-  { value: "PhD", label: "Research Background" },
+  { value: "PhD", label: "Candidate in AI (2027)" },
 ];
 
 const clients = [
@@ -295,7 +295,7 @@ export default function AIEngineerPanama() {
                     "Spanish-native, understands LATAM markets",
                     "AI expertise rare in the region",
                     "Can bridge US tech with local needs",
-                    "PhD-backed research methodology",
+                    "Research methodology from ongoing PhD work",
                     "Proven track record with LATAM clients",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">

@@ -31,7 +31,7 @@ const TESTIMONIALS: Testimonial[] = [
     quote:
       "Osvaldo doesn't just write code — he understands the architecture behind the business problem. He ramped up fast, asked the right questions, and delivered production-grade AI features that our clients actually use.",
     name: "JP Morgenthal",
-    title: "Chief Technology Officer, TheGreyMatter.ai",
+    title: "Former Chief Technology Officer, TheGreyMatter.ai",
     link: "https://www.linkedin.com/in/jpmorgenthal/",
   },
   {

@@ -121,7 +121,7 @@ const jsonLd = {
       image: "https://www.osvaldorestrepo.dev/og.png",
       jobTitle: "Chief Technology Officer",
       description:
-        "CTO of TheGreyMatter.ai (since March 2026), AI engineer, and PhD researcher in AI based in Panama. Open to CTO, Head of AI, and senior AI engineering roles, advisory, and consulting. Serving clients globally — USA, Canada, UK, Germany, Europe, and Latin America. Builds production AI systems: LLMs, RAG pipelines, AI agents, and voice AI. 10+ years of software engineering, 20+ AI products shipped.",
+        "CTO of TheGreyMatter.ai (since March 2026), AI engineer, and PhD candidate in Artificial Intelligence (Technological University of Panama, expected 2027) based in Panama. Open to CTO, Head of AI, and senior AI engineering roles, advisory, and consulting. Serving clients globally — USA, Canada, UK, Germany, Europe, and Latin America. Builds production AI systems: LLMs, RAG pipelines, AI agents, and voice AI. 10+ years of software engineering, 20+ AI products shipped.",
       nationality: {
         "@type": "Country",
         name: "Panama",
@@ -134,7 +134,9 @@ const jsonLd = {
       knowsLanguage: ["en", "es"],
       hasCredential: {
         "@type": "EducationalOccupationalCredential",
-        credentialCategory: "PhD",
+        name: "Professional Certificate in Python for Data Science and Machine Learning",
+        credentialCategory: "Professional Certificate",
+        recognizedBy: { "@type": "CollegeOrUniversity", name: "Harvard University" },
       },
       worksFor: {
         "@type": "Organization",

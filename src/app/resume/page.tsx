@@ -151,7 +151,7 @@ export default function ResumePage() {
           {/* Summary */}
           <section className="mb-10">
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. Currently CTO of TheGreyMatter.ai, leading the technology behind — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
+              Full Stack AI Engineer with 10+ years building production software and 4+ years focused on applied AI. Currently CTO of TheGreyMatter.ai, leading the technology behind its AI ecosystem — 17+ vertical AI apps, shared identity/file/comms services, MCP servers, agentic systems, and iOS + Android clients — on a unified Azure + Cosmos DB + Claude stack. I build LLMs, RAG pipelines, AI agents, and voice systems that run in production, not demos. 20+ AI products shipped across healthcare, fintech, SaaS, and enterprise. PhD candidate in AI with medical research focus. Based in Panama, serving clients in the US, Canada, Europe, and Latin America.
             </p>
           </section>
 

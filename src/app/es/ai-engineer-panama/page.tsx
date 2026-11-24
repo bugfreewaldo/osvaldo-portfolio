@@ -98,7 +98,7 @@ const stats = [
   { value: "10+", label: "Años de Ingeniería" },
   { value: "20+", label: "Productos de IA" },
   { value: "10+", label: "Países Atendidos" },
-  { value: "PhD", label: "Investigación" },
+  { value: "PhD", label: "Doctorado en curso (2027)" },
 ];
 
 export default function AIEngineerPanamaES() {
@@ -258,7 +258,7 @@ export default function AIEngineerPanamaES() {
                     "Español nativo, entiende los mercados LATAM",
                     "Expertise en IA raro en la región",
                     "Puente entre tecnología de EE.UU. y necesidades locales",
-                    "Metodología de investigación respaldada por PhD",
+                    "Metodología de investigación de mi doctorado en curso",
                     "Track record comprobado con clientes LATAM",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
