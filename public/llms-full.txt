@@ -121,9 +121,9 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 
 ### TheGreyMatter.ai Ecosystem (17+ products)
 4. TheGreyMatter.ai — Central AI Platform / GreyMatter 3.0 backbone (https://thegreymatter.ai)
-5. 9Vectors.ai — Strategic Assessment (https://9vectors.ai)
-6. Snapshot9.ai — Business Transformation (https://snapshot9.ai)
-7. Measurement13.ai — Leadership Assessment: 13 core attributes, 360° feedback, 9-Box positioning (https://measurement13.ai)
+5. 9Vectors.ai — Strategic Assessment (https://www.osvaldorestrepo.dev/projects/9vectors)
+6. Snapshot9.ai — Business Transformation (https://www.osvaldorestrepo.dev/projects/snapshot9)
+7. Measurement13.ai — Leadership Assessment: 13 core attributes, 360° feedback, 9-Box positioning (https://www.osvaldorestrepo.dev/projects/measurement13)
 8. Board9.ai — Board Operating System
 9. Contracts9.ai — Contract Lifecycle Intelligence
 10. DDQ9.ai — Due Diligence Questionnaire
@@ -136,10 +136,10 @@ He has shipped 20+ AI products to production, built 20+ production systems, and 
 17. Forecast9.ai — Financial Forecasting
 18. DueDiligence9.ai — Due Diligence Analysis
 19. BenchmarkedOutcomes.ai — Performance Benchmarking
-20. Culture9.ai — Culture Assessment & Transformation (https://culture9.thegreymatter.ai)
-21. SupplyChain9.ai — Supply Chain Assessment (https://supplychain9.thegreymatter.ai)
-22. NPS9.ai — Net Promoter Score & Customer Sentiment (https://nps9.thegreymatter.ai)
-23. Interview9.ai — Structured Interview Assessment (https://interview9.thegreymatter.ai)
+20. Culture9.ai — Culture Assessment & Transformation (https://www.osvaldorestrepo.dev/projects/culture9)
+21. SupplyChain9.ai — Supply Chain Assessment (https://www.osvaldorestrepo.dev/projects/supplychain9)
+22. NPS9.ai — Net Promoter Score & Customer Sentiment (https://www.osvaldorestrepo.dev/projects/nps9)
+23. Interview9.ai — Structured Interview Assessment (https://www.osvaldorestrepo.dev/projects/interview9)
 
 ### TheGreyMatter.ai Shared Services & Platform Components
 - Auth Service — OAuth 2.0 SSO, JWKS, multi-tenant identity federation

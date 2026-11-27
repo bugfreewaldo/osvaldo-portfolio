@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ArrowLeft, ExternalLink, Heart } from "lucide-react";
+import { ArrowLeft, ExternalLink, Heart, Lock } from "lucide-react";
 import { notFound } from "next/navigation";
 import { use } from "react";
 
@@ -17,6 +17,8 @@ type Project = {
   impact?: string[];        // Human-readable impact statements
   stack: string[];
   links?: { label: string; href: string }[];
+  /** Live deployment is private (client/NDA) — show a stub instead of a link. */
+  nda?: boolean;
   gradient: string;
 };
 
@@ -130,9 +132,8 @@ const DATA: Record<string, Project> = {
       "Ahorros de $50K-100K por evaluación frente a contratar consultores externos",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "AWS"],
-    links: [
-      { label: "Visitar 9Vectors.ai", href: "https://9vectors.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "measurement13": {
@@ -159,9 +160,8 @@ const DATA: Record<string, Project> = {
       "La planificación de sucesión obtiene una vista continuamente actualizada de la profundidad del liderazgo, no una foto una vez al año",
     ],
     stack: ["React 18", "TypeScript", "Vite", "Node.js", "Azure Functions", "PostgreSQL", "Stripe", "Claude AI"],
-    links: [
-      { label: "Visitar Measurement13.ai", href: "https://measurement13.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "snapshot9": {
@@ -187,9 +187,8 @@ const DATA: Record<string, Project> = {
       "El ROI se ve normalmente dentro de los 90 días posteriores al despliegue",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    links: [
-      { label: "Visitar Snapshot9.ai", href: "https://snapshot9.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "thegreymatter": {
@@ -243,9 +242,8 @@ const DATA: Record<string, Project> = {
       "Variación de las proyecciones de ingresos dentro del 5% de los resultados reales en horizontes de 6 meses",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    links: [
-      { label: "Visitar Forecast9.ai", href: "https://forecast9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "duediligence9": {
@@ -271,9 +269,8 @@ const DATA: Record<string, Project> = {
       "Los equipos ahorran entre $75K y $150K estimados por proyecto en horas de analistas",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    links: [
-      { label: "Visitar DueDiligence9.ai", href: "https://duediligence9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "benchmarkedoutcomes": {
@@ -299,9 +296,8 @@ const DATA: Record<string, Project> = {
       "El costo por contratación se redujo en $4,200 en promedio gracias a evaluaciones más rápidas y precisas",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    links: [
-      { label: "Visitar BenchmarkedOutcomes.ai", href: "https://benchmark.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "integration9": {
@@ -327,9 +323,8 @@ const DATA: Record<string, Project> = {
       "El riesgo de fracaso de la integración se redujo un 55% según métricas de éxito post-fusión",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    links: [
-      { label: "Visitar Integration9.ai", href: "https://integration9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "exitready9": {
@@ -355,9 +350,8 @@ const DATA: Record<string, Project> = {
       "El tiempo de preparación para la salida se redujo de 12-18 meses a 6-9 meses con hojas de ruta priorizadas por IA",
     ],
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    links: [
-      { label: "Visitar ExitReady9.ai", href: "https://exitready9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "board9": {
@@ -383,9 +377,8 @@ const DATA: Record<string, Project> = {
       "El seguimiento de acuerdos posteriores a la reunión redujo en un 70% los pendientes sin atender",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Vite", "Tailwind CSS"],
-    links: [
-      { label: "Visitar Board9.ai", href: "https://board9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "contracts9": {
@@ -411,9 +404,8 @@ const DATA: Record<string, Project> = {
       "Más de 60 endpoints de API sobre 11 contenedores de Cosmos DB con registro de auditoría completo en todas las modificaciones",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Docker", "Vite"],
-    links: [
-      { label: "Visitar Contracts9.ai", href: "https://contracts9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "ddq9": {
@@ -439,9 +431,8 @@ const DATA: Record<string, Project> = {
       "La jerarquía de membresía de fondos permite gestionar los DDQ de todo el portafolio desde un solo dashboard",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure SQL", "Azure Cosmos DB", "Redis", "Claude AI"],
-    links: [
-      { label: "Visitar DDQ9.ai", href: "https://ddq9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "orgdesign9": {
@@ -467,9 +458,8 @@ const DATA: Record<string, Project> = {
       "Los planes de transición incluyen puntos de control de preparación que evitan despliegues prematuros",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "ExcelJS", "Vite"],
-    links: [
-      { label: "Visitar OrgDesign9.ai", href: "https://orgdesign9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "pipeline9": {
@@ -495,9 +485,8 @@ const DATA: Record<string, Project> = {
       "La tasa de cierre mejoró un 12% en el primer trimestre al atacar los cuellos de botella en la conversión",
     ],
     stack: ["React", "TypeScript", "Node.js", "PostgreSQL", "Prisma", "Redis", "Claude AI", "Recharts"],
-    links: [
-      { label: "Visitar Pipeline9.ai", href: "https://pipeline9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "swotanalysis9": {
@@ -523,9 +512,8 @@ const DATA: Record<string, Project> = {
       "Exportaciones listas para la junta generadas en minutos, reemplazando días de preparación de presentaciones",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
-    links: [
-      { label: "Visitar SWOTAnalysis9.ai", href: "https://swotanalysis9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "operate9": {
@@ -551,9 +539,8 @@ const DATA: Record<string, Project> = {
       "Ejecución de los primeros 100 días con seguimiento y reportes de avance automatizados para los sponsors de la transacción",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Zustand"],
-    links: [
-      { label: "Visitar Operate9.ai", href: "https://operate9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "culture9": {
@@ -579,9 +566,8 @@ const DATA: Record<string, Project> = {
       "La extracción de temas con IA en comentarios abiertos revela a escala los patrones que las personas pasan por alto",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
-    links: [
-      { label: "Visitar Culture9.ai", href: "https://culture9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "interview9": {
@@ -607,9 +593,8 @@ const DATA: Record<string, Project> = {
       "Rastro auditable de cada contratación, algo clave para compradores empresariales y de sectores regulados",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
-    links: [
-      { label: "Visitar Interview9.ai", href: "https://interview9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "supplychain9": {
@@ -636,9 +621,8 @@ const DATA: Record<string, Project> = {
       "La síntesis con IA de los comentarios abiertos de proveedores convierte señales ruidosas en preocupaciones estructuradas",
     ],
     stack: ["React", "TypeScript", "Node.js", "Socket.io", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
-    links: [
-      { label: "Visitar SupplyChain9.ai", href: "https://supplychain9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "fundraise9": {
@@ -666,6 +650,7 @@ const DATA: Record<string, Project> = {
     ],
     stack: ["React", "TypeScript", "Vite", "Node.js", "Express", "Socket.io", "Azure Cosmos DB", "Claude AI", "JWT", "Stripe"],
     links: [],
+    nda: true,
   },
 
   "nps9": {
@@ -691,9 +676,8 @@ const DATA: Record<string, Project> = {
       "Reportes ejecutivos generados en minutos en lugar de la carrera trimestral para sintetizar resultados",
     ],
     stack: ["React", "TypeScript", "Node.js", "Azure Cosmos DB", "Claude AI", "Recharts", "Vite"],
-    links: [
-      { label: "Visitar NPS9.ai", href: "https://nps9.thegreymatter.ai" },
-    ],
+    links: [],
+    nda: true,
   },
 
   "budgetcopilot": {
@@ -833,9 +817,8 @@ const DATA: Record<string, Project> = {
       "La tasa de clientes recurrentes mejoró del 40% al 65% con seguimientos automáticos",
     ],
     stack: ["Next.js", "TypeScript", "Prisma", "PostgreSQL", "Stripe", "Vercel"],
-    links: [
-      { label: "Visitar AutoSpa BQT", href: "https://autospabqt.com" },
-    ],
+    links: [],
+    nda: true,
   },
 };
 
@@ -1004,6 +987,21 @@ export default function ProjectPageEs({ params }: { params: Promise<{ slug: stri
                   <ExternalLink className="w-4 h-4" />
                 </a>
               ))}
+            </div>
+          </motion.section>
+        )}
+
+        {proj.nda && (!proj.links || proj.links.length === 0) && (
+          <motion.section
+            className="mt-12"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.6 }}
+          >
+            <div className="inline-flex flex-wrap items-center gap-3 px-5 py-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400">
+              <Lock className="w-4 h-4" />
+              <span className="font-medium">Despliegue privado — bajo NDA</span>
+              <span className="text-sm text-slate-500">Demo y código disponibles bajo solicitud.</span>
             </div>
           </motion.section>
         )}

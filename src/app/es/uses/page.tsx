@@ -587,7 +587,7 @@ const toolCategories: ToolCategory[] = [
         name: "JUnit 5",
         description: "Suite de pruebas de Spring Boot",
         logo: "junit5",
-        url: "https://junit.org/junit5",
+        url: "https://junit.org/",
       },
     ],
   },

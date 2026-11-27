@@ -307,7 +307,6 @@ const featuredProjects = [
     description: "AI-powered strategic assessment platform helping enterprises make data-driven decisions.",
     tags: ["AI Platform", "Enterprise", "Co-Founder"],
     metric: "$150M+ val",
-    external: "https://9vectors.ai",
   },
   {
     slug: "measurement13",
@@ -316,7 +315,6 @@ const featuredProjects = [
     description: "Leadership assessment across 13 core attributes — 360° feedback, 9-Box positioning, and team dynamics analytics for talent reviews and succession planning.",
     tags: ["Leadership", "360° Feedback", "Talent"],
     metric: "Enterprise",
-    external: "https://measurement13.ai",
   },
   {
     slug: "snapshot9",
@@ -325,7 +323,6 @@ const featuredProjects = [
     description: "Comprehensive business transformation platform that captures, analyzes, and optimizes organizational processes.",
     tags: ["Enterprise", "Transformation", "AI"],
     metric: "Platform",
-    external: "https://snapshot9.ai",
   },
   {
     slug: "thegreymatter",

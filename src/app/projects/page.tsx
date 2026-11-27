@@ -172,7 +172,6 @@ const projects = [
     icon: Target,
     gradient: "from-rose-500 to-orange-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "AWS"],
-    external: "https://9vectors.ai",
   },
   {
     slug: "measurement13",
@@ -183,7 +182,6 @@ const projects = [
     icon: BarChart3,
     gradient: "from-blue-500 to-indigo-500",
     stack: ["React 18", "TypeScript", "Vite", "Node.js", "Azure Functions", "PostgreSQL", "Claude AI"],
-    external: "https://measurement13.ai",
   },
   {
     slug: "snapshot9",
@@ -194,7 +192,6 @@ const projects = [
     icon: Camera,
     gradient: "from-violet-500 to-[#2DD4BF]",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    external: "https://snapshot9.ai",
   },
   {
     slug: "thegreymatter",
@@ -216,7 +213,6 @@ const projects = [
     icon: TrendingUp,
     gradient: "from-amber-500 to-orange-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    external: "https://forecast9.thegreymatter.ai",
   },
   {
     slug: "duediligence9",
@@ -227,7 +223,6 @@ const projects = [
     icon: Search,
     gradient: "from-teal-500 to-cyan-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    external: "https://duediligence9.thegreymatter.ai",
   },
   {
     slug: "benchmarkedoutcomes",
@@ -238,7 +233,6 @@ const projects = [
     icon: Award,
     gradient: "from-lime-500 to-green-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    external: "https://benchmark.thegreymatter.ai",
   },
   {
     slug: "integration9",
@@ -249,7 +243,6 @@ const projects = [
     icon: Link2,
     gradient: "from-fuchsia-500 to-pink-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    external: "https://integration9.thegreymatter.ai",
   },
   {
     slug: "exitready9",
@@ -260,7 +253,6 @@ const projects = [
     icon: DoorOpen,
     gradient: "from-[#FF6A3D] to-violet-500",
     stack: ["Next.js", "Python", "OpenAI", "PostgreSQL", "Vercel"],
-    external: "https://exitready9.thegreymatter.ai",
   },
   {
     slug: "board9",
@@ -271,7 +263,6 @@ const projects = [
     icon: LayoutGrid,
     gradient: "from-slate-600 to-zinc-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://board9.thegreymatter.ai",
   },
   {
     slug: "contracts9",
@@ -282,7 +273,6 @@ const projects = [
     icon: FileText,
     gradient: "from-rose-500 to-red-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://contracts9.thegreymatter.ai",
   },
   {
     slug: "ddq9",
@@ -293,7 +283,6 @@ const projects = [
     icon: ClipboardList,
     gradient: "from-sky-500 to-blue-500",
     stack: ["React", "TypeScript", "Node.js", "Azure SQL", "Cosmos DB", "Claude AI"],
-    external: "https://ddq9.thegreymatter.ai",
   },
   {
     slug: "orgdesign9",
@@ -304,7 +293,6 @@ const projects = [
     icon: Users,
     gradient: "from-violet-500 to-[#2DD4BF]",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://orgdesign9.thegreymatter.ai",
   },
   {
     slug: "pipeline9",
@@ -315,7 +303,6 @@ const projects = [
     icon: PieChart,
     gradient: "from-orange-500 to-amber-500",
     stack: ["React", "TypeScript", "Node.js", "PostgreSQL", "Prisma", "Claude AI"],
-    external: "https://pipeline9.thegreymatter.ai",
   },
   {
     slug: "swotanalysis9",
@@ -326,7 +313,6 @@ const projects = [
     icon: Shield,
     gradient: "from-teal-500 to-emerald-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://swotanalysis9.thegreymatter.ai",
   },
   {
     slug: "operate9",
@@ -337,7 +323,6 @@ const projects = [
     icon: Factory,
     gradient: "from-lime-500 to-green-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://operate9.thegreymatter.ai",
   },
   {
     slug: "culture9",
@@ -348,7 +333,6 @@ const projects = [
     icon: Heart,
     gradient: "from-pink-500 to-rose-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://culture9.thegreymatter.ai",
   },
   {
     slug: "interview9",
@@ -359,7 +343,6 @@ const projects = [
     icon: MessageSquare,
     gradient: "from-[#FF6A3D] to-blue-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://interview9.thegreymatter.ai",
   },
   {
     slug: "supplychain9",
@@ -370,7 +353,6 @@ const projects = [
     icon: Truck,
     gradient: "from-orange-500 to-red-500",
     stack: ["React", "TypeScript", "Node.js", "Socket.io", "Cosmos DB", "Claude AI"],
-    external: "https://supplychain9.thegreymatter.ai",
   },
   {
     slug: "nps9",
@@ -381,7 +363,6 @@ const projects = [
     icon: Gauge,
     gradient: "from-emerald-500 to-teal-500",
     stack: ["React", "TypeScript", "Node.js", "Cosmos DB", "Claude AI"],
-    external: "https://nps9.thegreymatter.ai",
   },
   {
     slug: "fundraise9",
@@ -446,6 +427,5 @@ const projects = [
     icon: Car,
     gradient: "from-red-500 to-rose-500",
     stack: ["Next.js", "TypeScript", "Prisma", "PostgreSQL", "Stripe", "Vercel"],
-    external: "https://autospabqt.com",
   },
 ];
