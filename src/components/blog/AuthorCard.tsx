@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { Github, Linkedin } from "lucide-react";
 
-export default function AuthorCard() {
+interface AuthorCardProps {
+  locale?: "en" | "es";
+}
+
+export default function AuthorCard({ locale = "en" }: AuthorCardProps) {
+  const isEs = locale === "es";
   return (
     <div className="mt-12 p-6 rounded-2xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800">
       <div className="flex items-start gap-4">
@@ -13,8 +18,9 @@ export default function AuthorCard() {
             Osvaldo Restrepo
           </h3>
           <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-            CTO & AI Engineer. Building production AI
-            systems that solve real problems.
+            {isEs
+              ? "CTO e ingeniero de IA. Construyo sistemas de IA en producción que resuelven problemas reales."
+              : "CTO & AI Engineer. Building production AI systems that solve real problems."}
           </p>
           <div className="flex items-center gap-3 mt-3">
             <a
@@ -34,10 +40,10 @@ export default function AuthorCard() {
               <Linkedin className="w-5 h-5" />
             </a>
             <Link
-              href="/contact"
+              href={isEs ? "/es/contact" : "/contact"}
               className="text-sm text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline ml-auto"
             >
-              Get in touch
+              {isEs ? "Escríbeme" : "Get in touch"}
             </Link>
           </div>
         </div>

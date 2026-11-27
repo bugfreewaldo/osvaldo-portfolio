@@ -1,0 +1,220 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Quote, Star, ArrowRight } from "lucide-react";
+import Reveal from "@/components/motion/Reveal";
+
+export const metadata: Metadata = {
+  title: "Testimonios",
+  description:
+    "Lo que dicen clientes, colegas y colaboradores sobre trabajar con Osvaldo Restrepo — CTO, ingeniero de IA y candidato a PhD en IA, con base en Panamá.",
+  openGraph: {
+    title: "Testimonios — Osvaldo Restrepo",
+    description:
+      "Lo que dicen clientes, colegas y colaboradores sobre trabajar con Osvaldo Restrepo.",
+    url: "/es/testimonials",
+    locale: "es_PA",
+  },
+  alternates: {
+    canonical: "/es/testimonials",
+    languages: { en: "/testimonials", es: "/es/testimonials", "x-default": "/testimonials" },
+  },
+};
+
+type Testimonial = {
+  quote: string;
+  name: string;
+  title: string;
+  link?: string;
+  highlight?: string;
+};
+
+const TESTIMONIALS: Testimonial[] = [
+  {
+    quote:
+      "Waldo translates vague business needs into shippable AI systems. Latency, cost, and safety are always under control.",
+    name: "Russell Diaz",
+    title: "Director Ejecutivo (CEO), Shining Image",
+    link: "https://www.linkedin.com/in/russell-diaz-38037a150/",
+    highlight: "shippable AI systems",
+  },
+  {
+    quote:
+      "Our team adopted his voice agent with minimal friction—clean handoffs and clear observability from day one.",
+    name: "Emily Strauss",
+    title: "Gerente de Ventas, Shining Image",
+    link: "https://www.linkedin.com/in/emily-diaz-817370225/",
+    highlight: "minimal friction",
+  },
+  {
+    quote:
+      "The MILA RAG assistant shipped with proper evals and citations. Clinicians trusted it because the UX was measured.",
+    name: "Dr. Jorge NG Chinkee",
+    title: "Director Médico, Hospital Materno Infantil José Domingo de Obaldía",
+    link: "https://www.linkedin.com/in/jorge-ng-chinkee-a9413a61/",
+    highlight: "Clinicians trusted it",
+  },
+  {
+    quote:
+      "Osvaldo doesn't just write code — he understands the architecture behind the business problem. He ramped up fast, asked the right questions, and delivered production-grade AI features that our clients actually use. Hard to find that combination.",
+    name: "JP Morgenthal",
+    title: "Ex Director de Tecnología (CTO), TheGreyMatter.ai",
+    link: "https://www.linkedin.com/in/jpmorgenthal/",
+    highlight: "production-grade AI features",
+  },
+  {
+    quote:
+      "We needed someone who could bridge the gap between what AI can do and what the business actually needs. Osvaldo did exactly that — shipped fast, communicated clearly, and built systems that scaled without drama.",
+    name: "Edwin Miller",
+    title: "Director Ejecutivo (CEO), TheGreyMatter.ai",
+    link: "https://www.linkedin.com/in/edwinmiller/",
+    highlight: "bridge the gap",
+  },
+];
+
+function GridBackground() {
+  return (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
+      <div className="absolute top-20 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl" />
+      <div className="absolute bottom-20 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl" />
+    </div>
+  );
+}
+
+export default function TestimonialsPageEs() {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    name: "Testimonios — Osvaldo Restrepo",
+    description:
+      "Lo que dicen clientes, colegas y colaboradores sobre trabajar con Osvaldo Restrepo.",
+    url: "https://www.osvaldorestrepo.dev/es/testimonials",
+    inLanguage: "es",
+    mainEntity: TESTIMONIALS.map((t) => ({
+      "@type": "Review",
+      reviewBody: t.quote,
+      inLanguage: "en",
+      author: {
+        "@type": "Person",
+        name: t.name,
+        jobTitle: t.title,
+      },
+      itemReviewed: {
+        "@type": "Person",
+        name: "Osvaldo Restrepo",
+        "@id": "https://www.osvaldorestrepo.dev/#person",
+      },
+    })),
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
+      <main className="relative min-h-screen">
+        <GridBackground />
+
+        {/* Hero */}
+        <section className="relative pt-16 pb-8 px-4">
+          <Reveal className="max-w-4xl mx-auto text-center">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-6">
+              <Star className="w-4 h-4" />
+              Prueba social
+            </div>
+            <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white">
+              Lo que dicen de mí
+            </h1>
+            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+              Comentarios reales de clientes, colegas y colaboradores con quienes he trabajado en sistemas de IA, productos full-stack y todo lo que hay entre medio.
+            </p>
+          </Reveal>
+        </section>
+
+        {/* Testimonials Grid */}
+        <section className="relative py-12 px-4">
+          <div className="max-w-4xl mx-auto">
+            <Reveal staggerMs={60} className="grid gap-6 md:grid-cols-2">
+              {TESTIMONIALS.map((t) => (
+                <figure
+                  key={t.name}
+                  className="relative p-6 rounded-2xl bg-white dark:bg-slate-900/50 backdrop-blur-sm border border-slate-200 dark:border-slate-800 hover:border-[#FF6A3D]/30 transition-colors group"
+                >
+                  <Quote className="absolute top-4 right-4 w-8 h-8 text-[#FFC79A] dark:text-[#FF6A3D]/50" />
+                  <blockquote className="relative text-slate-700 dark:text-slate-200 leading-relaxed">
+                    &ldquo;{t.quote}&rdquo;
+                  </blockquote>
+                  <figcaption className="mt-5 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6A3D] to-[#FF8A4C] flex items-center justify-center text-white font-bold text-sm">
+                      {t.name
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)}
+                    </div>
+                    <div>
+                      <div className="font-medium text-slate-900 dark:text-white">
+                        {t.link ? (
+                          <a
+                            href={t.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:text-[#FF6A3D] dark:hover:text-[#FF8A5B] transition-colors"
+                          >
+                            {t.name}
+                          </a>
+                        ) : (
+                          t.name
+                        )}
+                      </div>
+                      <div className="text-sm text-slate-500 dark:text-slate-400">
+                        {t.title}
+                      </div>
+                    </div>
+                  </figcaption>
+                </figure>
+              ))}
+
+              {/* Placeholder for more testimonials */}
+              <figure className="relative p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-center min-h-[200px]">
+                <p className="text-slate-400 dark:text-slate-500 text-sm">
+                  Pronto habrá más testimonios.
+                </p>
+                <Link
+                  href="/es/contact"
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B] hover:text-[#FF6A3D] transition-colors"
+                >
+                  ¿Trabajaste conmigo? Cuéntamelo
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </figure>
+            </Reveal>
+          </div>
+        </section>
+
+        {/* CTA */}
+        <section className="relative py-12 px-4">
+          <Reveal className="max-w-2xl mx-auto text-center">
+            <div className="p-8 rounded-2xl bg-gradient-to-br from-[#FF6A3D]/10 to-[#2DD4BF]/10 dark:from-[#FF6A3D]/12 dark:to-[#2DD4BF]/10 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30">
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-3">
+                ¿Trabajamos juntos?
+              </h2>
+              <p className="text-slate-600 dark:text-slate-400 mb-6">
+                Construyo productos impulsados por IA, aplicaciones full-stack y sistemas de ML en producción desde Panamá.
+              </p>
+              <Link
+                href="/es/contact"
+                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-medium rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-md shadow-[#FF6A3D]/20"
+              >
+                Escríbeme
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          </Reveal>
+        </section>
+      </main>
+    </>
+  );
+}

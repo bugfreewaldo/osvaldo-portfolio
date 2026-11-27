@@ -43,14 +43,24 @@ const TESTIMONIALS: Testimonial[] = [
   },
 ];
 
-export default function Testimonials() {
+// Spanish role titles (quotes stay in the author's own words).
+const TITLES_ES: Record<string, string> = {
+  "Russell Diaz": "Director Ejecutivo (CEO), Shining Image",
+  "Emily Strauss": "Gerente de Ventas, Shining Image",
+  "Dr. Jorge NG Chinkee": "Director Médico, Hospital Materno Infantil José Domingo de Obaldía",
+  "JP Morgenthal": "Ex Director de Tecnología (CTO), TheGreyMatter.ai",
+  "Edwin Miller": "Director Ejecutivo (CEO), TheGreyMatter.ai",
+};
+
+export default function Testimonials({ locale = "en" }: { locale?: "en" | "es" } = {}) {
+  const es = locale === "es";
   return (
     <section className="mt-12">
-      <h2 className="text-2xl font-bold">Testimonials</h2>
+      <h2 className="text-2xl font-bold">{es ? "Testimonios" : "Testimonials"}</h2>
       <div className="grid sm:grid-cols-2 gap-6 mt-6">
         {TESTIMONIALS.map((t) => (
           <figure key={t.name} className="p-5 rounded-2xl ring-1 ring-slate-200 dark:ring-slate-800">
-            <blockquote className="text-slate-700 dark:text-slate-200">
+            <blockquote className="text-slate-700 dark:text-slate-200" lang={es ? "en" : undefined}>
               “{t.quote}”
             </blockquote>
             <figcaption className="mt-4 text-sm text-slate-500">
@@ -63,7 +73,7 @@ export default function Testimonials() {
                   t.name
                 )}
               </div>
-              {t.title && <div>{t.title}</div>}
+              {t.title && <div>{es ? TITLES_ES[t.name] ?? t.title : t.title}</div>}
             </figcaption>
           </figure>
         ))}

@@ -13,6 +13,10 @@ export const metadata: Metadata = {
       "What clients, colleagues, and collaborators say about working with Osvaldo Restrepo.",
     url: "/testimonials",
   },
+  alternates: {
+    canonical: "/testimonials",
+    languages: { en: "/testimonials", es: "/es/testimonials", "x-default": "/testimonials" },
+  },
 };
 
 type Testimonial = {

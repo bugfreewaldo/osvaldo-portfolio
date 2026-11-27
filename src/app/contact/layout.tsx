@@ -10,7 +10,10 @@ export const metadata: Metadata = {
       "Get in touch for AI consulting, software development, or collaboration opportunities.",
     url: "/contact",
   },
-  alternates: { canonical: "/contact" },
+  alternates: {
+    canonical: "/contact",
+    languages: { en: "/contact", es: "/es/contact", "x-default": "/contact" },
+  },
 };
 
 export default function ContactLayout({

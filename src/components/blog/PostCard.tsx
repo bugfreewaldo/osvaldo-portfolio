@@ -3,15 +3,18 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { Calendar, Clock, ArrowRight, Pin } from "lucide-react";
 import type { Post } from "@/lib/blog";
 
 interface PostCardProps {
   post: Post;
   index: number;
+  locale?: "en" | "es";
 }
 
-export default function PostCard({ post, index }: PostCardProps) {
+export default function PostCard({ post, index, locale = "en" }: PostCardProps) {
+  const isEs = locale === "es";
   return (
     <motion.article
       initial={{ opacity: 0, y: 20 }}
@@ -29,7 +32,7 @@ export default function PostCard({ post, index }: PostCardProps) {
               {post.frontmatter.pinned && (
                 <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-[#FF6A3D] text-white rounded">
                   <Pin className="w-3 h-3" />
-                  Pinned
+                  {isEs ? "Destacado" : "Pinned"}
                 </span>
               )}
               {post.frontmatter.category && (
@@ -51,11 +54,13 @@ export default function PostCard({ post, index }: PostCardProps) {
           <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-500">
             <span className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
-              {format(new Date(post.frontmatter.date), "MMM d, yyyy")}
+              {isEs
+                ? format(new Date(post.frontmatter.date), "d MMM yyyy", { locale: es })
+                : format(new Date(post.frontmatter.date), "MMM d, yyyy")}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              {post.readingTimeMinutes} min read
+              {post.readingTimeMinutes} {isEs ? "min de lectura" : "min read"}
             </span>
           </div>
 
@@ -73,7 +78,7 @@ export default function PostCard({ post, index }: PostCardProps) {
           )}
 
           <div className="mt-4 flex items-center gap-1 text-sm text-[#FF6A3D] dark:text-[#FF8A5B] opacity-0 group-hover:opacity-100 transition-opacity">
-            Read article
+            {isEs ? "Leer artículo" : "Read article"}
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
         </div>

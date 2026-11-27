@@ -3,6 +3,7 @@ import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import LanguageBanner from "./components/LanguageBanner";
 import Header from "./components/Header";
 import SiteBackground from "@/components/motion/SiteBackground";
 
@@ -90,7 +91,10 @@ export const metadata: Metadata = {
       "max-snippet": -1,
     },
   },
-  alternates: { canonical: "/" },
+  alternates: {
+    canonical: "/",
+    languages: { en: "/", es: "/es", "x-default": "/" },
+  },
   verification: {
     // Add your verification codes when you have them
     // google: "your-google-verification-code",
@@ -200,6 +204,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-background text-foreground antialiased">
         <SiteBackground />
         <Header />
+        <LanguageBanner />
 
         {children}
         <Analytics />

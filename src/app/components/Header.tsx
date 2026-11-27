@@ -6,31 +6,52 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, FileDown } from "lucide-react";
 import ThemeToggle from "./ThemeToggle";
+import { saveLangPref } from "./LanguageBanner";
+import { href as localHref, localeFromPath, stripLocale, toLocalePath } from "@/lib/i18n";
 
-const navLinks = [
-  { href: "/", label: "Home" },
-  { href: "/projects", label: "Projects" },
-  { href: "/blog", label: "Blog" },
-  { href: "/about", label: "About" },
-  { href: "/uses", label: "Uses" },
-  { href: "/testimonials", label: "Testimonials" },
-  { href: "/contact", label: "Contact" },
+const NAV = [
+  { href: "/", en: "Home", es: "Inicio" },
+  { href: "/projects", en: "Projects", es: "Proyectos" },
+  { href: "/blog", en: "Blog", es: "Blog" },
+  { href: "/about", en: "About", es: "Sobre mí" },
+  { href: "/uses", en: "Uses", es: "Herramientas" },
+  { href: "/testimonials", en: "Testimonials", es: "Testimonios" },
+  { href: "/contact", en: "Contact", es: "Contacto" },
 ];
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const pathname = usePathname();
+  const locale = localeFromPath(pathname);
+  const es = locale === "es";
+  const navLinks = NAV.map((l) => ({ href: localHref(l.href, locale), base: l.href, label: es ? l.es : l.en }));
+  const otherLocale = es ? "en" : "es";
+  const switchHref = toLocalePath(pathname, otherLocale);
+  const basePath = stripLocale(pathname);
 
-  const isActive = (href: string) => {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
+  const isActive = (base: string) => {
+    if (base === "/") return basePath === "/";
+    return basePath.startsWith(base);
   };
+
+  const langSwitch = (
+    <Link
+      href={switchHref}
+      onClick={() => saveLangPref(otherLocale)}
+      hrefLang={otherLocale}
+      aria-label={es ? "View this page in English" : "Ver esta página en español"}
+      className="inline-flex items-center rounded-lg border border-line/70 font-mono text-xs overflow-hidden"
+    >
+      <span className={`px-2 py-1.5 ${!es ? "bg-accent/15 text-accent" : "text-muted"}`}>EN</span>
+      <span className={`px-2 py-1.5 ${es ? "bg-accent/15 text-accent" : "text-muted"}`}>ES</span>
+    </Link>
+  );
 
   return (
     <header className="print:hidden sticky top-0 z-50 border-b border-line/70 bg-background/75 backdrop-blur-xl">
       <nav className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
         {/* Logo — terminal wordmark */}
-        <Link href="/" className="flex items-center gap-2 group">
+        <Link href={localHref("/", locale)} className="flex items-center gap-2 group">
           <span className="grid place-items-center w-8 h-8 rounded-md border border-accent/40 bg-accent/10 font-mono text-accent text-sm font-bold transition-colors group-hover:bg-accent/20">
             &gt;_
           </span>
@@ -46,13 +67,13 @@ export default function Header() {
               key={link.href}
               href={link.href}
               className={`relative px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                isActive(link.href)
+                isActive(link.base)
                   ? "text-accent"
                   : "text-muted hover:text-foreground hover:bg-surface-2"
               }`}
             >
               {link.label}
-              {isActive(link.href) && (
+              {isActive(link.base) && (
                 <motion.div
                   layoutId="activeTab"
                   className="absolute inset-0 bg-accent/10 ring-1 ring-accent/20 rounded-lg -z-10"
@@ -66,18 +87,19 @@ export default function Header() {
         {/* Desktop actions */}
         <div className="hidden md:flex items-center gap-2">
           <Link
-            href="/contact"
+            href={localHref("/contact", locale)}
             className="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400 text-xs font-medium hover:bg-green-500/15 transition-colors"
           >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
-            Available
+            {es ? "Disponible" : "Available"}
           </Link>
+          {langSwitch}
           <ThemeToggle />
           <a
-            href="/Osvaldo_Restrepo_Resume.pdf"
+            href={es ? "/Osvaldo_Restrepo_Resume_ES.pdf" : "/Osvaldo_Restrepo_Resume.pdf"}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-accent text-white hover:bg-accent-soft transition-colors shadow-md shadow-accent/20"
@@ -89,11 +111,12 @@ export default function Header() {
 
         {/* Mobile actions */}
         <div className="md:hidden flex items-center gap-2">
+          {langSwitch}
           <ThemeToggle />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2.5 rounded-lg text-muted hover:bg-surface-2 transition-colors"
-            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-label={mobileMenuOpen ? (es ? "Cerrar menú" : "Close menu") : es ? "Abrir menú" : "Open menu"}
             aria-expanded={mobileMenuOpen}
             aria-controls="mobile-menu"
           >
@@ -120,7 +143,7 @@ export default function Header() {
                   href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`block px-4 py-3 rounded-xl text-base font-medium transition-colors ${
-                    isActive(link.href)
+                    isActive(link.base)
                       ? "bg-accent/10 text-accent ring-1 ring-accent/20"
                       : "text-muted hover:bg-surface-2"
                   }`}
@@ -129,13 +152,13 @@ export default function Header() {
                 </Link>
               ))}
               <a
-                href="/Osvaldo_Restrepo_Resume.pdf"
+                href={es ? "/Osvaldo_Restrepo_Resume_ES.pdf" : "/Osvaldo_Restrepo_Resume.pdf"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2 mt-4 px-4 py-3 rounded-xl text-base font-medium bg-accent text-white"
               >
                 <FileDown className="w-5 h-5" />
-                Download CV
+                {es ? "Descargar CV" : "Download CV"}
               </a>
             </div>
           </motion.div>

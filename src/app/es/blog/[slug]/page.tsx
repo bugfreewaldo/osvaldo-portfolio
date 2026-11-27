@@ -28,6 +28,7 @@ export async function generateMetadata({
   if (!post) return {};
 
   const ogImage = post.frontmatter.image || `/es/blog/${slug}/opengraph-image`;
+  const englishPost = getPostTranslation(slug, "es");
 
   return {
     title: post.frontmatter.title,
@@ -44,7 +45,7 @@ export async function generateMetadata({
       tags: post.frontmatter.tags,
       images: [ogImage],
       url: `/es/blog/${slug}`,
-      locale: "es_ES",
+      locale: "es_PA",
     },
     twitter: {
       card: "summary_large_image",
@@ -54,12 +55,9 @@ export async function generateMetadata({
     },
     alternates: {
       canonical: `/es/blog/${slug}`,
-      languages: {
-        es: `/es/blog/${slug}`,
-        en: post.frontmatter.translationOf
-          ? `/blog/${post.frontmatter.translationOf}`
-          : undefined,
-      },
+      languages: englishPost
+        ? { en: englishPost.url, es: `/es/blog/${slug}`, "x-default": englishPost.url }
+        : { es: `/es/blog/${slug}` },
     },
   };
 }
@@ -105,7 +103,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
       ? {
           translationOfWork: {
             "@type": "Article",
-            url: `https://www.osvaldorestrepo.dev/blog/${slug}`,
+            url: `https://www.osvaldorestrepo.dev${englishPost.url}`,
             inLanguage: "en",
           },
         }
@@ -120,7 +118,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
         "@type": "ListItem",
         position: 1,
         name: "Inicio",
-        item: "https://www.osvaldorestrepo.dev",
+        item: "https://www.osvaldorestrepo.dev/es",
       },
       {
         "@type": "ListItem",
@@ -257,20 +255,20 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           <div className="lg:grid lg:grid-cols-[1fr_220px] lg:gap-8">
             {/* Main content */}
             <div className="min-w-0 prose prose-slate dark:prose-invert prose-headings:scroll-mt-20 prose-a:text-[#FF6A3D] dark:prose-a:text-[#FF8A5B] max-w-none">
-              <PostContent source={post.content} />
+              <PostContent source={post.content} locale="es" />
             </div>
 
             {/* Table of Contents - sticky sidebar */}
             <aside className="hidden lg:block">
               <div className="sticky top-24">
-                <TableOfContents />
+                <TableOfContents locale="es" />
               </div>
             </aside>
           </div>
 
           {/* FAQ Section */}
           {post.frontmatter.faqs && post.frontmatter.faqs.length > 0 && (
-            <FAQSection faqs={post.frontmatter.faqs} />
+            <FAQSection faqs={post.frontmatter.faqs} locale="es" />
           )}
 
           {/* Related Posts */}
@@ -318,7 +316,7 @@ export default async function SpanishBlogPostPage({ params }: PageProps) {
           <NewsletterSignup locale="es" />
 
           {/* Author Card */}
-          <AuthorCard />
+          <AuthorCard locale="es" />
         </article>
       </main>
     </>

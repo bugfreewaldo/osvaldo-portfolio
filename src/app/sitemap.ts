@@ -5,21 +5,31 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const base = "https://www.osvaldorestrepo.dev";
   const esSlugs = new Set(getAllPosts("es").map((p) => p.slug));
 
-  // Main pages
+  type Freq = "weekly" | "monthly" | "yearly";
+  const pair = (path: string, changeFrequency: Freq, priority: number): MetadataRoute.Sitemap => {
+    const en = `${base}${path}`;
+    const es = `${base}${path === "/" ? "/es" : `/es${path}`}`;
+    const alternates = { languages: { en, es, "x-default": en } };
+    return [
+      { url: en, lastModified: new Date(), changeFrequency, priority, alternates },
+      { url: es, lastModified: new Date(), changeFrequency, priority: Math.max(0.5, priority - 0.1), alternates },
+    ];
+  };
+
+  // Main pages (English + Spanish twins)
   const mainPages: MetadataRoute.Sitemap = [
-    { url: `${base}/`, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
-    { url: `${base}/projects`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
-    { url: `${base}/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.9 },
-    { url: `${base}/about`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
-    { url: `${base}/contact`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.6 },
-    { url: `${base}/process`, lastModified: new Date(), changeFrequency: "yearly", priority: 0.5 },
-    { url: `${base}/uses`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.6 },
-    { url: `${base}/testimonials`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.7 },
-    { url: `${base}/ai-engineer-panama`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.9 },
-    { url: `${base}/resume`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
-    { url: `${base}/es/ai-engineer-panama`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.9 },
-    { url: `${base}/now`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.7 },
-    { url: `${base}/case-studies`, lastModified: new Date(), changeFrequency: "monthly", priority: 0.8 },
+    ...pair("/", "weekly", 1),
+    ...pair("/projects", "weekly", 0.9),
+    ...pair("/blog", "weekly", 0.9),
+    ...pair("/about", "monthly", 0.8),
+    ...pair("/contact", "yearly", 0.6),
+    ...pair("/process", "yearly", 0.5),
+    ...pair("/uses", "monthly", 0.6),
+    ...pair("/testimonials", "monthly", 0.7),
+    ...pair("/ai-engineer-panama", "monthly", 0.9),
+    ...pair("/resume", "monthly", 0.8),
+    ...pair("/now", "weekly", 0.7),
+    ...pair("/case-studies", "monthly", 0.8),
   ];
 
   // All project detail pages
@@ -55,12 +65,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "autospa-bqt",
   ];
 
-  const projectPages: MetadataRoute.Sitemap = projectSlugs.map((slug) => ({
-    url: `${base}/projects/${slug}`,
-    lastModified: new Date(),
-    changeFrequency: "monthly",
-    priority: 0.7,
-  }));
+  const projectPages: MetadataRoute.Sitemap = projectSlugs.flatMap((slug) => pair(`/projects/${slug}`, "monthly", 0.7));
 
   // English blog posts
   const posts = getAllPosts();
@@ -75,6 +80,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
             languages: {
               en: `${base}/blog/${post.slug}`,
               es: `${base}/es/blog/${post.slug}`,
+              "x-default": `${base}/blog/${post.slug}`,
             },
           },
         }
@@ -88,12 +94,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified: new Date(post.frontmatter.updated || post.frontmatter.date),
     changeFrequency: "monthly" as const,
     priority: 0.7,
+    alternates: {
+      languages: {
+        en: `${base}/blog/${post.slug}`,
+        es: `${base}/es/blog/${post.slug}`,
+        "x-default": `${base}/blog/${post.slug}`,
+      },
+    },
   }));
 
-  // Spanish main pages
-  const spanishMainPages: MetadataRoute.Sitemap = [
-    { url: `${base}/es/blog`, lastModified: new Date(), changeFrequency: "weekly", priority: 0.8 },
-  ];
-
-  return [...mainPages, ...projectPages, ...blogPages, ...spanishMainPages, ...spanishBlogPages];
+  return [...mainPages, ...projectPages, ...blogPages, ...spanishBlogPages];
 }

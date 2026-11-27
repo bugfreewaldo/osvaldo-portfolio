@@ -4,7 +4,7 @@ import { ArrowRight, Download, MapPin, Mail, Github, Linkedin } from "lucide-rea
 import Reveal from "@/components/motion/Reveal";
 
 export const metadata: Metadata = {
-  title: "Resume — Osvaldo Restrepo",
+  title: "Resume",
   description:
     "Resume of Osvaldo Restrepo — CTO & AI Engineer. 10+ years of experience building production LLMs, RAG systems, AI agents, and voice AI. Based in Panama, working globally.",
   keywords: [
@@ -14,7 +14,10 @@ export const metadata: Metadata = {
     "AI Engineer Panama resume",
     "Software Engineer CV",
   ],
-  alternates: { canonical: "/resume" },
+  alternates: {
+    canonical: "/resume",
+    languages: { en: "/resume", es: "/es/resume", "x-default": "/resume" },
+  },
 };
 
 const jsonLd = {

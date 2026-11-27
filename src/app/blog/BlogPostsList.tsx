@@ -128,6 +128,7 @@ export default function BlogPostsList({
         {searchQuery && (
           <button
             onClick={() => setSearchQuery("")}
+            aria-label={locale === "es" ? "Borrar búsqueda" : "Clear search"}
             className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -166,7 +167,7 @@ export default function BlogPostsList({
         <>
           <div className="space-y-6">
             {paginatedPosts.map((post, i) => (
-              <PostCard key={post.slug} post={post} index={i} />
+              <PostCard key={post.slug} post={post} index={i} locale={locale} />
             ))}
           </div>
 

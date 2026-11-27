@@ -15,7 +15,10 @@ export const metadata: Metadata = {
     "voice AI case study",
     "LLM production",
   ],
-  alternates: { canonical: "/case-studies" },
+  alternates: {
+    canonical: "/case-studies",
+    languages: { en: "/case-studies", es: "/es/case-studies", "x-default": "/case-studies" },
+  },
 };
 
 const caseStudies = [

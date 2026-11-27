@@ -8,11 +8,19 @@ export const metadata: Metadata = {
   title: "Blog | Osvaldo Restrepo",
   description:
     "Guías prácticas sobre ingeniería de IA, desde sistemas RAG en producción hasta agentes de voz. Lecciones reales de proyectos reales.",
+  openGraph: {
+    title: "Blog — Osvaldo Restrepo",
+    description:
+      "Guías prácticas sobre ingeniería de IA, desde sistemas RAG en producción hasta agentes de voz. Lecciones reales de proyectos reales.",
+    url: "/es/blog",
+    locale: "es_PA",
+  },
   alternates: {
     canonical: "/es/blog",
     languages: {
       en: "/blog",
       es: "/es/blog",
+      "x-default": "/blog",
     },
   },
 };

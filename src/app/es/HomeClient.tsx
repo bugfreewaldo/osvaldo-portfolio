@@ -1,0 +1,835 @@
+"use client";
+
+import Link from "next/link";
+import Image from "next/image";
+import { motion, AnimatePresence, useMotionValue, useTransform, useReducedMotion } from "framer-motion";
+import { useState, useEffect, useRef } from "react";
+import { Brain, Cpu, MessageSquare, Zap, ArrowRight, Github, Linkedin, Mail, Instagram, Database, Globe, Shield, BarChart3, Code2, Workflow, Smartphone, Activity, FileText, KeyRound } from "lucide-react";
+import AnimatedHeadline from "@/components/motion/AnimatedHeadline";
+import Reveal from "@/components/motion/Reveal";
+
+// Rotating text phrases
+const rotatingPhrases = [
+  "Construyo IA que funciona en el mundo real.",
+  "Convierto ML complejo en sistemas de producción.",
+  "Hago que los LLMs sean realmente útiles para el negocio.",
+  "Lanzo agentes que resuelven problemas reales.",
+  "Creo IA de voz que suena humana.",
+  "Automatizo flujos de trabajo con inteligencia.",
+];
+
+// Rotating text carousel component
+function RotatingText() {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % rotatingPhrases.length);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="relative h-16 sm:h-8 overflow-hidden">
+      <AnimatePresence mode="wait">
+        <motion.span
+          key={currentIndex}
+          initial={{ y: 20, opacity: 0, filter: "blur(8px)" }}
+          animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+          exit={{ y: -20, opacity: 0, filter: "blur(8px)" }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="absolute inset-0 flex items-center justify-center font-mono bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] bg-clip-text text-transparent"
+        >
+          {rotatingPhrases[currentIndex]}
+        </motion.span>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// Animated background with floating gradient orbs and grid
+function GridBackground() {
+  const reduce = useReducedMotion();
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
+      <motion.div
+        className="absolute top-0 left-1/4 w-96 h-96 bg-[#FF6A3D]/10 rounded-full blur-3xl"
+        animate={reduce ? undefined : { x: [0, 30, 0], y: [0, -20, 0] }}
+        transition={reduce ? undefined : { duration: 15, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute bottom-0 right-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl"
+        animate={reduce ? undefined : { x: [0, -30, 0], y: [0, 20, 0] }}
+        transition={reduce ? undefined : { duration: 18, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <motion.div
+        className="absolute top-1/3 right-1/3 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl"
+        animate={reduce ? undefined : { x: [0, 20, 0], y: [0, 30, 0] }}
+        transition={reduce ? undefined : { duration: 12, repeat: Infinity, ease: "easeInOut" }}
+      />
+    </div>
+  );
+}
+
+// Constellation particle network
+const particles = [
+  { id: 0, x: 12, y: 18, size: 3 },
+  { id: 1, x: 88, y: 12, size: 2 },
+  { id: 2, x: 22, y: 72, size: 2.5 },
+  { id: 3, x: 78, y: 78, size: 3 },
+  { id: 4, x: 50, y: 35, size: 2 },
+  { id: 5, x: 8, y: 48, size: 2.5 },
+  { id: 6, x: 92, y: 45, size: 2 },
+  { id: 7, x: 35, y: 90, size: 3 },
+  { id: 8, x: 65, y: 8, size: 2 },
+  { id: 9, x: 45, y: 60, size: 2.5 },
+];
+
+const connections = [
+  [0, 4], [1, 4], [2, 5], [3, 6], [4, 9],
+  [5, 0], [6, 1], [7, 2], [8, 1], [9, 3],
+];
+
+function ParticleNetwork() {
+  const reduce = useReducedMotion();
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {/* Connecting lines */}
+      <svg className="absolute inset-0 w-full h-full">
+        {connections.map(([a, b], i) => (
+          <motion.line
+            key={`line-${i}`}
+            x1={`${particles[a].x}%`}
+            y1={`${particles[a].y}%`}
+            x2={`${particles[b].x}%`}
+            y2={`${particles[b].y}%`}
+            stroke="currentColor"
+            className="text-[#FF8A5B]/10 dark:text-[#FF8A5B]/[0.07]"
+            strokeWidth="1"
+            initial={reduce ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={reduce ? { duration: 0 } : { duration: 2, delay: 1 + i * 0.15, ease: "easeOut" }}
+          />
+        ))}
+      </svg>
+      {/* Particles */}
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full bg-[#FF8A5B]/30 dark:bg-[#FF6A3D]/20"
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: `${p.size}px`,
+            height: `${p.size}px`,
+          }}
+          initial={reduce ? { scale: 1, opacity: 0.5 } : { scale: 0, opacity: 0 }}
+          animate={reduce ? { scale: 1, opacity: 0.5 } : { scale: [1, 1.5, 1], opacity: [0.3, 0.7, 0.3] }}
+          transition={reduce ? { duration: 0 } : {
+            scale: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
+            opacity: { duration: 3 + p.id * 0.3, repeat: Infinity, ease: "easeInOut" },
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Parallax mouse-tracking wrapper for the hero profile
+function ParallaxProfile({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const rotateX = useTransform(mouseY, [-0.5, 0.5], [5, -5]);
+  const rotateY = useTransform(mouseX, [-0.5, 0.5], [-5, 5]);
+
+  useEffect(() => {
+    if (reduce) return; // skip parallax when reduced motion is requested
+    function handleMouse(e: MouseEvent) {
+      if (!ref.current) return;
+      const rect = ref.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      mouseX.set((e.clientX - centerX) / rect.width);
+      mouseY.set((e.clientY - centerY) / rect.height);
+    }
+    window.addEventListener("mousemove", handleMouse);
+    return () => window.removeEventListener("mousemove", handleMouse);
+  }, [mouseX, mouseY, reduce]);
+
+  return (
+    <motion.div
+      ref={ref}
+      style={reduce ? undefined : { rotateX, rotateY, transformPerspective: 800 }}
+      className="will-change-transform"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+// Stagger container variants
+const heroContainer = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+  },
+};
+
+const heroItem = {
+  hidden: { opacity: 0, y: 30, filter: "blur(10px)" },
+  show: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { duration: 0.7, ease: "easeOut" as const },
+  },
+};
+
+const capabilities = [
+  {
+    icon: Brain,
+    title: "LLMs y RAG",
+    description: "Generación aumentada por recuperación (RAG), prompt engineering, prompt caching y pipelines de evaluación para apps LLM en producción",
+    gradient: "from-purple-500 to-indigo-500",
+    tech: ["Claude", "OpenAI", "LangChain", "Hugging Face", "Cosmos DB", "Prompt Caching"],
+  },
+  {
+    icon: MessageSquare,
+    title: "Agentes de IA",
+    description: "Agentes autónomos con tool-calling, memoria, bucles acotados y traspasos con humano en el circuito (human-in-the-loop)",
+    gradient: "from-[#FF6A3D] to-cyan-500",
+    tech: ["Claude", "MCP", "Tool Use", "Function Calling", "Bounded Loops", "Audit Logging"],
+  },
+  {
+    icon: Cpu,
+    title: "IA de voz",
+    description: "Sistemas de voz de punta a punta — STT, TTS, conversación en tiempo real, agentes telefónicos y reemplazo de IVR",
+    gradient: "from-cyan-500 to-emerald-500",
+    tech: ["Twilio", "Whisper", "ElevenLabs", "WebRTC", "SIP", "Real-time"],
+  },
+  {
+    icon: Zap,
+    title: "Automatización",
+    description: "Automatización inteligente de flujos que conecta la IA con CRMs, ERPs, facturación y operaciones del negocio",
+    gradient: "from-emerald-500 to-yellow-500",
+    tech: ["Stripe", "QuickBooks", "Plaid", "Twilio", "Webhooks", "Cron"],
+  },
+  {
+    icon: Globe,
+    title: "Apps full-stack",
+    description: "Apps web en producción con frameworks modernos, funciones en tiempo real, autenticación, pagos y despliegue",
+    gradient: "from-blue-500 to-indigo-500",
+    tech: ["Next.js", "React", "Vite", "Tailwind", "TypeScript", "Framer Motion"],
+  },
+  {
+    icon: Database,
+    title: "Pipelines de datos y ML",
+    description: "Pipelines ETL, vector stores, flujos de embeddings e infraestructura de datos orientada a eventos para productos AI-first",
+    gradient: "from-teal-500 to-cyan-500",
+    tech: ["Cosmos DB", "PostgreSQL", "Kafka", "Redis", "Python", "Pandas"],
+  },
+  {
+    icon: Shield,
+    title: "Seguridad de IA y evals",
+    description: "Guardrails, calibración, detección de alucinaciones y suites de evaluación ligadas a los criterios de release",
+    gradient: "from-rose-500 to-pink-500",
+    tech: ["Langfuse", "Giskard", "Arize", "Confident AI", "OPA", "Calibration"],
+  },
+  {
+    icon: Workflow,
+    title: "APIs e integraciones",
+    description: "APIs REST, webhooks, servidores MCP y arquitecturas de microservicios que escalan",
+    gradient: "from-amber-500 to-orange-500",
+    tech: ["REST", "GraphQL", "MCP", "WebSockets", "OAuth", "JWT"],
+  },
+  {
+    icon: Smartphone,
+    title: "Apps móviles",
+    description: "Clientes nativos de iOS y Android que comparten la misma identidad y APIs que el producto web",
+    gradient: "from-pink-500 to-rose-500",
+    tech: ["Swift", "SwiftUI", "Kotlin", "Gradle KTS", "OIDC", "Push Notifications"],
+  },
+  {
+    icon: Activity,
+    title: "Observabilidad",
+    description: "Trazas, métricas y logs agnósticos al proveedor entre servicios — para depurar lo que realmente pasó",
+    gradient: "from-fuchsia-500 to-purple-500",
+    tech: ["OpenTelemetry", "Grafana", "Prometheus", "Loki", "Tempo", "App Insights"],
+  },
+  {
+    icon: FileText,
+    title: "Generación de documentos",
+    description: "Exportación programática a PDF, PowerPoint, Word y Excel — paquetes para junta directiva, reportes y pistas de auditoría",
+    gradient: "from-orange-500 to-amber-500",
+    tech: ["pdfkit", "jsPDF", "PptxGenJS", "docx", "xlsx", "mammoth"],
+  },
+  {
+    icon: KeyRound,
+    title: "Identidad y políticas",
+    description: "SSO con OIDC, federación JWT, acceso basado en roles y policy-as-code para decisiones que no le corresponden a la lógica de negocio",
+    gradient: "from-violet-500 to-indigo-500",
+    tech: ["Keycloak", "NextAuth", "JWT", "Azure MSAL", "OPA", "RBAC"],
+  },
+];
+
+const featuredProjects = [
+  {
+    slug: "mila-neonatal-llm",
+    title: "MILA",
+    subtitle: "Asistente LLM neonatal",
+    description: "Sistema RAG sobre las políticas del hospital, con acceso por roles y registros auditables para cumplimiento en salud.",
+    tags: ["LangChain", "Pinecone", "Salud"],
+    metric: "p95 ~820ms",
+  },
+  {
+    slug: "ai-voice-agent",
+    title: "Voice Agent",
+    subtitle: "Shining Image",
+    description: "Agente telefónico autónomo que atiende llamadas entrantes, agenda trabajos y transfiere a humanos sin fricción.",
+    tags: ["Twilio", "Whisper", "Tiempo real"],
+    metric: "68% de contención",
+  },
+  {
+    slug: "stripe-qb-reconcile",
+    title: "Reconciler",
+    subtitle: "Stripe → QuickBooks",
+    description: "Conciliación financiera automatizada que agrupa comisiones por payout para una contabilidad limpia.",
+    tags: ["Stripe", "QuickBooks", "Automatización"],
+    metric: "$0 de diferencia",
+  },
+  {
+    slug: "9vectors",
+    title: "9Vectors.ai",
+    subtitle: "Plataforma de evaluación estratégica",
+    description: "Plataforma de evaluación estratégica impulsada por IA que ayuda a las empresas a tomar decisiones basadas en datos.",
+    tags: ["Plataforma de IA", "Empresas", "Cofundador"],
+    metric: "$150M+ val",
+    external: "https://9vectors.ai",
+  },
+  {
+    slug: "measurement13",
+    title: "Measurement13.ai",
+    subtitle: "Evaluación de liderazgo",
+    description: "Evaluación de liderazgo en 13 atributos clave — feedback 360°, posicionamiento 9-Box y analítica de dinámicas de equipo para revisiones de talento y planes de sucesión.",
+    tags: ["Liderazgo", "Feedback 360°", "Talento"],
+    metric: "Empresarial",
+    external: "https://measurement13.ai",
+  },
+  {
+    slug: "snapshot9",
+    title: "Snapshot9.ai",
+    subtitle: "Transformación empresarial",
+    description: "Plataforma integral de transformación empresarial que captura, analiza y optimiza los procesos de la organización.",
+    tags: ["Empresas", "Transformación", "IA"],
+    metric: "Plataforma",
+    external: "https://snapshot9.ai",
+  },
+  {
+    slug: "thegreymatter",
+    title: "TheGreyMatter.ai",
+    subtitle: "Inteligencia de negocios",
+    description: "Plataforma de inteligencia de negocios impulsada por IA que convierte datos complejos en insights claros y accionables.",
+    tags: ["BI", "Analítica", "Soporte a decisiones"],
+    metric: "Liderazgo",
+    external: "https://thegreymatter.ai",
+  },
+  {
+    slug: "budgetcopilot",
+    title: "BudgetCopilot",
+    subtitle: "Agente financiero con IA",
+    description: "Agente financiero personal con IA que te ayuda a manejar presupuestos, controlar deudas y construir patrimonio.",
+    tags: ["Agente de IA", "FinTech", "Finanzas personales"],
+    metric: "Consumo",
+    external: "https://budgetcopilot.app",
+  },
+  {
+    slug: "waldoscodelab",
+    title: "Waldo's Code Lab",
+    subtitle: "Escuela de programación gratuita",
+    description: "Escuela de programación práctica y gratuita que ayuda a niños y adolescentes a aprender a programar paso a paso.",
+    tags: ["Educación", "Gratis", "Niños y adolescentes"],
+    metric: "Gratis",
+    external: "https://waldoscodelab.com",
+  },
+  {
+    slug: "fundraise9",
+    title: "Fundraise9",
+    subtitle: "Portal DDQ para LP/GP",
+    description: "Plataforma ILPA DDQ 2.0 para levantamiento de capital en PE — respuestas con Claude, colaboración LP/GP en tiempo real y anclaje a los documentos fuente de la firma.",
+    tags: ["Ecosistema TGM", "PE", "Claude AI"],
+    metric: "ILPA DDQ 2.0",
+  },
+];
+
+export default function HomeClient() {
+  const reduceHero = useReducedMotion();
+  return (
+    <main className="relative min-h-screen">
+      <GridBackground />
+      <ParticleNetwork />
+
+      {/* Hero */}
+      <section className="relative min-h-[70vh] flex items-center justify-center px-4 overflow-hidden">
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
+          {/* Text Content */}
+          <motion.div
+            className="text-center md:text-left order-2 md:order-1"
+            variants={heroContainer}
+            initial="hidden"
+            animate="show"
+          >
+            <motion.div variants={heroItem}>
+              <Link href="/es/contact" className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-green-500/10 border border-green-500/30 text-green-600 dark:text-green-400 text-sm font-medium mb-6 hover:bg-green-500/15 transition-colors">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                Disponible para nuevos proyectos — hablemos
+              </Link>
+            </motion.div>
+
+            <motion.h1
+              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight"
+              variants={heroItem}
+            >
+              <span className="text-foreground">Hola, soy </span>
+              <AnimatedHeadline text="Waldo" className="text-accent" />
+            </motion.h1>
+
+            <motion.div
+              className="mt-4 text-lg sm:text-xl"
+              variants={heroItem}
+            >
+              <RotatingText />
+            </motion.div>
+
+            <motion.p
+              className="mt-4 text-base sm:text-lg text-slate-500 dark:text-slate-400 max-w-xl"
+              variants={heroItem}
+            >
+              CTO de TheGreyMatter.ai e ingeniero de IA con las manos en el código, especializado en LLMs,
+              agentes autónomos y sistemas de voz.{" "}
+              <Link href="/es/ai-engineer-panama" className="underline decoration-[#FF6A3D]/30 hover:decoration-[#FF6A3D] transition-colors">
+                Desde Panamá
+              </Link>
+              , construyendo para el mundo.
+            </motion.p>
+
+            <motion.div
+              className="mt-8 flex flex-wrap justify-center md:justify-start gap-4"
+              variants={heroItem}
+            >
+              <Link
+                href="/es/projects"
+                className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25 hover:shadow-xl hover:shadow-[#FF6A3D]/30 hover:-translate-y-0.5"
+              >
+                Ver proyectos
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </Link>
+            </motion.div>
+
+            <motion.div
+              className="mt-6 flex justify-center md:justify-start gap-2"
+              variants={heroItem}
+            >
+              {[
+                { href: "https://github.com/bugfreewaldo", icon: Github, label: "GitHub" },
+                { href: "https://linkedin.com/in/osvaldorestrepo", icon: Linkedin, label: "LinkedIn" },
+                { href: "mailto:me@osvaldorestrepo.dev", icon: Mail, label: "Correo" },
+                { href: "https://www.instagram.com/waldos.code.lab/", icon: Instagram, label: "Instagram" },
+              ].map((social, i) => (
+                <motion.a
+                  key={social.label}
+                  href={social.href}
+                  target={social.href.startsWith("mailto") ? undefined : "_blank"}
+                  rel={social.href.startsWith("mailto") ? undefined : "noopener noreferrer"}
+                  className="p-2.5 rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                  whileHover={{ scale: 1.15, y: -2 }}
+                  whileTap={{ scale: 0.95 }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 1 + i * 0.08 }}
+                  aria-label={social.label}
+                >
+                  <social.icon className="w-5 h-5" />
+                </motion.a>
+              ))}
+            </motion.div>
+          </motion.div>
+
+          {/* Profile Picture */}
+          <motion.div
+            className="flex justify-center order-1 md:order-2"
+            initial={{ opacity: 0, scale: 0.6, rotate: -5 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
+          >
+            <ParallaxProfile>
+              <div className="relative">
+                {/* Animated gradient glow behind image */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF] rounded-full blur-2xl scale-110"
+                  animate={{ opacity: [0.2, 0.4, 0.2] }}
+                  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                />
+
+                {/* Spinning ring — suppressed under reduced motion */}
+                <motion.div
+                  className="absolute -inset-3 rounded-full border border-dashed border-[#FF6A3D]/20 dark:border-[#FF6A3D]/10"
+                  animate={reduceHero ? undefined : { rotate: 360 }}
+                  transition={reduceHero ? undefined : { duration: 30, repeat: Infinity, ease: "linear" }}
+                />
+
+                {/* Gradient border */}
+                <div className="relative p-1 rounded-full bg-gradient-to-r from-[#FF6A3D] via-[#FF7E54] to-[#2DD4BF]">
+                  <div className="p-1 rounded-full bg-white dark:bg-slate-950">
+                    <div className="relative rounded-full overflow-hidden w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 lg:w-72 lg:h-72">
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-[#1c1410] to-slate-900 opacity-60">
+                        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,102,241,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(99,102,241,0.08)_1px,transparent_1px)] bg-[size:20px_20px]" />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.1)_0%,transparent_70%)]" />
+                        <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-cyan-500/5 rounded-full blur-xl animate-pulse" />
+                      </div>
+                      <Image
+                        src="/images/waldoprofilepic.png"
+                        alt="Waldo - Ingeniero de IA"
+                        width={280}
+                        height={280}
+                        className="relative z-10 rounded-full object-cover w-full h-full"
+                        priority
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Orbital floating tech badges */}
+                <motion.div
+                  className="absolute -top-2 -right-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 0.8, duration: 0.4 },
+                    scale: { delay: 0.8, duration: 0.4, type: "spring" },
+                    y: { delay: 1.2, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Brain className="w-5 h-5 text-[#FF6A3D]" />
+                </motion.div>
+                <motion.div
+                  className="absolute -bottom-2 -left-2 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.0, duration: 0.4 },
+                    scale: { delay: 1.0, duration: 0.4, type: "spring" },
+                    y: { delay: 1.4, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Cpu className="w-5 h-5 text-cyan-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute top-1/2 -right-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.2, duration: 0.4 },
+                    scale: { delay: 1.2, duration: 0.4, type: "spring" },
+                    y: { delay: 1.6, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <Zap className="w-5 h-5 text-yellow-500" />
+                </motion.div>
+                <motion.div
+                  className="absolute top-1/3 -left-4 p-2 rounded-xl bg-white dark:bg-slate-800 shadow-lg border border-slate-200 dark:border-slate-700"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: [0, -10, 0] }}
+                  transition={{
+                    opacity: { delay: 1.4, duration: 0.4 },
+                    scale: { delay: 1.4, duration: 0.4, type: "spring" },
+                    y: { delay: 1.8, duration: 3, repeat: Infinity, ease: "easeInOut" },
+                  }}
+                >
+                  <MessageSquare className="w-5 h-5 text-purple-500" />
+                </motion.div>
+              </div>
+            </ParallaxProfile>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Capabilities */}
+      <section className="relative py-20 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="text-center mb-14"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium mb-4">
+              <Code2 className="w-4 h-4" />
+              Ingeniería de IA full-stack
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+              Lo que construyo
+            </h2>
+            <p className="mt-4 text-lg text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+              Sistemas de IA de punta a punta que se integran con operaciones reales — del prototipo a producción, no solo demos
+            </p>
+          </motion.div>
+
+          <Reveal staggerMs={70} className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+            {capabilities.map((cap) => (
+              <div
+                key={cap.title}
+                className="group relative p-6 rounded-2xl bg-surface/60 backdrop-blur-sm border border-line hover:border-[#FF6A3D]/50 transition-all duration-300 overflow-hidden hover:-translate-y-1"
+              >
+                {/* Hover gradient glow */}
+                <div className={`absolute inset-0 bg-gradient-to-br ${cap.gradient} opacity-0 group-hover:opacity-[0.03] transition-opacity duration-300`} />
+
+                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${cap.gradient} mb-4 shadow-lg shadow-[#FF6A3D]/10`}>
+                  <cap.icon className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                  {cap.title}
+                </h3>
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {cap.description}
+                </p>
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {cap.tech.map((t) => (
+                    <span
+                      key={t}
+                      className="px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-md"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Reveal>
+
+          {/* Stats bar */}
+          <Reveal staggerMs={90} className="mt-14 grid grid-cols-2 sm:grid-cols-4 gap-6">
+            {[
+              { value: "10+", label: "Años de ingeniería" },
+              { value: "20+", label: "Sistemas en producción" },
+              { value: "20+", label: "Productos de IA lanzados" },
+              { value: "10+", label: "Países atendidos" },
+            ].map((stat) => (
+              <div key={stat.label} className="text-center p-4 rounded-xl bg-surface/40 border border-line">
+                <div className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] bg-clip-text text-transparent">
+                  {stat.value}
+                </div>
+                <div className="mt-1 text-sm text-muted">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </Reveal>
+        </div>
+      </section>
+
+      {/* Featured In / Press */}
+      <section className="relative py-12 px-4">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="text-center mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
+              Apariciones en medios
+            </h2>
+          </motion.div>
+
+          <motion.a
+            href="https://usanews.com/newsroom/how-the-mila-ai-platform-began-with-one-family-s-story"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block max-w-3xl mx-auto p-6 rounded-2xl bg-gradient-to-r from-[#FF6A3D]/10 to-[#2DD4BF]/10 dark:from-[#FF6A3D]/14 dark:to-[#2DD4BF]/10 border border-[#FF6A3D]/30 dark:border-[#FF6A3D]/30 hover:border-[#FF8A5B] dark:hover:border-[#FF6A3D] hover:shadow-xl hover:shadow-[#FF6A3D]/10 transition-all duration-300"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-white p-2 flex items-center justify-center shadow-md ring-1 ring-slate-200 dark:ring-slate-700 overflow-hidden">
+                <Image
+                  src="/images/usanews-logo.jpg"
+                  alt="USA News"
+                  width={56}
+                  height={56}
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-[#FF6A3D] dark:text-[#FF8A5B]">USA News</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-sm text-slate-500">Artículo destacado</span>
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
+                  How the MILA AI Platform Began with One Family&apos;s Story
+                </h3>
+                <p className="mt-2 text-slate-600 dark:text-slate-400">
+                  La historia detrás de crear un asistente de IA para familias en la UCIN: convertir una experiencia personal en tecnología que acompaña a los padres en uno de los momentos más difíciles de su vida.
+                </p>
+                <div className="mt-4 flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] text-sm font-medium">
+                  Leer el artículo completo
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </div>
+          </motion.a>
+        </div>
+      </section>
+
+      {/* Featured Projects */}
+      <section className="relative py-16 px-4 bg-slate-50/50 dark:bg-slate-900/30">
+        <div className="max-w-6xl mx-auto">
+          <motion.div
+            className="flex items-center justify-between mb-8"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+                Trabajo destacado
+              </h2>
+              <p className="mt-2 text-slate-600 dark:text-slate-400">
+                Sistemas en producción, métricas reales
+              </p>
+            </div>
+            <Link
+              href="/es/projects"
+              className="hidden sm:inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline"
+            >
+              Ver todo <ArrowRight className="w-4 h-4" />
+            </Link>
+          </motion.div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {featuredProjects.map((project, i) => {
+              const isExternal = "external" in project && project.external;
+              const CardWrapper = isExternal ? "a" : Link;
+              const cardProps = isExternal
+                ? { href: project.external, target: "_blank", rel: "noopener noreferrer" }
+                : { href: `/es/projects/${project.slug}` };
+
+              return (
+                <motion.div
+                  key={project.slug}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: (i % 6) * 0.1 }}
+                >
+                  <CardWrapper
+                    {...cardProps}
+                    className="group block h-full p-6 rounded-2xl bg-white dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 hover:border-[#FF6A3D]/50 hover:shadow-xl hover:shadow-[#FF6A3D]/5 transition-all duration-300"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-[#FF6A3D] dark:group-hover:text-[#FF8A5B] transition-colors">
+                          {project.title}
+                        </h3>
+                        <p className="text-sm text-slate-500">{project.subtitle}</p>
+                      </div>
+                      <span className="px-2 py-1 text-xs font-mono bg-[#FF6A3D]/10 dark:bg-[#FF6A3D]/15 text-[#FF6A3D] dark:text-[#FF8A5B] rounded whitespace-nowrap">
+                        {project.metric}
+                      </span>
+                    </div>
+
+                    <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
+                      {project.description}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      {project.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-1 text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    {isExternal && (
+                      <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-1 text-xs text-[#FF6A3D] dark:text-[#FF8A5B]">
+                        <ArrowRight className="w-3 h-3" />
+                        Visitar sitio
+                      </div>
+                    )}
+                  </CardWrapper>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          <Link
+            href="/es/projects"
+            className="sm:hidden mt-8 inline-flex items-center gap-2 text-[#FF6A3D] dark:text-[#FF8A5B] hover:underline"
+          >
+            Ver todos los proyectos <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="relative py-16 px-4">
+        <motion.div
+          className="max-w-3xl mx-auto text-center"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+        >
+          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
+            Construyamos algo
+          </h2>
+          <p className="mt-4 text-lg text-slate-600 dark:text-slate-400">
+            Estoy abierto a roles de CTO, Head of AI e ingeniería de IA senior, además de asesoría y consultoría. ¿Buscas un ingeniero de IA que lleve sistemas a producción? Hablemos.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/es/contact"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
+            >
+              Escríbeme
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+            <a
+              href="/Osvaldo_Restrepo_Resume_ES.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              Descargar CV
+            </a>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* Footer */}
+      <footer className="relative py-8 px-4 border-t border-slate-200 dark:border-slate-800">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
+          <p>© {new Date().getFullYear()} Osvaldo Restrepo</p>
+          <p className="flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] animate-pulse" />
+            Hecho con IA, obvio. ¿Un ingeniero de IA que no usa IA? Eso sí sería raro.
+          </p>
+        </div>
+      </footer>
+    </main>
+  );
+}

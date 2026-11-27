@@ -19,7 +19,10 @@ export const metadata: Metadata = {
     "Desarrollador de Inteligencia Artificial",
     "Osvaldo Restrepo Panamá",
   ],
-  alternates: { canonical: "/es/ai-engineer-panama" },
+  alternates: {
+    canonical: "/es/ai-engineer-panama",
+    languages: { en: "/ai-engineer-panama", es: "/es/ai-engineer-panama", "x-default": "/ai-engineer-panama" },
+  },
   openGraph: {
     title: "Ingeniero de IA en Panamá — Osvaldo Restrepo",
     description:
@@ -144,14 +147,14 @@ export default function AIEngineerPanamaES() {
 
             <div className="mt-8 flex flex-wrap justify-center gap-4">
               <Link
-                href="/contact"
+                href="/es/contact"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
               >
                 Trabajemos Juntos
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/projects"
+                href="/es/projects"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
               >
                 Ver Proyectos
@@ -309,7 +312,7 @@ export default function AIEngineerPanamaES() {
             </p>
             <div className="mt-8">
               <Link
-                href="/contact"
+                href="/es/contact"
                 className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-r from-[#FF6A3D] to-[#FF8A4C] text-white font-medium text-lg hover:from-[#FF7E54] hover:to-[#FF9B63] transition-all shadow-lg shadow-[#FF6A3D]/25"
               >
                 Contáctame

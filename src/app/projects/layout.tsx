@@ -10,7 +10,10 @@ export const metadata: Metadata = {
       "AI and software projects: voice agents, RAG systems, LLM applications, and business automation with real impact.",
     url: "/projects",
   },
-  alternates: { canonical: "/projects" },
+  alternates: {
+    canonical: "/projects",
+    languages: { en: "/projects", es: "/es/projects", "x-default": "/projects" },
+  },
 };
 
 export default function ProjectsLayout({

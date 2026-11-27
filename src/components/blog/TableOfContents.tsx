@@ -9,7 +9,11 @@ interface TocItem {
   level: number;
 }
 
-export default function TableOfContents() {
+interface TableOfContentsProps {
+  locale?: "en" | "es";
+}
+
+export default function TableOfContents({ locale = "en" }: TableOfContentsProps) {
   const [headings, setHeadings] = useState<TocItem[]>([]);
   const [activeId, setActiveId] = useState<string>("");
 
@@ -50,7 +54,7 @@ export default function TableOfContents() {
     <nav className="text-sm">
       <div className="flex items-center gap-2 mb-3 text-slate-900 dark:text-white font-medium">
         <List className="w-4 h-4" />
-        On this page
+        {locale === "es" ? "En esta página" : "On this page"}
       </div>
       <ul className="space-y-2">
         {headings.map((heading, index) => (

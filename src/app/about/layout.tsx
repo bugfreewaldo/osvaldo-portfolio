@@ -10,7 +10,10 @@ export const metadata: Metadata = {
       "CTO & AI Engineer building production AI systems, voice agents, and enterprise platforms.",
     url: "/about",
   },
-  alternates: { canonical: "/about" },
+  alternates: {
+    canonical: "/about",
+    languages: { en: "/about", es: "/es/about", "x-default": "/about" },
+  },
 };
 
 export default function AboutLayout({

@@ -43,7 +43,7 @@ export default function NewsletterSignup({ locale = "en" }: NewsletterSignupProp
           <CheckCircle className="w-6 h-6 text-emerald-500" />
           <div>
             <p className="font-semibold text-emerald-700 dark:text-emerald-300">
-              {isEs ? "Listo!" : "You're in!"}
+              {isEs ? "¡Listo!" : "You're in!"}
             </p>
             <p className="text-sm text-emerald-600 dark:text-emerald-400">
               {isEs

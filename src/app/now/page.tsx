@@ -7,7 +7,10 @@ export const metadata: Metadata = {
   title: "Now — Osvaldo Restrepo",
   description:
     "What Osvaldo Restrepo is working on right now. Current projects, learning, writing, and focus areas. Updated regularly.",
-  alternates: { canonical: "/now" },
+  alternates: {
+    canonical: "/now",
+    languages: { en: "/now", es: "/es/now", "x-default": "/now" },
+  },
 };
 
 export default function NowPage() {

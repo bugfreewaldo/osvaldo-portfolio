@@ -22,7 +22,10 @@ export const metadata: Metadata = {
     "Desarrollador de IA Panamá",
     "Inteligencia Artificial Panamá",
   ],
-  alternates: { canonical: "/ai-engineer-panama" },
+  alternates: {
+    canonical: "/ai-engineer-panama",
+    languages: { en: "/ai-engineer-panama", es: "/es/ai-engineer-panama", "x-default": "/ai-engineer-panama" },
+  },
   openGraph: {
     title: "AI Engineer in Panama — Osvaldo Restrepo",
     description:

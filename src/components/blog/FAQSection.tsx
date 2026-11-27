@@ -11,9 +11,10 @@ interface FAQ {
 
 interface FAQSectionProps {
   faqs: FAQ[];
+  locale?: "en" | "es";
 }
 
-export default function FAQSection({ faqs }: FAQSectionProps) {
+export default function FAQSection({ faqs, locale = "en" }: FAQSectionProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   if (!faqs || faqs.length === 0) return null;
@@ -23,7 +24,7 @@ export default function FAQSection({ faqs }: FAQSectionProps) {
       <div className="flex items-center gap-2 mb-6">
         <HelpCircle className="w-5 h-5 text-[#FF6A3D]" />
         <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-          Frequently Asked Questions
+          {locale === "es" ? "Preguntas frecuentes" : "Frequently Asked Questions"}
         </h2>
       </div>
       <div className="space-y-3">

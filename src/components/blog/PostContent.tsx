@@ -7,9 +7,10 @@ import remarkGfm from "remark-gfm";
 
 interface PostContentProps {
   source: string;
+  locale?: "en" | "es";
 }
 
-export default function PostContent({ source }: PostContentProps) {
+export default function PostContent({ source, locale = "en" }: PostContentProps) {
   return (
     <MDXRemote
       source={source}
@@ -30,7 +31,7 @@ export default function PostContent({ source }: PostContentProps) {
               {
                 properties: {
                   className: ["anchor"],
-                  ariaLabel: "Link to section",
+                  ariaLabel: locale === "es" ? "Enlace a la sección" : "Link to section",
                 },
               },
             ],
